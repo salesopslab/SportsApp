@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BetEdge AI</title>
+<style>
+:root{
+  --bg:#10151C; --surface:#1B222C; --surface2:#212B37; --line:#2C3644;
+  --text:#F4F1EA; --sub:#9AA5B1; --amber:#E8A33D; --teal:#3FB6A8; --green:#3FA66B; --red:#D9614F;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#F4F1EA; --surface:#FFFFFF; --surface2:#EDE9DF; --line:#DDD6C6;
+    --text:#14181F; --sub:#5B6470;
+  }
+}
+:root[data-theme="dark"]{ --bg:#10151C; --surface:#1B222C; }
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-padding-top:env(safe-area-inset-top,0px); height:100%;}
+body{
+  height:100%; background:var(--bg); color:var(--text);
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  display:flex; justify-content:center;
+}
+.app{ width:100%; max-width:460px; min-height:100vh; display:flex; flex-direction:column; position:relative; }
+
+/* header */
+.topbar{
+  padding:18px 20px 14px; display:flex; align-items:center; justify-content:space-between;
+  border-bottom:1px solid var(--line);
+}
+.brand{ font-family:'Oswald',sans-serif; font-weight:600; font-size:20px; letter-spacing:0.5px; }
+.brand span{ color:var(--amber); }
+.plan-pill{ font-size:11px; color:var(--sub); border:1px solid var(--line); padding:4px 10px; border-radius:20px; }
+
+/* screens */
+.screen{ display:none; flex:1; overflow-y:auto; padding-bottom:90px; }
+.screen.active{ display:block; }
+
+/* board */
+.sport-tabs{ display:flex; gap:8px; padding:14px 20px 4px; overflow-x:auto; }
+.sport-tab{ font-size:13px; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:7px 14px; border-radius:20px; white-space:nowrap; }
+.sport-tab.active{ color:var(--bg); background:var(--amber); border-color:var(--amber); font-weight:600; }
+
+.game-row{ padding:16px 20px; border-bottom:1px solid var(--line); }
+.game-meta{ display:flex; justify-content:space-between; font-size:12px; color:var(--sub); margin-bottom:10px; }
+.matchup{ display:flex; flex-direction:column; gap:8px; }
+.team-line{ display:flex; justify-content:space-between; align-items:center; }
+.team-name{ font-size:16px; font-weight:500; }
+.odds-cluster{ display:flex; gap:14px; font-family:'Oswald',sans-serif; }
+.odds-box{ text-align:right; min-width:44px; }
+.odds-box .num{ font-size:15px; font-weight:600; }
+.odds-box .lbl{ font-size:9px; color:var(--sub); text-transform:uppercase; letter-spacing:0.4px; }
+.odds-box.move .num{ color:var(--green); }
+.weather-strip{ margin-top:10px; font-size:12px; color:var(--sub); display:flex; gap:6px; align-items:center; }
+
+/* chat */
+.chat-wrap{ display:flex; flex-direction:column; height:100%; padding:0 20px; }
+.chat-log{ flex:1; padding:16px 0; display:flex; flex-direction:column; gap:14px; }
+.msg{ max-width:82%; padding:12px 14px; border-radius:14px; font-size:14px; line-height:1.5; }
+.msg.ai{ background:var(--surface); align-self:flex-start; border-bottom-left-radius:4px; }
+.msg.user{ background:var(--surface2); align-self:flex-end; border-bottom-right-radius:4px; color:var(--text); }
+.msg.ai .src{ display:block; margin-top:8px; font-size:11px; color:var(--teal); }
+.chat-input-row{ display:flex; gap:10px; align-items:center; padding:14px 0 20px; border-top:1px solid var(--line); }
+.chat-input{ flex:1; background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:11px 16px; color:var(--text); font-size:14px; }
+.mic-btn{ width:42px; height:42px; border-radius:50%; background:var(--teal); border:none; color:var(--bg); font-size:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+/* dossier */
+.dossier-hero{ padding:20px; border-bottom:1px solid var(--line); }
+.dossier-title{ font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:4px; }
+.dossier-sub{ font-size:12px; color:var(--sub); }
+.section{ padding:16px 20px; border-bottom:1px solid var(--line); }
+.section h3{ font-size:12px; text-transform:uppercase; letter-spacing:0.6px; color:var(--sub); font-weight:600; margin-bottom:10px; }
+.fact-row{ display:flex; justify-content:space-between; font-size:13.5px; padding:6px 0; border-bottom:1px dashed var(--line); }
+.fact-row:last-child{ border-bottom:none; }
+.fact-row .v{ color:var(--sub); }
+.tag{ display:inline-block; font-size:11px; padding:3px 8px; border-radius:5px; background:rgba(217,97,79,0.15); color:var(--red); margin-right:6px; }
+.tag.ok{ background:rgba(63,166,107,0.15); color:var(--green); }
+
+/* bottom nav */
+.navbar{
+  position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:460px;
+  display:flex; background:var(--surface); border-top:1px solid var(--line);
+  padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));
+}
+.nav-btn{ flex:1; text-align:center; font-size:11px; color:var(--sub); background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:4px; }
+.nav-btn .ic{ font-size:19px; }
+.nav-btn.active{ color:var(--amber); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand">Bet<span>Edge</span> AI</div>
+    <div class="plan-pill">Pro plan</div>
+  </div>
+
+  <!-- BOARD -->
+  <div class="screen active" id="board">
+    <div class="sport-tabs">
+      <div class="sport-tab active">NFL</div>
+      <div class="sport-tab">NBA</div>
+      <div class="sport-tab">MLB</div>
+      <div class="sport-tab">CFB</div>
+      <div class="sport-tab">CBB</div>
+    </div>
+
+    <div class="game-row" onclick="showScreen('dossier')">
+      <div class="game-meta"><span>Sun 1:00 PM ET</span><span>Arrowhead Stadium</span></div>
+      <div class="matchup">
+        <div class="team-line">
+          <span class="team-name">Bills</span>
+          <div class="odds-cluster">
+            <div class="odds-box"><div class="num">-2.5</div><div class="lbl">Spread</div></div>
+            <div class="odds-box"><div class="num">-130</div><div class="lbl">ML</div></div>
+            <div class="odds-box move"><div class="num">o47.5</div><div class="lbl">Total</div></div>
+          </div>
+        </div>
+        <div class="team-line">
+          <span class="team-name">Chiefs</span>
+          <div class="odds-cluster">
+            <div class="odds-box"><div class="num">+2.5</div><div class="lbl">Spread</div></div>
+            <div class="odds-box"><div class="num">+110</div><div class="lbl">ML</div></div>
+            <div class="odds-box"><div class="num">u47.5</div><div class="lbl">Total</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="weather-strip">🌬️ 18mph wind, 34°F at kickoff — total moved down 1.5 since open</div>
+    </div>
+
+    <div class="game-row">
+      <div class="game-meta"><span>Sun 4:25 PM ET</span><span>Lambeau Field</span></div>
+      <div class="matchup">
+        <div class="team-line">
+          <span class="team-name">Packers</span>
+          <div class="odds-cluster">
+            <div class="odds-box"><div class="num">-4.0</div><div class="lbl">Spread</div></div>
+            <div class="odds-box"><div class="num">-190</div><div class="lbl">ML</div></div>
+            <div class="odds-box"><div class="num">o44.0</div><div class="lbl">Total</div></div>
+          </div>
+        </div>
+        <div class="team-line">
+          <span class="team-name">Lions</span>
+          <div class="odds-cluster">
+            <div class="odds-box"><div class="num">+4.0</div><div class="lbl">Spread</div></div>
+            <div class="odds-box"><div class="num">+160</div><div class="lbl">ML</div></div>
+            <div class="odds-box"><div class="num">u44.0</div><div class="lbl">Total</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="weather-strip">☀️ Dome-clear, no weather impact</div>
+    </div>
+  </div>
+
+  <!-- CHAT -->
+  <div class="screen" id="chat">
+    <div class="chat-wrap">
+      <div class="chat-log">
+        <div class="msg user">What should I know about Bills–Chiefs before I bet the total?</div>
+        <div class="msg ai">
+          The total has moved from 49 to 47.5 since Wednesday. Two factors line up with that move: forecast wind at kickoff is 18mph gusting to 27, and Kansas City's WR2 is listed questionable with a hamstring issue, limited in Friday practice.
+          <br><br>
+          Historically these two teams have gone under the total in 4 of the last 6 meetings, but 3 of those were in January under different weather. Worth weighing recency over the full sample.
+          <span class="src">Sources: OddsAPI live line · NOAA hourly forecast · Team injury report (Fri)</span>
+        </div>
+        <div class="msg user">🎤 "and how's the home dog spread looking around the market?"</div>
+        <div class="msg ai">
+          Chiefs +2.5 is fairly stable — only moved half a point since open, and it's the same number at 3 of 4 major books right now, so no clear steam move either direction.
+          <span class="src">Sources: Multi-book odds comparison (4 books)</span>
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input class="chat-input" type="text" placeholder="Ask about any matchup…">
+        <button class="mic-btn">🎤</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DOSSIER -->
+  <div class="screen" id="dossier">
+    <div class="dossier-hero">
+      <div class="dossier-title">Bills @ Chiefs</div>
+      <div class="dossier-sub">Sunday 1:00 PM ET · Arrowhead Stadium, Kansas City</div>
+    </div>
+
+    <div class="section">
+      <h3>Head-to-head</h3>
+      <div class="fact-row"><span>Last 6 meetings</span><span class="v">Bills 4–2</span></div>
+      <div class="fact-row"><span>Avg combined score</span><span class="v">51.2 pts</span></div>
+      <div class="fact-row"><span>Home team record (venue)</span><span class="v">Chiefs 3–1 last 4</span></div>
+    </div>
+
+    <div class="section">
+      <h3>Weather at kickoff</h3>
+      <div class="fact-row"><span>Temp / Wind</span><span class="v">34°F, 18mph W</span></div>
+      <div class="fact-row"><span>Precipitation</span><span class="v">10% chance</span></div>
+    </div>
+
+    <div class="section">
+      <h3>Injury report</h3>
+      <div class="fact-row"><span><span class="tag">Questionable</span>WR2 – Hamstring</span><span class="v">Limited Fri</span></div>
+      <div class="fact-row"><span><span class="tag ok">Active</span>RB1 – Ankle</span><span class="v">Full Fri</span></div>
+    </div>
+
+    <div class="section">
+      <h3>Rest & travel</h3>
+      <div class="fact-row"><span>Bills days rest</span><span class="v">7</span></div>
+      <div class="fact-row"><span>Chiefs days rest</span><span class="v">6</span></div>
+      <div class="fact-row"><span>Bills travel distance</span><span class="v">982 mi</span></div>
+    </div>
+  </div>
+
+  <div class="navbar">
+    <button class="nav-btn active" onclick="showScreen('board', this)"><span class="ic">📋</span>Board</button>
+    <button class="nav-btn" onclick="showScreen('chat', this)"><span class="ic">💬</span>AI Chat</button>
+    <button class="nav-btn" onclick="showScreen('dossier', this)"><span class="ic">📑</span>Dossier</button>
+  </div>
+</div>
+
+<script>
+function showScreen(id, btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  if(btn){ btn.classList.add('active'); }
+  else {
+    document.querySelectorAll('.nav-btn').forEach(b=>{
+      if(b.textContent.trim().toLowerCase().includes(id==='dossier'?'dossier':id)) b.classList.add('active');
+    });
+  }
+  window.scrollTo(0,0);
+}
+</script>
+</body>
+</html>

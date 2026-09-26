@@ -1,0 +1,17 @@
+{
+  "name": "betedge-ai-backend",
+  "version": "0.1.0",
+  "description": "Backend for BetEdge AI - aggregates odds, stats, weather and injuries, and grounds AI chat in that data",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5",
+    "node-cache": "^5.1.2"
+  }
+}
