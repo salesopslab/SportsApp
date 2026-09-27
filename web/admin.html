@@ -60,7 +60,12 @@ tr:last-child td{ border-bottom:none; }
 .tier-badge.standard{ color:var(--teal); }
 .tier-badge.edge{ color:var(--amber); }
 .tier-badge.edge_pro{ color:var(--red); }
-select.tier-select{ font-size:12px; padding:4px 6px; border-radius:6px; border:1px solid var(--line); background:var(--surface); color:var(--text); font-family:inherit; }
+select.tier-select{ font-size:12px; padding:4px 6px; border-radius:6px; border:1px solid var(--line); background:var(--surface); color:var(--text); font-family:inherit; transition:border-color 0.2s ease; }
+select.tier-select.flash-saved{ border-color:var(--green); }
+select.tier-select.flash-error{ border-color:var(--red); }
+.tier-feedback{ font-size:11px; margin-left:6px; white-space:nowrap; }
+.tier-feedback.saved{ color:var(--green); }
+.tier-feedback.error{ color:var(--red); }
 .search-row{ display:flex; gap:8px; margin-bottom:10px; }
 .search-row input{ flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:13px; font-family:inherit; }
 .pager{ display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
@@ -309,9 +314,10 @@ async function loadUsers(){
               <td><span class="tier-badge ${u.tier}">${tierLabel(u.tier)}</span></td>
               <td>${u.subscriptionStatus || (u.trialEndsAt ? 'trial' : '—')}</td>
               <td>
-                <select class="tier-select" data-id="${u.id}">
+                <select class="tier-select" data-id="${u.id}" data-current-tier="${u.rawTier}">
                   ${['trial','standard','edge','edge_pro'].map(t => `<option value="${t}" ${t===u.rawTier?'selected':''}>${tierLabel(t)}</option>`).join('')}
                 </select>
+                <span class="tier-feedback"></span>
               </td>
             </tr>
           `).join('')}
@@ -322,19 +328,44 @@ async function loadUsers(){
       sel.addEventListener('change', async () => {
         const id = sel.dataset.id;
         const newTier = sel.value;
+        const previousTier = sel.dataset.currentTier;
+        const feedback = sel.nextElementSibling; // the .tier-feedback span right after it
         sel.disabled = true;
+        sel.classList.remove('flash-saved', 'flash-error');
+        feedback.textContent = '';
+        feedback.className = 'tier-feedback';
         try{
-          await fetch(`${API}/api/admin/users/${id}/tier`, {
+          const res = await fetch(`${API}/api/admin/users/${id}/tier`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-admin-key': currentKey },
             body: JSON.stringify({ tier: newTier }),
           });
+          // The previous version of this handler updated the badge on ANY
+          // response, including a failed one (401 from a stale key, a 500,
+          // etc.) — showing "Edge Pro" as if it saved when it hadn't. Check
+          // the actual result before touching anything.
+          if(!res.ok){
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `Request failed (${res.status})`);
+          }
           const row = sel.closest('tr');
           const badge = row.querySelector('.tier-badge');
           badge.className = `tier-badge ${newTier}`;
           badge.textContent = tierLabel(newTier);
+          sel.dataset.currentTier = newTier;
+          sel.classList.add('flash-saved');
+          feedback.textContent = '✓ Saved';
+          feedback.className = 'tier-feedback saved';
+          setTimeout(() => {
+            sel.classList.remove('flash-saved');
+            feedback.textContent = '';
+            feedback.className = 'tier-feedback';
+          }, 1800);
         }catch(e){
-          alert('Failed to update tier: ' + e.message);
+          sel.value = previousTier; // revert the dropdown to the last known-good value
+          sel.classList.add('flash-error');
+          feedback.textContent = 'Failed: ' + e.message;
+          feedback.className = 'tier-feedback error';
         }finally{
           sel.disabled = false;
         }
