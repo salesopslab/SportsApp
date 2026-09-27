@@ -5,7 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BetEdge AI</title>
 <meta name="description" content="Live odds, line movement tracking &amp; AI-powered picks for NFL, NBA, MLB, CFB and CBB.">
-<meta name="theme-color" content="#10151C">
+<!-- Light/dark pair so the browser chrome (address bar, etc.) always matches
+     the page's actual background instead of always showing the dark value. -->
+<meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10151C" media="(prefers-color-scheme: dark)">
+
+<!-- Webfonts the CSS below declares (Inter body copy, Oswald headings/numbers) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
 
 <!-- Favicon / app icons -->
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -28,18 +36,18 @@
 <style>
 :root{
   --bg:#F4F1EA; --surface:#FFFFFF; --surface2:#EDE9DF; --line:#DDD6C6;
-  --text:#14181F; --sub:#5B6470; --amber:#C77F1D; --teal:#1F8478; --green:#2C8A55; --red:#B84332;
+  --text:#14181F; --sub:#4A5460; --amber:#C77F1D; --teal:#1F8478; --green:#2C8A55; --red:#B84332;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#10151C; --surface:#1B222C; --surface2:#212B37; --line:#2C3644;
-    --text:#F4F1EA; --sub:#9AA5B1; --amber:#E8A33D; --teal:#3FB6A8; --green:#3FA66B; --red:#D9614F;
+    --text:#F4F1EA; --sub:#AEB8C3; --amber:#E8A33D; --teal:#3FB6A8; --green:#3FA66B; --red:#D9614F;
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
   --bg:#10151C; --surface:#1B222C; --surface2:#212B37; --line:#2C3644;
-  --text:#F4F1EA; --sub:#9AA5B1; --amber:#E8A33D; --teal:#3FB6A8; --green:#3FA66B; --red:#D9614F;
+  --text:#F4F1EA; --sub:#AEB8C3; --amber:#E8A33D; --teal:#3FB6A8; --green:#3FA66B; --red:#D9614F;
   color-scheme:dark;
 }
 *{box-sizing:border-box; margin:0; padding:0;}
@@ -51,6 +59,24 @@ body{
   display:flex; justify-content:center;
 }
 .app{ width:100%; max-width:460px; height:100%; display:flex; flex-direction:column; position:relative; }
+@media (min-width: 900px){
+  .app{ max-width:720px; }
+  .navbar{ max-width:720px; }
+  .mover-alert{ max-width:680px; }
+}
+
+/* Hover/focus feedback — applies to every real button/link on the page
+   (almost everything already is one; the one holdout, .sport-tab, is fixed
+   up to a real <button> below) so desktop users get a clear affordance that
+   these are interactive, and keyboard users get a visible focus ring. */
+button, a{ transition:filter 0.15s ease, background-color 0.15s ease, border-color 0.15s ease; }
+button:hover:not(:disabled){ filter:brightness(0.94); }
+button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
+  outline:2px solid var(--amber); outline-offset:2px; border-radius:4px;
+}
+.game-row:hover{ background:var(--surface); }
+.mover-card:hover{ background:var(--surface2); border-color:var(--amber); }
+.game-row:focus-visible, .mover-card:focus-visible{ outline:2px solid var(--amber); outline-offset:-2px; }
 
 .topbar{
   padding:18px 20px 14px; display:flex; align-items:center; justify-content:space-between;
@@ -68,8 +94,18 @@ body{
 .screen.active{ display:block; }
 
 .sport-tabs{ display:flex; gap:8px; padding:14px 20px 4px; overflow-x:auto; }
-.sport-tab{ font-size:13px; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:7px 14px; border-radius:20px; white-space:nowrap; cursor:pointer; }
+.sport-tab{ font-size:13px; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:7px 14px; border-radius:20px; white-space:nowrap; cursor:pointer; font-family:inherit; }
+.sport-tab:hover{ border-color:var(--amber); color:var(--text); }
 .sport-tab.active{ color:var(--bg); background:var(--amber); border-color:var(--amber); font-weight:600; }
+.sport-tab.active:hover{ filter:brightness(0.94); }
+
+.value-banner{ margin:14px 20px 0; padding:14px 16px; border-radius:12px; background:var(--surface2); border:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+.value-banner-text{ flex:1; font-size:13px; line-height:1.45; color:var(--text); }
+.value-banner-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.value-banner-btn{ padding:9px 16px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.value-banner-close{ background:none; border:none; color:var(--sub); font-size:18px; line-height:1; cursor:pointer; padding:4px 6px; }
+
+.picks-login-cta{ display:block; margin:12px auto 0; padding:10px 20px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; }
 
 .board-msg{ padding:40px 20px; text-align:center; color:var(--sub); font-size:13.5px; line-height:1.6; }
 .board-msg .spin{ display:inline-block; width:18px; height:18px; border:2px solid var(--line); border-top-color:var(--amber); border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:10px; }
@@ -110,14 +146,14 @@ body{
 .team-line{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
 .team-info{ display:flex; flex-direction:column; gap:3px; min-width:0; }
 .team-name{ font-size:16px; font-weight:500; display:flex; align-items:center; gap:6px; line-height:1.25; }
-.rank-line{ font-size:10.5px; font-weight:700; color:var(--amber); white-space:nowrap; letter-spacing:0.2px; }
-.pitcher-line{ font-size:10.5px; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
+.rank-line{ font-size:11px; font-weight:700; color:var(--amber); white-space:nowrap; letter-spacing:0.2px; }
+.pitcher-line{ font-size:11px; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
 .home-tag{ font-size:9px; font-weight:700; color:var(--sub); border:1px solid var(--line); border-radius:6px; padding:1px 5px; letter-spacing:0.3px; white-space:nowrap; flex-shrink:0; }
 .odds-cluster{ display:flex; gap:14px; font-family:'Oswald',sans-serif; flex-shrink:0; }
 .odds-box{ text-align:right; min-width:44px; }
 .odds-box .num{ font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
 .odds-box .lbl{ font-size:9px; color:var(--sub); text-transform:uppercase; letter-spacing:0.4px; }
-.odds-box .open{ font-size:9.5px; color:var(--sub); font-variant-numeric:tabular-nums; margin-top:1px; }
+.odds-box .open{ font-size:10.5px; color:var(--sub); font-variant-numeric:tabular-nums; margin-top:1px; }
 .book-note{ margin-top:10px; font-size:11.5px; color:var(--sub); }
 .score-badge{ font-size:10px; font-weight:700; padding:3px 9px; border-radius:10px; text-transform:uppercase; letter-spacing:0.4px; }
 .score-badge.final{ background:var(--surface2); color:var(--sub); }
@@ -168,9 +204,12 @@ body{
   display:flex; background:var(--surface); border-top:1px solid var(--line);
   padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));
 }
-.nav-btn{ flex:1; text-align:center; font-size:11px; color:var(--sub); background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; font-family:inherit; }
-.nav-btn .ic{ font-size:19px; }
+.nav-btn{ flex:1; text-align:center; font-size:11.5px; color:var(--sub); background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; font-family:inherit; }
+.nav-btn .ic{ display:flex; }
+.nav-btn .ic svg{ display:block; }
+.nav-btn:hover{ color:var(--text); }
 .nav-btn.active{ color:var(--amber); }
+.nav-btn.active:hover{ color:var(--amber); }
 
 /* Account / auth */
 .profile-btn{ font-size:11px; color:var(--sub); border:1px solid var(--line); padding:5px 12px; border-radius:20px; background:none; cursor:pointer; font-family:inherit; white-space:nowrap; }
@@ -227,7 +266,7 @@ body{
 .picks-summary{ display:flex; gap:8px; padding:14px 20px; flex-wrap:wrap; }
 .picks-stat{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 8px; flex:1; min-width:70px; text-align:center; }
 .picks-stat .num{ font-family:'Oswald',sans-serif; font-size:19px; font-weight:600; }
-.picks-stat .label{ font-size:9.5px; color:var(--sub); text-transform:uppercase; letter-spacing:0.3px; }
+.picks-stat .label{ font-size:10.5px; color:var(--sub); text-transform:uppercase; letter-spacing:0.3px; }
 .pick-card{ margin:0 20px 10px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:12px; }
 .pick-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13.5px; font-weight:600; }
 .pick-sub{ font-size:11.5px; color:var(--sub); margin-top:3px; }
@@ -261,14 +300,14 @@ body{
     <div class="modal-card">
       <button class="modal-close" id="authModalClose">×</button>
       <div class="modal-tabs">
-        <button class="modal-tab active" id="tabLogin" data-mode="login">Log In</button>
-        <button class="modal-tab" id="tabSignup" data-mode="signup">Sign Up</button>
+        <button class="modal-tab active" id="tabLogin" data-mode="login">Log in</button>
+        <button class="modal-tab" id="tabSignup" data-mode="signup">Sign up</button>
       </div>
       <h2 id="authModalTitle">Log in to BetEdge AI</h2>
       <div class="modal-error" id="authError"></div>
       <input class="modal-input" id="authEmail" type="email" placeholder="Email" autocomplete="email">
       <input class="modal-input" id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
-      <button class="modal-submit" id="authSubmit">Log In</button>
+      <button class="modal-submit" id="authSubmit">Log in</button>
     </div>
   </div>
 
@@ -286,12 +325,19 @@ body{
 
   <!-- BOARD -->
   <div class="screen active" id="board">
+    <div class="value-banner" id="valueBanner">
+      <div class="value-banner-text">AI-powered picks, live odds &amp; line-movement tracking for every major sport.</div>
+      <div class="value-banner-actions">
+        <button class="value-banner-btn" id="valueBannerCta">Start free trial</button>
+        <button class="value-banner-close" id="valueBannerClose" aria-label="Dismiss">×</button>
+      </div>
+    </div>
     <div class="sport-tabs" id="sportTabs">
-      <div class="sport-tab active" data-sport="nfl">NFL</div>
-      <div class="sport-tab" data-sport="nba">NBA</div>
-      <div class="sport-tab" data-sport="mlb">MLB</div>
-      <div class="sport-tab" data-sport="ncaaf">CFB</div>
-      <div class="sport-tab" data-sport="ncaab">CBB</div>
+      <button type="button" class="sport-tab active" data-sport="nfl">NFL</button>
+      <button type="button" class="sport-tab" data-sport="nba">NBA</button>
+      <button type="button" class="sport-tab" data-sport="mlb">MLB</button>
+      <button type="button" class="sport-tab" data-sport="ncaaf">CFB</button>
+      <button type="button" class="sport-tab" data-sport="ncaab">CBB</button>
     </div>
     <div class="board-controls">
       <div class="status-filters" id="statusFilters">
@@ -341,11 +387,26 @@ body{
   </div>
 
   <div class="navbar">
-    <button class="nav-btn active" data-screen="board"><span class="ic">📋</span>Board</button>
-    <button class="nav-btn" data-screen="chat"><span class="ic">💬</span>AI Chat</button>
-    <button class="nav-btn" data-screen="dossier"><span class="ic">📑</span>Breakdown</button>
-    <button class="nav-btn" data-screen="picks"><span class="ic">🎯</span>My Picks</button>
-    <button class="nav-btn" data-screen="bigLines"><span class="ic">🔥</span>Big Moves</button>
+    <button class="nav-btn active" data-screen="board">
+      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="13" y2="18"/></svg></span>
+      Board
+    </button>
+    <button class="nav-btn" data-screen="chat">
+      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4V4z"/></svg></span>
+      AI Chat
+    </button>
+    <button class="nav-btn" data-screen="dossier">
+      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></span>
+      Breakdown
+    </button>
+    <button class="nav-btn" data-screen="picks">
+      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
+      My Picks
+    </button>
+    <button class="nav-btn" data-screen="bigLines">
+      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" stroke="none"><path d="M12 2c1 3-3 4-3 8a3 3 0 0 0 6 0c1 1 2 2 2 4a5 5 0 0 1-10 0c0-5 4-6 5-12z"/></svg></span>
+      Big Moves
+    </button>
   </div>
 </div>
 
@@ -425,6 +486,17 @@ function updateProfileButton(){
   const btn = document.getElementById('profileBtn');
   btn.textContent = currentUser ? currentUser.email.split('@')[0] : 'Log in';
   updateTierBadge();
+  updateValueBanner();
+}
+
+// First-run value prop banner: only for logged-out visitors, and only until
+// they dismiss it (remembered per-browser) or create an account.
+function updateValueBanner(){
+  const banner = document.getElementById('valueBanner');
+  if(!banner) return;
+  let dismissed = false;
+  try{ dismissed = localStorage.getItem('betedge_value_banner_dismissed') === '1'; }catch{}
+  banner.classList.toggle('hidden', !!currentUser || dismissed);
 }
 
 function updateTierBadge(){
@@ -590,16 +662,16 @@ function setAuthMode(mode){
   document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
   document.getElementById('tabSignup').classList.toggle('active', mode === 'signup');
   document.getElementById('authModalTitle').textContent = mode === 'login' ? 'Log in to BetEdge AI' : 'Create your account';
-  document.getElementById('authSubmit').textContent = mode === 'login' ? 'Log In' : 'Sign Up';
+  document.getElementById('authSubmit').textContent = mode === 'login' ? 'Log in' : 'Sign up';
   document.getElementById('authSubmit').dataset.mode = mode;
   document.getElementById('authError').textContent = '';
 }
 
-function openAuthModal(){
+function openAuthModal(mode = 'login'){
   document.getElementById('authModal').classList.remove('hidden');
   document.getElementById('authEmail').value = '';
   document.getElementById('authPassword').value = '';
-  setAuthMode('login');
+  setAuthMode(mode);
 }
 function closeAuthModal(){
   document.getElementById('authModal').classList.add('hidden');
@@ -618,6 +690,12 @@ document.getElementById('profileBtn').addEventListener('click', ()=>{
   }
 });
 document.getElementById('authModalClose').addEventListener('click', closeAuthModal);
+document.getElementById('valueBannerCta').addEventListener('click', ()=>openAuthModal('signup'));
+document.getElementById('valueBannerClose').addEventListener('click', ()=>{
+  document.getElementById('valueBanner').classList.add('hidden');
+  try{ localStorage.setItem('betedge_value_banner_dismissed', '1'); }catch{}
+  positionMoverAlerts();
+});
 document.getElementById('tabLogin').addEventListener('click', ()=>setAuthMode('login'));
 document.getElementById('tabSignup').addEventListener('click', ()=>setAuthMode('signup'));
 
@@ -748,7 +826,8 @@ function wireTrackButtons(){
 async function loadPicks(){
   const body = document.getElementById('picksBody');
   if(!currentUser){
-    body.innerHTML = '<div class="board-msg">Log in to start tracking your picks and see your record.</div>';
+    body.innerHTML = '<div class="board-msg">Log in to start tracking your picks and see your record.<br><button class="picks-login-cta" id="picksLoginCta">Log in / Sign up</button></div>';
+    document.getElementById('picksLoginCta').addEventListener('click', ()=>openAuthModal('login'));
     return;
   }
   body.innerHTML = '<div class="board-msg"><div class="spin"></div><div>Loading your picks…</div></div>';
@@ -806,6 +885,7 @@ function showScreen(id, opts={}){
   document.getElementById(id).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.screen===id));
   document.querySelector('.screen.active').scrollTop = 0;
+  positionMoverAlerts(); // sport tabs only show on Board — re-measure so alerts never sit over the header/tabs on other screens
   if(opts.resetHistory){
     screenHistory = [id];
   }else if(screenHistory[screenHistory.length-1] !== id){
@@ -946,10 +1026,17 @@ function renderBoardList(){
   }
   list.innerHTML = games.map(g => renderGameRow(g)).join('');
   list.querySelectorAll('.game-row').forEach(row=>{
-    row.addEventListener('click', ()=>{
+    const open = ()=>{
       const id = row.dataset.id;
       const game = games.find(x=>x.id===id);
       openDossier(currentSport, game);
+    };
+    row.addEventListener('click', open);
+    // These rows are keyboard-focusable (tabindex="0"/role="button" in the
+    // template) but a div doesn't natively activate on Enter/Space the way a
+    // real <button> does, so that has to be wired up by hand.
+    row.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); }
     });
   });
   updateCountdowns();
@@ -1017,7 +1104,7 @@ function renderGameRow(g){
       ? 'Game finished — tap for the full breakdown'
       : 'Game in progress — score may be a few minutes behind';
     return `
-    <div class="game-row ${g.status}${divisionClass}" data-id="${g.id}">
+    <div class="game-row ${g.status}${divisionClass}" data-id="${g.id}" tabindex="0" role="button" aria-label="${g.awayTeam} at ${g.homeTeam}, view breakdown">
       <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${divisionBadge}${bigMoveBadge}</div>
       <div class="matchup">
         <div class="team-line">
@@ -1048,7 +1135,7 @@ function renderGameRow(g){
   const openAwayLabel = openAway !== null ? `<div class="open">open ${fmtOdds(openAway)}</div>` : '';
   const openHomeLabel = openHome !== null ? `<div class="open">open ${fmtOdds(openHome)}</div>` : '';
   return `
-  <div class="game-row${divisionClass}" data-id="${g.id}">
+  <div class="game-row${divisionClass}" data-id="${g.id}" tabindex="0" role="button" aria-label="${g.awayTeam} at ${g.homeTeam}, view breakdown">
     <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || 'BetEdge AI Market Odds'}</span>${divisionBadge}${bigMoveBadge}</div>
     <div class="matchup">
       <div class="team-line">
@@ -1356,7 +1443,28 @@ async function openMoverGame(m){
   }catch(e){}
 }
 
+// Keeps the mover-alert toasts from covering the header (and, on the Board,
+// the sport tabs below it) by measuring what's actually on screen right now
+// instead of a hardcoded pixel guess — the Board screen has an extra row of
+// nav (sport tabs) that other screens don't.
+function positionMoverAlerts(){
+  const container = document.getElementById('moverAlerts');
+  const topbar = document.querySelector('.topbar');
+  if(!container || !topbar) return;
+  let offset = topbar.offsetHeight;
+  const board = document.getElementById('board');
+  if(board && board.classList.contains('active')){
+    const tabs = document.getElementById('sportTabs');
+    const banner = document.getElementById('valueBanner');
+    if(tabs) offset += tabs.offsetHeight;
+    if(banner && !banner.classList.contains('hidden')) offset += banner.offsetHeight;
+  }
+  container.style.top = offset + 'px';
+}
+window.addEventListener('resize', positionMoverAlerts);
+
 function showMoverAlert(m){
+  positionMoverAlerts();
   const container = document.getElementById('moverAlerts');
   const el = document.createElement('div');
   el.className = 'mover-alert';
@@ -1427,7 +1535,7 @@ function renderBigLines(){
     return;
   }
   list.innerHTML = bigLinesData.map(m => `
-    <div class="mover-card" data-sport="${m.sport}" data-id="${m.gameId}">
+    <div class="mover-card" data-sport="${m.sport}" data-id="${m.gameId}" tabindex="0" role="button" aria-label="${m.awayTeam} at ${m.homeTeam}, view breakdown">
       <div class="mover-card-top">🔥 ${m.sport.toUpperCase()} · ${timeLabel(m.commenceTime)}</div>
       <div class="mover-card-teams">${m.awayTeam} @ ${m.homeTeam}</div>
       ${spreadMoveRow(m)}
@@ -1436,9 +1544,13 @@ function renderBigLines(){
     </div>
   `).join('');
   list.querySelectorAll('.mover-card').forEach(card=>{
-    card.addEventListener('click', ()=>{
+    const open = ()=>{
       const m = bigLinesData.find(x=>x.sport===card.dataset.sport && x.gameId===card.dataset.id);
       if(m) openMoverGame(m);
+    };
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); }
     });
   });
 }
