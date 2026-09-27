@@ -119,3 +119,86 @@ export async function getLineHistory(gameId, primaryBook) {
     return { available: false, reason: "Line history lookup failed." };
   }
 }
+
+/**
+ * Finds the games whose lines have moved the most in the last `sinceMinutes`
+ * minutes, across every sport. For each (game, market, side, book) we compare
+ * the earliest snapshot in that window to the latest snapshot overall, then
+ * score the movement so point moves (spread/total) and price moves
+ * (moneyline) can be compared on the same scale. This is a simple, tunable
+ * heuristic, not a precise model:
+ *   score = |point change| * 20 + |price change| / 5
+ * A game's overall score is its single biggest single-market move — not a
+ * sum across markets/books, so one book's noise doesn't drown out a real move.
+ *
+ * Returns up to `limit` games, each tagged with the sport/gameId so the
+ * caller can look up display info (teams, kickoff time) from live odds.
+ */
+export async function getTopMovers({ limit = 3, sinceMinutes = 60 } = {}) {
+  if (!pool) {
+    return {
+      available: false,
+      reason: "No database connected yet — line-movement tracking needs a DATABASE_URL configured.",
+      movers: [],
+    };
+  }
+
+  try {
+    await ensureSchema();
+    const { rows } = await pool.query(
+      `
+      SELECT DISTINCT ON (game_id, market, side, book)
+        game_id, sport, market, side, book,
+        first_value(point) OVER w AS start_point,
+        first_value(price) OVER w AS start_price,
+        last_value(point) OVER w AS end_point,
+        last_value(price) OVER w AS end_price,
+        first_value(captured_at) OVER w AS start_time,
+        last_value(captured_at) OVER w AS end_time
+      FROM odds_snapshots
+      WHERE captured_at >= now() - ($1 * interval '1 minute')
+      WINDOW w AS (
+        PARTITION BY game_id, market, side, book
+        ORDER BY captured_at ASC
+        RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+      )
+      `,
+      [sinceMinutes]
+    );
+
+    const byGame = new Map();
+    for (const r of rows) {
+      const pointDelta = Math.abs(Number(r.end_point ?? 0) - Number(r.start_point ?? 0));
+      const priceDelta = Math.abs(Number(r.end_price ?? 0) - Number(r.start_price ?? 0));
+      if (pointDelta === 0 && priceDelta === 0) continue; // no movement, skip
+
+      const score = pointDelta * 20 + priceDelta / 5;
+      const existing = byGame.get(r.game_id);
+      if (!existing || score > existing.score) {
+        byGame.set(r.game_id, {
+          gameId: r.game_id,
+          sport: r.sport,
+          score,
+          market: r.market,
+          side: r.side,
+          book: r.book,
+          startPoint: r.start_point === null ? null : Number(r.start_point),
+          startPrice: r.start_price,
+          endPoint: r.end_point === null ? null : Number(r.end_point),
+          endPrice: r.end_price,
+          firstSeen: r.start_time,
+          lastSeen: r.end_time,
+        });
+      }
+    }
+
+    const movers = [...byGame.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
+    return { available: true, movers };
+  } catch (err) {
+    console.error("getTopMovers failed:", err.message);
+    return { available: false, reason: "Top movers lookup failed.", movers: [] };
+  }
+}
