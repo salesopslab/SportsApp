@@ -28,8 +28,8 @@ router.get("/:sport/:gameId", async (req, res) => {
         toTeamCode(sport, game.homeTeam),
         toTeamCode(sport, game.awayTeam)
       ).catch(() => null),
-      sport === "nfl"
-        ? getHeadToHeadResults(game.homeTeam, game.awayTeam, season).catch(() => [])
+      ["nfl", "nba", "mlb"].includes(sport)
+        ? getHeadToHeadResults(sport, game.homeTeam, game.awayTeam, season).catch(() => [])
         : Promise.resolve([]),
       venue && !venue.dome
         ? getGameWeather(venue.lat, venue.lon, game.commenceTime).catch(() => null)
