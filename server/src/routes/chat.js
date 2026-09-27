@@ -30,7 +30,7 @@ ${JSON.stringify(context, null, 2)}`;
       },
       body: JSON.stringify({
         model: "claude-sonnet-5",
-        max_tokens: 600,
+        max_tokens: 1200,
         system: systemPrompt,
         messages: [{ role: "user", content: message }],
       }),

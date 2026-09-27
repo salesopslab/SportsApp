@@ -364,23 +364,47 @@ const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 const micBtn = document.getElementById('micBtn');
 if(SpeechRec){
   const rec = new SpeechRec();
-  rec.continuous = false;
-  rec.interimResults = false;
+  rec.continuous = true;
+  rec.interimResults = true;
   rec.lang = 'en-US';
   let listening = false;
+  let finalTranscript = '';
+
   micBtn.addEventListener('click', ()=>{
-    if(listening) return;
+    if(listening){
+      rec.stop();
+      return;
+    }
+    finalTranscript = '';
+    document.getElementById('chatInput').value = '';
     listening = true;
     micBtn.classList.add('listening');
+    micBtn.title = 'Tap to stop and send';
     try{ rec.start(); }catch(e){ listening=false; micBtn.classList.remove('listening'); }
   });
+
   rec.addEventListener('result', (e)=>{
-    const text = e.results[0][0].transcript;
-    document.getElementById('chatInput').value = text;
-    sendChat();
+    let interim = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      const transcript = e.results[i][0].transcript;
+      if(e.results[i].isFinal) finalTranscript += transcript + ' ';
+      else interim += transcript;
+    }
+    document.getElementById('chatInput').value = (finalTranscript + interim).trim();
   });
-  rec.addEventListener('end', ()=>{ listening=false; micBtn.classList.remove('listening'); });
-  rec.addEventListener('error', ()=>{ listening=false; micBtn.classList.remove('listening'); });
+
+  rec.addEventListener('end', ()=>{
+    listening = false;
+    micBtn.classList.remove('listening');
+    micBtn.title = 'Voice input';
+    if(finalTranscript.trim()) sendChat();
+  });
+
+  rec.addEventListener('error', (e)=>{
+    listening = false;
+    micBtn.classList.remove('listening');
+    micBtn.title = 'Voice input';
+  });
 }else{
   micBtn.title = 'Voice input not supported in this browser';
   micBtn.addEventListener('click', ()=>{
