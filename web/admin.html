@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BetEdge AI — Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+:root{
+  --bg:#F4F1EA; --surface:#FFFFFF; --surface2:#EDE9DF; --line:#DDD6C6;
+  --text:#14181F; --sub:#4A5460; --amber:#C77F1D; --teal:#1F8478; --green:#2C8A55; --red:#B84332;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#10151C; --surface:#1B222C; --surface2:#212B37; --line:#2C3644;
+    --text:#F4F1EA; --sub:#AEB8C3; --amber:#E8A33D; --teal:#3FB6A8; --green:#3FA66B; --red:#D9614F;
+  }
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html,body{height:100%;}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{ max-width:1080px; margin:0 auto; padding:20px 16px 60px; }
+.topbar{ display:flex; align-items:center; justify-content:space-between; padding:4px 0 18px; border-bottom:1px solid var(--line); margin-bottom:20px; }
+.brand{ font-weight:700; font-size:19px; letter-spacing:-0.3px; }
+.brand .amber{ color:var(--amber); }
+.brand .sub{ font-size:12px; color:var(--sub); font-weight:500; margin-left:8px; }
+.logout-btn, .retry-btn, .save-btn{ background:none; border:1px solid var(--line); color:var(--sub); font-size:12.5px; padding:6px 12px; border-radius:8px; cursor:pointer; font-family:inherit; }
+.logout-btn:hover, .retry-btn:hover{ color:var(--text); border-color:var(--sub); }
+
+/* --- gate screen --- */
+.gate{ max-width:340px; margin:15vh auto 0; text-align:center; }
+.gate h1{ font-size:20px; margin-bottom:6px; }
+.gate p{ color:var(--sub); font-size:13px; margin-bottom:20px; }
+.gate input{ width:100%; padding:11px 12px; border-radius:9px; border:1px solid var(--line); background:var(--surface); color:var(--text); font-size:14px; margin-bottom:10px; font-family:inherit; }
+.gate button{ width:100%; padding:11px; border-radius:9px; border:none; background:var(--amber); color:#1a1206; font-weight:700; font-size:14px; cursor:pointer; }
+.gate .err{ color:var(--red); font-size:12.5px; margin-top:10px; min-height:16px; }
+
+/* --- dashboard --- */
+.hidden{ display:none !important; }
+.cards{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px; margin-bottom:24px; }
+.card{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+.card .label{ font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--sub); margin-bottom:6px; }
+.card .value{ font-size:22px; font-weight:700; font-family:'Oswald', -apple-system, sans-serif; }
+.card .note{ font-size:11.5px; color:var(--sub); margin-top:4px; }
+
+.section{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:18px; }
+.section h2{ font-size:14px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; }
+.section h2 .tag{ font-size:11px; color:var(--sub); font-weight:500; }
+.empty-note{ color:var(--sub); font-size:13px; padding:8px 0; }
+
+table{ width:100%; border-collapse:collapse; font-size:13px; }
+th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.3px; color:var(--sub); padding:6px 8px; border-bottom:1px solid var(--line); }
+td{ padding:8px 8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+tr:last-child td{ border-bottom:none; }
+.tier-badge{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:8px; text-transform:uppercase; background:var(--surface2); color:var(--sub); }
+.tier-badge.standard{ color:var(--teal); }
+.tier-badge.edge{ color:var(--amber); }
+.tier-badge.edge_pro{ color:var(--red); }
+select.tier-select{ font-size:12px; padding:4px 6px; border-radius:6px; border:1px solid var(--line); background:var(--surface); color:var(--text); font-family:inherit; }
+.search-row{ display:flex; gap:8px; margin-bottom:10px; }
+.search-row input{ flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:13px; font-family:inherit; }
+.pager{ display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
+.pager button{ font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid var(--line); background:none; color:var(--sub); cursor:pointer; }
+.pager button:disabled{ opacity:0.4; cursor:default; }
+
+.bars{ display:flex; align-items:flex-end; gap:3px; height:80px; }
+.bar{ flex:1; background:var(--amber); border-radius:2px 2px 0 0; min-height:2px; position:relative; }
+.bar-labels{ display:flex; justify-content:space-between; font-size:10px; color:var(--sub); margin-top:6px; }
+
+.spin{ width:22px; height:22px; border:2.5px solid var(--line); border-top-color:var(--amber); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto; }
+@keyframes spin{ to{ transform:rotate(360deg); } }
+.loading{ text-align:center; padding:40px 0; color:var(--sub); font-size:13px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">Bet<span class="amber">Edge</span> AI<span class="sub">Admin</span></div>
+    <button class="logout-btn hidden" id="logoutBtn">Log out</button>
+  </div>
+
+  <div class="gate" id="gate">
+    <h1>Admin access</h1>
+    <p>Enter the admin key configured on the backend (Render → Environment → <code>ADMIN_KEY</code>).</p>
+    <input type="password" id="keyInput" placeholder="Admin key" autocomplete="off">
+    <button id="enterBtn">Enter</button>
+    <div class="err" id="gateErr"></div>
+  </div>
+
+  <div id="dashboard" class="hidden">
+    <div class="loading" id="loadingMsg"><div class="spin"></div><div style="margin-top:8px;">Loading dashboard…</div></div>
+
+    <div id="dashContent" class="hidden">
+      <div class="cards" id="overviewCards"></div>
+
+      <div class="section" id="revenueSection">
+        <h2>Revenue <span class="tag">live from Stripe</span></h2>
+        <div id="revenueBody"></div>
+      </div>
+
+      <div class="section">
+        <h2>Signups, last 30 days</h2>
+        <div id="growthBody"></div>
+      </div>
+
+      <div class="section">
+        <h2>Odds API usage <span class="tag" id="usageTag"></span></h2>
+        <div id="usageBody"></div>
+      </div>
+
+      <div class="section">
+        <h2>Users <span class="tag" id="usersTag"></span></h2>
+        <div class="search-row">
+          <input type="text" id="userSearch" placeholder="Search by email…">
+        </div>
+        <div id="usersBody"></div>
+        <div class="pager">
+          <button id="prevPage">&larr; Prev</button>
+          <button id="nextPage">Next &rarr;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "https://betedge-ai-backend.onrender.com";
+const KEY_STORAGE = "betedge_admin_key";
+let currentKey = sessionStorage.getItem(KEY_STORAGE) || "";
+let usersOffset = 0;
+const USERS_LIMIT = 25;
+let usersTotal = 0;
+let searchDebounce = null;
+
+const gate = document.getElementById('gate');
+const dashboard = document.getElementById('dashboard');
+const dashContent = document.getElementById('dashContent');
+const loadingMsg = document.getElementById('loadingMsg');
+const gateErr = document.getElementById('gateErr');
+const logoutBtn = document.getElementById('logoutBtn');
+
+function fmtMoney(cents){
+  return '$' + (Number(cents||0)/100).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function fmtDate(d){
+  if(!d) return '—';
+  return new Date(d).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
+}
+function tierLabel(t){
+  const map = { trial:'Trial', standard:'Standard', edge:'Edge', edge_pro:'Edge Pro' };
+  return map[t] || t || '—';
+}
+
+async function adminFetch(path){
+  const res = await fetch(API + path, { headers: { 'x-admin-key': currentKey } });
+  if(res.status === 401){
+    const err = new Error('unauthorized');
+    err.unauthorized = true;
+    throw err;
+  }
+  if(!res.ok) throw new Error('request failed: ' + res.status);
+  return res.json();
+}
+
+function showGate(message){
+  sessionStorage.removeItem(KEY_STORAGE);
+  currentKey = "";
+  gate.classList.remove('hidden');
+  dashboard.classList.add('hidden');
+  logoutBtn.classList.add('hidden');
+  gateErr.textContent = message || '';
+}
+
+function showDashboard(){
+  gate.classList.add('hidden');
+  dashboard.classList.remove('hidden');
+  logoutBtn.classList.remove('hidden');
+}
+
+document.getElementById('enterBtn').addEventListener('click', tryKey);
+document.getElementById('keyInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') tryKey(); });
+logoutBtn.addEventListener('click', () => showGate());
+
+async function tryKey(){
+  const val = document.getElementById('keyInput').value.trim();
+  if(!val) return;
+  gateErr.textContent = 'Checking…';
+  currentKey = val;
+  try{
+    await adminFetch('/api/admin/usage');
+    sessionStorage.setItem(KEY_STORAGE, currentKey);
+    showDashboard();
+    loadAll();
+  }catch(e){
+    showGate(e.unauthorized ? 'Invalid admin key.' : ('Couldn\'t reach the admin API (' + e.message + ').'));
+  }
+}
+
+function renderOverview(usage, revenue){
+  const stats = usage.stats || {};
+  const cards = [];
+  cards.push({ label: 'Total users', value: stats.available ? stats.totalUsers.toLocaleString() : '—' });
+  cards.push({ label: 'New users (7d)', value: stats.available ? stats.newUsers7d.toLocaleString() : '—' });
+  cards.push({ label: 'Total bets tracked', value: stats.available ? stats.totalBets.toLocaleString() : '—' });
+  cards.push({
+    label: 'MRR',
+    value: revenue.available ? fmtMoney(revenue.mrrCents) : '—',
+    note: revenue.available ? null : (revenue.reason || 'Stripe not configured')
+  });
+  document.getElementById('overviewCards').innerHTML = cards.map(c => `
+    <div class="card">
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value}</div>
+      ${c.note ? `<div class="note">${c.note}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderRevenue(revenue){
+  const el = document.getElementById('revenueBody');
+  if(!revenue.available){
+    el.innerHTML = `<div class="empty-note">${revenue.reason || 'Stripe isn\'t configured yet — revenue will show here once billing is live.'}</div>`;
+    return;
+  }
+  const rows = Object.entries(revenue.byTier || {}).filter(([, v]) => v.count > 0);
+  if(!rows.length){
+    el.innerHTML = '<div class="empty-note">No active paid subscriptions yet.</div>';
+    return;
+  }
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Tier</th><th>Subscribers</th><th>MRR</th></tr></thead>
+      <tbody>
+        ${rows.map(([tier, v]) => `<tr><td>${tierLabel(tier)}</td><td>${v.count}</td><td>${fmtMoney(v.mrrCents)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderGrowth(growth){
+  const el = document.getElementById('growthBody');
+  if(!growth.available || !growth.days.length){
+    el.innerHTML = '<div class="empty-note">No signup data yet.</div>';
+    return;
+  }
+  const max = Math.max(...growth.days.map(d => d.signups), 1);
+  const bars = growth.days.map(d => `<div class="bar" style="height:${Math.max(2, (d.signups/max)*80)}px" title="${fmtDate(d.date)}: ${d.signups}"></div>`).join('');
+  const first = growth.days[0], last = growth.days[growth.days.length-1];
+  el.innerHTML = `
+    <div class="bars">${bars}</div>
+    <div class="bar-labels"><span>${fmtDate(first.date)}</span><span>${fmtDate(last.date)}</span></div>
+  `;
+}
+
+function renderUsage(usage){
+  // getLatestUsage()'s own shape is { available, reason?, hasData?, latest?:
+  // { requests_remaining, requests_used, requests_last, recorded_at } } —
+  // nested under admin.js's own "latest" key, so this is usage.latest.latest.
+  const tagEl = document.getElementById('usageTag');
+  const el = document.getElementById('usageBody');
+  const wrapper = usage.latest || {};
+  if(!wrapper.available){
+    tagEl.textContent = '';
+    el.innerHTML = `<div class="empty-note">${wrapper.reason || 'Usage tracking isn\'t available (no database connected).'}</div>`;
+    return;
+  }
+  const snapshot = wrapper.latest;
+  if(!wrapper.hasData || !snapshot){
+    tagEl.textContent = '';
+    el.innerHTML = '<div class="empty-note">No usage snapshots recorded yet — this fills in once the odds feed has been polled at least once.</div>';
+    return;
+  }
+  tagEl.textContent = snapshot.recorded_at ? ('as of ' + new Date(snapshot.recorded_at).toLocaleString()) : '';
+  el.innerHTML = `
+    <div class="cards" style="margin-bottom:0;">
+      <div class="card"><div class="label">Requests used</div><div class="value">${snapshot.requests_used ?? '—'}</div></div>
+      <div class="card"><div class="label">Requests remaining</div><div class="value">${snapshot.requests_remaining ?? '—'}</div></div>
+      <div class="card"><div class="label">Last call cost</div><div class="value">${snapshot.requests_last ?? '—'}</div></div>
+    </div>
+  `;
+}
+
+async function loadUsers(){
+  const search = document.getElementById('userSearch').value.trim();
+  const data = await adminFetch(`/api/admin/users?limit=${USERS_LIMIT}&offset=${usersOffset}&search=${encodeURIComponent(search)}`);
+  usersTotal = data.total || 0;
+  document.getElementById('usersTag').textContent = data.available ? `${usersTotal.toLocaleString()} total` : '';
+  const el = document.getElementById('usersBody');
+  if(!data.available){
+    el.innerHTML = '<div class="empty-note">No database connected.</div>';
+    return;
+  }
+  if(!data.users.length){
+    el.innerHTML = '<div class="empty-note">No users found.</div>';
+  } else {
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Email</th><th>Joined</th><th>Tier</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${data.users.map(u => `
+            <tr data-id="${u.id}">
+              <td>${u.email}</td>
+              <td>${fmtDate(u.createdAt)}</td>
+              <td><span class="tier-badge ${u.tier}">${tierLabel(u.tier)}</span></td>
+              <td>${u.subscriptionStatus || (u.trialEndsAt ? 'trial' : '—')}</td>
+              <td>
+                <select class="tier-select" data-id="${u.id}">
+                  ${['trial','standard','edge','edge_pro'].map(t => `<option value="${t}" ${t===u.rawTier?'selected':''}>${tierLabel(t)}</option>`).join('')}
+                </select>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    el.querySelectorAll('.tier-select').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const id = sel.dataset.id;
+        const newTier = sel.value;
+        sel.disabled = true;
+        try{
+          await fetch(`${API}/api/admin/users/${id}/tier`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': currentKey },
+            body: JSON.stringify({ tier: newTier }),
+          });
+          const row = sel.closest('tr');
+          const badge = row.querySelector('.tier-badge');
+          badge.className = `tier-badge ${newTier}`;
+          badge.textContent = tierLabel(newTier);
+        }catch(e){
+          alert('Failed to update tier: ' + e.message);
+        }finally{
+          sel.disabled = false;
+        }
+      });
+    });
+  }
+  document.getElementById('prevPage').disabled = usersOffset === 0;
+  document.getElementById('nextPage').disabled = usersOffset + USERS_LIMIT >= usersTotal;
+}
+
+document.getElementById('userSearch').addEventListener('input', () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => { usersOffset = 0; loadUsers(); }, 350);
+});
+document.getElementById('prevPage').addEventListener('click', () => { usersOffset = Math.max(0, usersOffset - USERS_LIMIT); loadUsers(); });
+document.getElementById('nextPage').addEventListener('click', () => { usersOffset += USERS_LIMIT; loadUsers(); });
+
+async function loadAll(){
+  loadingMsg.classList.remove('hidden');
+  dashContent.classList.add('hidden');
+  try{
+    const [usage, revenue, growth] = await Promise.all([
+      adminFetch('/api/admin/usage'),
+      adminFetch('/api/admin/revenue'),
+      adminFetch('/api/admin/growth?days=30'),
+    ]);
+    renderOverview(usage, revenue);
+    renderRevenue(revenue);
+    renderGrowth(growth);
+    renderUsage(usage);
+    await loadUsers();
+    loadingMsg.classList.add('hidden');
+    dashContent.classList.remove('hidden');
+  }catch(e){
+    if(e.unauthorized){ showGate('Invalid admin key.'); return; }
+    loadingMsg.innerHTML = `<div class="empty-note">Couldn't load the dashboard (${e.message}). <button class="retry-btn" onclick="loadAll()">Retry</button></div>`;
+  }
+}
+
+if(currentKey){
+  showDashboard();
+  loadAll();
+}
+</script>
+</body>
+</html>
