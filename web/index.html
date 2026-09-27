@@ -253,6 +253,40 @@ body{
 .nav-btn{ flex:1; text-align:center; font-size:11px; color:var(--sub); background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; font-family:inherit; }
 .nav-btn .ic{ font-size:19px; }
 .nav-btn.active{ color:var(--amber); }
+
+/* Account / auth */
+.profile-btn{ font-size:11px; color:var(--sub); border:1px solid var(--line); padding:5px 12px; border-radius:20px; background:none; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.modal-overlay{ position:fixed; inset:0; background:rgba(10,13,18,0.6); display:flex; align-items:center; justify-content:center; z-index:60; padding:20px; }
+.modal-overlay.hidden{ display:none; }
+.modal-card{ position:relative; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:22px 20px; width:100%; max-width:360px; }
+.modal-card h2{ font-family:'Oswald',sans-serif; font-size:19px; margin-bottom:14px; }
+.modal-close{ position:absolute; top:12px; right:14px; background:none; border:none; font-size:20px; color:var(--sub); cursor:pointer; line-height:1; }
+.modal-tabs{ display:flex; gap:8px; margin-bottom:16px; }
+.modal-tab{ flex:1; text-align:center; padding:8px; border-radius:10px; background:var(--surface2); font-size:13px; cursor:pointer; color:var(--sub); border:none; font-family:inherit; }
+.modal-tab.active{ background:var(--amber); color:var(--bg); font-weight:700; }
+.modal-input{ width:100%; box-sizing:border-box; padding:11px 12px; margin-bottom:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:14px; font-family:inherit; }
+.modal-submit{ width:100%; padding:12px; border-radius:10px; border:none; background:var(--amber); color:var(--bg); font-weight:700; cursor:pointer; font-size:14px; }
+.modal-error{ color:var(--red); font-size:12.5px; margin-bottom:8px; min-height:0; }
+
+/* Track-a-pick */
+.track-row{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
+.track-row:last-child{ border-bottom:none; }
+.track-btn{ font-size:11.5px; padding:5px 11px; border-radius:14px; border:1px solid var(--amber); color:var(--amber); background:none; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.track-btn.tracked{ border-color:var(--green); color:var(--green); cursor:default; }
+
+/* My Picks screen */
+.picks-summary{ display:flex; gap:8px; padding:14px 20px; flex-wrap:wrap; }
+.picks-stat{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 8px; flex:1; min-width:70px; text-align:center; }
+.picks-stat .num{ font-family:'Oswald',sans-serif; font-size:19px; font-weight:600; }
+.picks-stat .label{ font-size:9.5px; color:var(--sub); text-transform:uppercase; letter-spacing:0.3px; }
+.pick-card{ margin:0 20px 10px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:12px; }
+.pick-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13.5px; font-weight:600; }
+.pick-sub{ font-size:11.5px; color:var(--sub); margin-top:3px; }
+.pick-result{ font-size:10.5px; padding:3px 9px; border-radius:10px; font-weight:700; text-transform:uppercase; white-space:nowrap; }
+.pick-result.pending{ background:var(--surface2); color:var(--sub); }
+.pick-result.win{ background:var(--green); color:#fff; }
+.pick-result.loss{ background:var(--red); color:#fff; }
+.pick-result.push{ background:var(--surface2); color:var(--text); }
 </style>
 
 <div class="app">
@@ -261,7 +295,26 @@ body{
 
   <div class="topbar">
     <div class="brand">Bet<span>Edge</span> AI</div>
-    <div class="status-pill waking" id="apiStatus"><span class="status-dot"></span><span id="apiStatusLabel">Connecting…</span></div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div class="status-pill waking" id="apiStatus"><span class="status-dot"></span><span id="apiStatusLabel">Connecting…</span></div>
+      <button class="profile-btn" id="profileBtn">Log in</button>
+    </div>
+  </div>
+
+  <!-- AUTH MODAL -->
+  <div class="modal-overlay hidden" id="authModal">
+    <div class="modal-card">
+      <button class="modal-close" id="authModalClose">×</button>
+      <div class="modal-tabs">
+        <button class="modal-tab active" id="tabLogin" data-mode="login">Log In</button>
+        <button class="modal-tab" id="tabSignup" data-mode="signup">Sign Up</button>
+      </div>
+      <h2 id="authModalTitle">Log in to BetEdge AI</h2>
+      <div class="modal-error" id="authError"></div>
+      <input class="modal-input" id="authEmail" type="email" placeholder="Email" autocomplete="email">
+      <input class="modal-input" id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="modal-submit" id="authSubmit">Log In</button>
+    </div>
   </div>
 
   <!-- BOARD -->
@@ -306,10 +359,18 @@ body{
     </div>
   </div>
 
+  <!-- MY PICKS -->
+  <div class="screen" id="picks">
+    <div id="picksBody">
+      <div class="board-msg">Log in to start tracking your picks and see your record.</div>
+    </div>
+  </div>
+
   <div class="navbar">
     <button class="nav-btn active" data-screen="board"><span class="ic">📋</span>Board</button>
     <button class="nav-btn" data-screen="chat"><span class="ic">💬</span>AI Chat</button>
     <button class="nav-btn" data-screen="dossier"><span class="ic">📑</span>Breakdown</button>
+    <button class="nav-btn" data-screen="picks"><span class="ic">🎯</span>My Picks</button>
   </div>
 </div>
 
@@ -360,6 +421,223 @@ let currentSport = "nfl";
 let currentGame = null;
 let currentDossier = null;
 
+// ---------------------------------------------------------------------------
+// Accounts + bet tracking
+// ---------------------------------------------------------------------------
+let authToken = null;
+let currentUser = null;
+try {
+  authToken = localStorage.getItem('betedge_token');
+  currentUser = JSON.parse(localStorage.getItem('betedge_user') || 'null');
+} catch { /* localStorage unavailable — just stay logged out */ }
+
+function apiFetch(path, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {});
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  return fetch(`${API}${path}`, Object.assign({}, opts, { headers }));
+}
+
+function updateProfileButton(){
+  const btn = document.getElementById('profileBtn');
+  btn.textContent = currentUser ? currentUser.email.split('@')[0] : 'Log in';
+}
+updateProfileButton();
+
+function setAuthMode(mode){
+  document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
+  document.getElementById('tabSignup').classList.toggle('active', mode === 'signup');
+  document.getElementById('authModalTitle').textContent = mode === 'login' ? 'Log in to BetEdge AI' : 'Create your account';
+  document.getElementById('authSubmit').textContent = mode === 'login' ? 'Log In' : 'Sign Up';
+  document.getElementById('authSubmit').dataset.mode = mode;
+  document.getElementById('authError').textContent = '';
+}
+
+function openAuthModal(){
+  document.getElementById('authModal').classList.remove('hidden');
+  document.getElementById('authEmail').value = '';
+  document.getElementById('authPassword').value = '';
+  setAuthMode('login');
+}
+function closeAuthModal(){
+  document.getElementById('authModal').classList.add('hidden');
+}
+
+document.getElementById('profileBtn').addEventListener('click', ()=>{
+  if(currentUser){
+    if(confirm(`Logged in as ${currentUser.email}. Log out?`)){
+      authToken = null; currentUser = null;
+      try{ localStorage.removeItem('betedge_token'); localStorage.removeItem('betedge_user'); }catch{}
+      updateProfileButton();
+      if(document.getElementById('picks').classList.contains('active')) loadPicks();
+    }
+  } else {
+    openAuthModal();
+  }
+});
+document.getElementById('authModalClose').addEventListener('click', closeAuthModal);
+document.getElementById('tabLogin').addEventListener('click', ()=>setAuthMode('login'));
+document.getElementById('tabSignup').addEventListener('click', ()=>setAuthMode('signup'));
+
+document.getElementById('authSubmit').addEventListener('click', async ()=>{
+  const mode = document.getElementById('authSubmit').dataset.mode || 'login';
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+  errEl.textContent = '';
+  if(!email || !password){ errEl.textContent = 'Enter an email and password.'; return; }
+
+  try{
+    const res = await fetch(`${API}/api/auth/${mode === 'login' ? 'login' : 'signup'}`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Something went wrong.');
+    authToken = data.token;
+    currentUser = data.user;
+    try{
+      localStorage.setItem('betedge_token', authToken);
+      localStorage.setItem('betedge_user', JSON.stringify(currentUser));
+    }catch{}
+    updateProfileButton();
+    closeAuthModal();
+    if(document.getElementById('picks').classList.contains('active')) loadPicks();
+  }catch(e){
+    errEl.textContent = e.message;
+  }
+});
+
+// "Track this pick" — called from buttons rendered in the dossier's odds section.
+async function trackPick(market, side, point, price, btnEl){
+  if(!currentUser){ openAuthModal(); return; }
+  if(!currentGame) return;
+  btnEl.disabled = true;
+  btnEl.textContent = 'Saving…';
+  try{
+    const res = await apiFetch('/api/bets', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        sport: currentSport,
+        gameId: currentGame.id,
+        homeTeam: currentGame.homeTeam,
+        awayTeam: currentGame.awayTeam,
+        market, side, point, price,
+        stake: 1,
+        commenceTime: currentGame.commenceTime
+      })
+    });
+    if(!res.ok) throw new Error((await res.json()).error || 'Failed to save.');
+    btnEl.textContent = '✓ Tracked';
+    btnEl.classList.add('tracked');
+  }catch(e){
+    btnEl.disabled = false;
+    btnEl.textContent = 'Track';
+    alert(e.message);
+  }
+}
+
+function renderTrackSection(g){
+  if(!g || g.status === 'final') return '';
+  const rows = [];
+  const priceLabel = (p) => p === null || p === undefined ? '—' : (p > 0 ? '+'+p : String(p));
+
+  (g.moneyline || []).forEach(o=>{
+    rows.push({ market:'moneyline', side:o.name, point:null, price:o.price,
+      label:`${o.name} ML`, odds: priceLabel(o.price) });
+  });
+  (g.spread || []).forEach(o=>{
+    rows.push({ market:'spread', side:o.name, point:o.point, price:o.price,
+      label:`${o.name} ${o.point > 0 ? '+'+o.point : o.point}`, odds: priceLabel(o.price) });
+  });
+  (g.total || []).forEach(o=>{
+    rows.push({ market:'total', side:o.name, point:o.point, price:o.price,
+      label:`${o.name} ${o.point ?? ''}`, odds: priceLabel(o.price) });
+  });
+
+  if(!rows.length) return '';
+
+  // Stashed here (rather than re-derived from the DOM) so wireTrackButtons()
+  // can look up the exact market/side/point/price for whichever button was
+  // clicked — plain data, no inline <script> tag involved.
+  window.__trackRows = rows;
+
+  return `
+    <div class="section">
+      <h3>Track a pick</h3>
+      ${rows.map((r,i)=>`
+        <div class="track-row">
+          <span>${r.label} <span style="color:var(--sub)">(${r.odds})</span></span>
+          <button class="track-btn" data-idx="${i}">Track</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function wireTrackButtons(){
+  const rows = window.__trackRows || [];
+  document.querySelectorAll('.track-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const r = rows[Number(btn.dataset.idx)];
+      if(r) trackPick(r.market, r.side, r.point, r.price, btn);
+    });
+  });
+}
+
+async function loadPicks(){
+  const body = document.getElementById('picksBody');
+  if(!currentUser){
+    body.innerHTML = '<div class="board-msg">Log in to start tracking your picks and see your record.</div>';
+    return;
+  }
+  body.innerHTML = '<div class="board-msg"><div class="spin"></div><div>Loading your picks…</div></div>';
+  try{
+    const res = await apiFetch('/api/bets');
+    if(!res.ok) throw new Error('bad status ' + res.status);
+    const data = await res.json();
+    body.innerHTML = renderPicks(data.bets || [], data.record || {});
+    document.querySelectorAll('.pick-delete').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('Remove this pick?')) return;
+        await apiFetch(`/api/bets/${btn.dataset.id}`, { method: 'DELETE' });
+        loadPicks();
+      });
+    });
+  }catch(e){
+    body.innerHTML = `<div class="board-msg">Couldn't load your picks (${e.message}). Try again in a moment.</div>`;
+  }
+}
+
+function renderPicks(bets, record){
+  const stat = (num, label) => `<div class="picks-stat"><div class="num">${num}</div><div class="label">${label}</div></div>`;
+  const summary = `
+    <div class="picks-summary">
+      ${stat(`${record.wins||0}-${record.losses||0}-${record.pushes||0}`, 'Record')}
+      ${stat(record.pending||0, 'Pending')}
+      ${stat(record.roi === null || record.roi === undefined ? '—' : `${record.roi>0?'+':''}${record.roi}%`, 'ROI')}
+    </div>
+  `;
+  if(!bets.length){
+    return summary + '<div class="board-msg">No picks tracked yet — open a game\'s Breakdown and tap "Track" on a line to log one.</div>';
+  }
+  const cards = bets.map(b=>{
+    const label = b.market === 'total' ? `${b.side} ${b.point ?? ''}` : b.market === 'spread' ? `${b.side} ${Number(b.point) > 0 ? '+'+b.point : b.point}` : `${b.side} ML`;
+    const priceLabel = b.price > 0 ? '+'+b.price : b.price;
+    return `
+      <div class="pick-card">
+        <div class="pick-top">
+          <span>${b.away_team && b.home_team ? `${b.away_team} @ ${b.home_team}` : b.sport.toUpperCase()}</span>
+          <span class="pick-result ${b.result}">${b.result}</span>
+        </div>
+        <div class="pick-sub">${label} (${priceLabel}) · ${b.stake} unit${Number(b.stake)===1?'':'s'} ${b.result==='pending' ? '<a class="pick-delete" data-id="'+b.id+'" style="color:var(--sub); text-decoration:underline; cursor:pointer; margin-left:6px;">remove</a>' : ''}</div>
+      </div>
+    `;
+  }).join('');
+  return summary + cards;
+}
+
 // Tracks screens as a stack so a "Back" tap returns to wherever the person
 // actually came from (Board, or Chat if they opened a game from a chat
 // link), instead of always dumping them back on Board.
@@ -384,7 +662,10 @@ function goBack(){
 document.getElementById('dossierBackBtn').addEventListener('click', goBack);
 document.querySelectorAll('.nav-btn').forEach(b=>{
   // Tapping a bottom-nav tab is a fresh jump, not a "back" step — reset the stack.
-  b.addEventListener('click', ()=>showScreen(b.dataset.screen, { resetHistory: true }));
+  b.addEventListener('click', ()=>{
+    showScreen(b.dataset.screen, { resetHistory: true });
+    if(b.dataset.screen === 'picks') loadPicks();
+  });
 });
 
 function setStatus(state, label){
@@ -588,6 +869,7 @@ async function openDossier(sport, game){
     const dossier = await res.json();
     currentDossier = dossier;
     body.innerHTML = renderDossier(dossier);
+    wireTrackButtons();
     const btn = document.getElementById('askAiBtn');
     if(btn) btn.addEventListener('click', ()=>{
       showScreen('chat');
@@ -621,12 +903,16 @@ function renderDossier(d){
   const h2h = d.headToHead || [];
   const h2hResults = d.headToHeadResults || [];
   const lm = d.lineMovement || {};
+  // The dossier's own odds fetch doesn't carry the Board's live/final status —
+  // borrow it from the game object the person actually tapped, if we have it.
+  const trackGame = Object.assign({}, g, { status: currentGame ? currentGame.status : g.status });
   let html = `
     <div class="dossier-hero">
       <div class="dossier-title">${g.awayTeam} @ ${g.homeTeam}</div>
       <div class="dossier-sub">${timeLabel(g.commenceTime)}</div>
       <div class="dossier-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
     </div>
+    ${renderTrackSection(trackGame)}
     <div class="section">
       <h3>Line movement${lm.book ? ' · ' + lm.book : ''}</h3>
       ${lm.available && lm.hasHistory && lm.summary && lm.summary.length
