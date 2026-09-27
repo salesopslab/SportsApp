@@ -5,6 +5,7 @@ import gamesRouter from "./routes/games.js";
 import dossierRouter from "./routes/dossier.js";
 import chatRouter from "./routes/chat.js";
 import lineHistoryRouter from "./routes/lineHistory.js";
+import moversRouter from "./routes/movers.js";
 
 const app = express();
 app.use(cors());
@@ -16,6 +17,7 @@ app.use("/api/games", gamesRouter);
 app.use("/api/dossier", dossierRouter);
 app.use("/api/chat", chatRouter);
 app.use("/api/line-history", lineHistoryRouter);
+app.use("/api/movers", moversRouter);
 
 const port = process.env.PORT || 8080;
 app.listen(port, () => {

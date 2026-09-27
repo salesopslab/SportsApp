@@ -154,6 +154,20 @@ body{
 .board-msg .spin{ display:inline-block; width:18px; height:18px; border:2px solid var(--line); border-top-color:var(--amber); border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:10px; }
 @keyframes spin{ to{ transform:rotate(360deg); } }
 
+.mover-alerts{ position:fixed; top:0; left:0; right:0; z-index:50; display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px; pointer-events:none; }
+.mover-alert{
+  width:100%; max-width:420px; background:var(--surface); border:1px solid var(--amber); border-left:4px solid var(--amber);
+  border-radius:12px; padding:12px 14px; display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.18); cursor:pointer; pointer-events:auto;
+  opacity:0; transform:translateY(-14px); transition:opacity 0.25s ease, transform 0.25s ease;
+}
+.mover-alert.show{ opacity:1; transform:translateY(0); }
+.mover-alert.hide{ opacity:0; transform:translateY(-14px); }
+.mover-alert-title{ font-size:11px; font-weight:700; color:var(--amber); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:3px; }
+.mover-alert-teams{ font-size:14px; font-weight:600; margin-bottom:2px; }
+.mover-alert-detail{ font-size:12.5px; color:var(--sub); }
+.mover-alert-close{ background:none; border:none; color:var(--sub); font-size:18px; line-height:1; cursor:pointer; padding:2px 4px; flex-shrink:0; }
+
 .game-row{ padding:16px 20px; border-bottom:1px solid var(--line); cursor:pointer; }
 .game-row:active{ background:var(--surface); }
 .game-meta{ display:flex; justify-content:space-between; font-size:12px; color:var(--sub); margin-bottom:10px; gap:10px; }
@@ -207,6 +221,8 @@ body{
 </style>
 
 <div class="app">
+
+  <div class="mover-alerts" id="moverAlerts"></div>
 
   <div class="topbar">
     <div class="brand">Bet<span>Edge</span> AI</div>
@@ -615,7 +631,76 @@ document.querySelectorAll('.sport-tab').forEach(tab=>{
   });
 });
 
+// Line-movement alerts: poll for the biggest recent line moves across every
+// sport and pop up a dismissible banner for any we haven't already shown.
+// "Seen" moves are remembered in localStorage (keyed by game+market+lastSeen
+// timestamp) so refreshing the page doesn't re-show the same alert.
+let seenMovers = new Set();
+try{ seenMovers = new Set(JSON.parse(localStorage.getItem('seenMovers') || '[]')); }catch(e){}
+function saveSeenMovers(){
+  try{
+    // Keep this from growing forever — just remember the most recent 200.
+    localStorage.setItem('seenMovers', JSON.stringify([...seenMovers].slice(-200)));
+  }catch(e){}
+}
+
+async function openMoverGame(m){
+  try{
+    document.querySelectorAll('.sport-tab').forEach(t=>t.classList.toggle('active', t.dataset.sport===m.sport));
+    const res = await fetch(`${API}/api/games/${m.sport}`);
+    const data = await res.json();
+    const game = (data.games || []).find(g=>g.id===m.gameId);
+    if(game) openDossier(m.sport, game);
+  }catch(e){}
+}
+
+function showMoverAlert(m){
+  const container = document.getElementById('moverAlerts');
+  const el = document.createElement('div');
+  el.className = 'mover-alert';
+  el.innerHTML = `
+    <div class="mover-alert-body">
+      <div class="mover-alert-title">🔥 Big line move</div>
+      <div class="mover-alert-teams">${m.awayTeam} @ ${m.homeTeam}</div>
+      <div class="mover-alert-detail">${m.market}: ${m.movement}</div>
+    </div>
+    <button class="mover-alert-close" aria-label="Dismiss">×</button>
+  `;
+  el.addEventListener('click', ()=>{ openMoverGame(m); el.remove(); });
+  el.querySelector('.mover-alert-close').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    el.classList.add('hide');
+    setTimeout(()=>el.remove(), 300);
+  });
+  container.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{
+    el.classList.add('hide');
+    setTimeout(()=>el.remove(), 300);
+  }, 15000);
+}
+
+async function checkMovers(){
+  try{
+    const res = await fetch(`${API}/api/movers?limit=3&minutes=60`);
+    if(!res.ok) return;
+    const data = await res.json();
+    if(!data.available) return;
+    let newOnes = false;
+    (data.movers || []).forEach(m=>{
+      const key = `${m.gameId}:${m.market}:${m.lastSeen}`;
+      if(seenMovers.has(key)) return;
+      seenMovers.add(key);
+      newOnes = true;
+      showMoverAlert(m);
+    });
+    if(newOnes) saveSeenMovers();
+  }catch(e){ /* alerts are best-effort — fail silently */ }
+}
+
 checkHealth().then(()=>loadBoard('nfl'));
+checkMovers();
+setInterval(checkMovers, 3 * 60 * 1000); // re-check every 3 minutes
 </script>
 
 
