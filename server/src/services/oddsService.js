@@ -1,5 +1,6 @@
 import { cached } from "./cache.js";
 import { recordSnapshot } from "./snapshotService.js";
+import { recordApiUsage } from "./usageService.js";
 
 const BASE = process.env.ODDS_API_BASE;
 const KEY = process.env.ODDS_API_KEY;
@@ -8,6 +9,18 @@ const KEY = process.env.ODDS_API_KEY;
 // against the Odds API's usage credits — so this is cached much longer than
 // scores. Override with ODDS_CACHE_TTL_SECONDS if you want a different window.
 const ODDS_CACHE_TTL_SECONDS = Number(process.env.ODDS_CACHE_TTL_SECONDS || 1800); // 30 min
+
+// The Odds API returns these on every response, successful or not — capture
+// them opportunistically (fire-and-forget) so a usage dashboard can watch
+// credit burn without ever making an extra request of its own.
+function captureUsageHeaders(res) {
+  const num = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
+  recordApiUsage({
+    remaining: num(res.headers.get("x-requests-remaining")),
+    used: num(res.headers.get("x-requests-used")),
+    last: num(res.headers.get("x-requests-last")),
+  }).catch(() => {});
+}
 
 // The Odds API sport keys — https://the-odds-api.com/sports-odds-data/sports-apis.html
 export const SPORT_KEYS = {
@@ -36,6 +49,7 @@ export async function getOddsForSport(sportSlug) {
       url.searchParams.set("apiKey", KEY);
 
       const res = await fetch(url);
+      captureUsageHeaders(res);
       if (!res.ok) {
         throw new Error(`Odds API error ${res.status}: ${await res.text()}`);
       }
@@ -67,6 +81,7 @@ export async function getScoresForSport(sportSlug, daysFrom = 3) {
     url.searchParams.set("apiKey", KEY);
 
     const res = await fetch(url);
+    captureUsageHeaders(res);
     if (!res.ok) {
       throw new Error(`Odds API scores error ${res.status}: ${await res.text()}`);
     }

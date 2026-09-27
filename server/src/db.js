@@ -61,6 +61,15 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_bets_user ON bets (user_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_bets_grading ON bets (result, game_id);
+
+      CREATE TABLE IF NOT EXISTS odds_api_usage (
+        id BIGSERIAL PRIMARY KEY,
+        requests_used INTEGER,
+        requests_remaining INTEGER,
+        requests_last INTEGER,
+        recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_odds_api_usage_time ON odds_api_usage (recorded_at DESC);
     `);
   }
   return schemaReady;

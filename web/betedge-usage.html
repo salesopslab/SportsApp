@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BetEdge Usage</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F4F1EA; --surface:#FFFFFF; --surface2:#EDE9DF; --line:#DDD6C6;
+  --text:#14181F; --sub:#5B6470; --amber:#C77F1D; --teal:#1F8478; --green:#2C8A55; --red:#B84332;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10151C; --surface:#1B222C; --surface2:#212B37; --line:#2C3644;
+    --text:#F4F1EA; --sub:#9AA5B1; --amber:#E8A33D; --teal:#3FB6A8; --green:#3FA66B; --red:#D9614F;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10151C; --surface:#1B222C; --surface2:#212B37; --line:#2C3644;
+  --text:#F4F1EA; --sub:#9AA5B1; --amber:#E8A33D; --teal:#3FB6A8; --green:#3FA66B; --red:#D9614F;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;}
+html,body{margin:0; padding:0;}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  padding:24px 16px 60px;
+}
+.wrap{ max-width:920px; margin:0 auto; }
+.brand{ display:flex; align-items:center; gap:8px; font-family:'Oswald',sans-serif; font-weight:600; font-size:19px; letter-spacing:0.4px; margin-bottom:2px; }
+.brand span{ color:var(--amber); }
+.page-title{ font-family:'Oswald',sans-serif; font-weight:500; font-size:26px; margin:2px 0 4px; }
+.page-sub{ color:var(--sub); font-size:13.5px; margin-bottom:24px; }
+
+/* ---- gate ---- */
+.gate{ max-width:420px; margin:60px auto; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:28px; }
+.gate h1{ font-family:'Oswald',sans-serif; font-size:20px; font-weight:600; margin:0 0 6px; }
+.gate p{ color:var(--sub); font-size:13.5px; margin:0 0 18px; line-height:1.5; }
+.field{ margin-bottom:14px; }
+.field label{ display:block; font-size:12px; font-weight:600; color:var(--sub); text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px; }
+.field input{
+  width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line);
+  background:var(--bg); color:var(--text); font-size:14px; font-family:inherit;
+}
+.field input:focus{ outline:2px solid var(--teal); outline-offset:1px; }
+.btn{
+  width:100%; padding:11px; border-radius:8px; border:none; background:var(--amber); color:var(--bg);
+  font-size:14px; font-weight:600; cursor:pointer; font-family:inherit;
+}
+.btn:active{ opacity:0.85; }
+.btn-ghost{ background:none; border:1px solid var(--line); color:var(--sub); font-weight:500; }
+.gate-error{ color:var(--red); font-size:13px; margin-top:12px; display:none; }
+.gate-error.show{ display:block; }
+
+/* ---- dashboard ---- */
+.dash{ display:none; }
+.dash.show{ display:block; }
+.topline{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+.topline-right{ display:flex; align-items:center; gap:8px; }
+.icon-btn{
+  background:var(--surface); border:1px solid var(--line); color:var(--sub); border-radius:8px;
+  padding:7px 12px; font-size:12.5px; cursor:pointer; font-family:inherit;
+}
+.icon-btn:hover{ color:var(--text); }
+.updated{ font-size:12px; color:var(--sub); }
+
+.tiles{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px; margin-bottom:20px; }
+.tile{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+.tile-label{ font-size:11px; font-weight:600; color:var(--sub); text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px; }
+.tile-value{ font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; font-size:22px; font-weight:600; line-height:1.1; }
+.tile-value.good{ color:var(--green); }
+.tile-value.warn{ color:var(--amber); }
+.tile-value.bad{ color:var(--red); }
+.tile-sub{ font-size:11.5px; color:var(--sub); margin-top:4px; }
+
+.progress-card{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:20px; }
+.progress-top{ display:flex; justify-content:space-between; font-size:12.5px; color:var(--sub); margin-bottom:8px; }
+.progress-track{ height:10px; border-radius:6px; background:var(--surface2); overflow:hidden; }
+.progress-fill{ height:100%; border-radius:6px; background:var(--teal); transition:width 0.4s ease; }
+.progress-fill.warn{ background:var(--amber); }
+.progress-fill.bad{ background:var(--red); }
+
+.chart-card{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:18px 18px 10px; margin-bottom:20px; }
+.chart-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+.chart-head h2{ font-size:14px; font-weight:600; margin:0; }
+.range-toggle{ display:flex; gap:4px; }
+.range-btn{ font-size:11.5px; padding:5px 10px; border-radius:6px; border:1px solid var(--line); background:none; color:var(--sub); cursor:pointer; font-family:inherit; }
+.range-btn.active{ background:var(--surface2); color:var(--text); font-weight:600; }
+.chart-empty{ color:var(--sub); font-size:13px; text-align:center; padding:40px 10px; }
+svg.chart{ width:100%; height:220px; display:block; overflow:visible; }
+.chart-tooltip{
+  position:absolute; background:var(--text); color:var(--bg); font-size:11.5px; font-family:'JetBrains Mono',monospace;
+  padding:6px 9px; border-radius:6px; pointer-events:none; opacity:0; transition:opacity 0.1s; white-space:nowrap; z-index:5;
+}
+.chart-wrap{ position:relative; }
+
+.note-card{ background:var(--surface2); border:1px solid var(--line); border-radius:12px; padding:14px 16px; font-size:12.5px; color:var(--sub); line-height:1.55; }
+.note-card b{ color:var(--text); }
+
+.settings{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:20px; display:none; }
+.settings.show{ display:block; }
+.settings-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px; }
+.settings-grid .field{ margin-bottom:0; }
+.settings-grid input{ padding:8px 10px; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">Bet<span>Edge</span> AI</div>
+  <div class="page-title">Usage &amp; cost</div>
+  <div class="page-sub">Odds API credit burn against your plan, plus subscriber growth.</div>
+
+  <!-- GATE -->
+  <div class="gate" id="gate">
+    <h1>Connect</h1>
+    <p>This reads your backend's admin usage endpoint. Nothing here is sent anywhere except your own server.</p>
+    <div class="field">
+      <label for="apiBaseInput">Backend URL</label>
+      <input type="text" id="apiBaseInput" placeholder="https://betedge-ai-backend.onrender.com" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="adminKeyInput">Admin key</label>
+      <input type="password" id="adminKeyInput" placeholder="ADMIN_KEY from Render env vars" autocomplete="off">
+    </div>
+    <button class="btn" id="connectBtn">Connect</button>
+    <div class="gate-error" id="gateError"></div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="dash" id="dash">
+    <div class="topline">
+      <div class="updated" id="updatedLabel">—</div>
+      <div class="topline-right">
+        <button class="icon-btn" id="settingsToggle">Plan settings</button>
+        <button class="icon-btn" id="refreshBtn">Refresh</button>
+        <button class="icon-btn" id="disconnectBtn">Change key</button>
+      </div>
+    </div>
+
+    <div class="settings" id="settingsPanel">
+      <div class="settings-grid">
+        <div class="field">
+          <label for="planCreditsInput">Plan credits / month</label>
+          <input type="number" id="planCreditsInput" value="20000" min="0">
+        </div>
+        <div class="field">
+          <label for="planPriceInput">Plan price / month ($)</label>
+          <input type="number" id="planPriceInput" value="30" min="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="tiles" id="tiles"></div>
+
+    <div class="progress-card">
+      <div class="progress-top">
+        <span id="progressLabel">Credits used this cycle</span>
+        <span id="progressPct">—</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-head">
+        <h2>Credits remaining over time</h2>
+        <div class="range-toggle" id="rangeToggle">
+          <button class="range-btn" data-hours="24">24h</button>
+          <button class="range-btn active" data-hours="48">48h</button>
+          <button class="range-btn" data-hours="168">7d</button>
+        </div>
+      </div>
+      <div class="chart-wrap" id="chartWrap">
+        <div class="chart-empty" id="chartEmpty">Not enough data yet — check back after a few hours of traffic.</div>
+        <svg class="chart" id="chartSvg" viewBox="0 0 640 220" preserveAspectRatio="none" style="display:none;"></svg>
+        <div class="chart-tooltip" id="chartTooltip"></div>
+      </div>
+    </div>
+
+    <div class="note-card">
+      <b>Why this isn't linear per-user:</b> odds and scores are cached server-side (odds ~30 min, scores ~90 sec), so many users browsing at once mostly share the same cached calls. Cost is driven mainly by how many sports have live betting action and how long the app stays open somewhere, not by subscriber count. Expect cost-per-user to fall sharply as you add users.
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var els = {
+    gate: document.getElementById('gate'),
+    dash: document.getElementById('dash'),
+    apiBaseInput: document.getElementById('apiBaseInput'),
+    adminKeyInput: document.getElementById('adminKeyInput'),
+    connectBtn: document.getElementById('connectBtn'),
+    gateError: document.getElementById('gateError'),
+    updatedLabel: document.getElementById('updatedLabel'),
+    settingsToggle: document.getElementById('settingsToggle'),
+    settingsPanel: document.getElementById('settingsPanel'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    disconnectBtn: document.getElementById('disconnectBtn'),
+    tiles: document.getElementById('tiles'),
+    progressLabel: document.getElementById('progressLabel'),
+    progressPct: document.getElementById('progressPct'),
+    progressFill: document.getElementById('progressFill'),
+    rangeToggle: document.getElementById('rangeToggle'),
+    chartWrap: document.getElementById('chartWrap'),
+    chartEmpty: document.getElementById('chartEmpty'),
+    chartSvg: document.getElementById('chartSvg'),
+    chartTooltip: document.getElementById('chartTooltip'),
+    planCreditsInput: document.getElementById('planCreditsInput'),
+    planPriceInput: document.getElementById('planPriceInput'),
+  };
+
+  var state = {
+    apiBase: '',
+    adminKey: '',
+    planCredits: 20000,
+    planPrice: 30,
+    hours: 48,
+    pollTimer: null,
+  };
+
+  function loadStored(){
+    try{
+      state.apiBase = localStorage.getItem('betedge_usage_api') || '';
+      state.adminKey = localStorage.getItem('betedge_usage_key') || '';
+      state.planCredits = Number(localStorage.getItem('betedge_usage_plancredits')) || 20000;
+      state.planPrice = Number(localStorage.getItem('betedge_usage_planprice')) || 30;
+    }catch(e){}
+  }
+  function saveStored(){
+    try{
+      localStorage.setItem('betedge_usage_api', state.apiBase);
+      localStorage.setItem('betedge_usage_key', state.adminKey);
+      localStorage.setItem('betedge_usage_plancredits', String(state.planCredits));
+      localStorage.setItem('betedge_usage_planprice', String(state.planPrice));
+    }catch(e){}
+  }
+
+  function fmtInt(n){
+    if(n === null || n === undefined || isNaN(n)) return '—';
+    return Math.round(n).toLocaleString('en-US');
+  }
+  function fmtTime(iso){
+    var d = new Date(iso);
+    return d.toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  }
+
+  async function fetchUsage(){
+    var url = state.apiBase.replace(/\/$/, '') + '/api/admin/usage?hours=' + state.hours;
+    var res = await fetch(url, { headers: { 'x-admin-key': state.adminKey } });
+    if(res.status === 401){ throw { code: 'auth', message: 'That admin key was rejected by the server.' }; }
+    if(res.status === 503){ throw { code: 'unconfigured', message: 'Backend has no ADMIN_KEY set yet — add one in Render env vars.' }; }
+    if(!res.ok){ throw { code: 'error', message: 'Request failed (' + res.status + ').' }; }
+    return res.json();
+  }
+
+  function showGateError(msg){
+    els.gateError.textContent = msg;
+    els.gateError.classList.add('show');
+  }
+
+  function statusClass(daysLeft){
+    if(daysLeft === null) return '';
+    if(daysLeft < 7) return 'bad';
+    if(daysLeft < 20) return 'warn';
+    return 'good';
+  }
+
+  function renderTiles(latestRow, stats, burnPerDay, daysLeft){
+    var remaining = latestRow ? latestRow.requests_remaining : null;
+    var used = latestRow ? latestRow.requests_used : null;
+    var cls = statusClass(daysLeft);
+
+    var costPerUser = (stats.available && stats.totalUsers > 0 && used !== null)
+      ? (used / stats.totalUsers) : null;
+
+    var tiles = [
+      { label: 'Credits remaining', value: fmtInt(remaining), sub: 'of ' + fmtInt(state.planCredits) + ' plan' },
+      { label: 'Used this cycle', value: fmtInt(used), sub: null },
+      { label: 'Burn rate', value: burnPerDay === null ? '—' : fmtInt(burnPerDay) + '/day', sub: null },
+      { label: 'Est. runway', value: daysLeft === null ? '—' : fmtInt(daysLeft) + ' days', sub: 'at current burn rate', cls: cls },
+      { label: 'Total users', value: stats.available ? fmtInt(stats.totalUsers) : '—', sub: stats.available ? '+' + fmtInt(stats.newUsers7d) + ' in last 7d' : 'No database connected' },
+      { label: 'Credits / user', value: costPerUser === null ? '—' : fmtInt(costPerUser), sub: 'this cycle, shared-cache effect not removed' },
+    ];
+
+    els.tiles.innerHTML = tiles.map(function(t){
+      return '<div class="tile"><div class="tile-label">' + t.label + '</div>' +
+        '<div class="tile-value' + (t.cls ? ' ' + t.cls : '') + '">' + t.value + '</div>' +
+        (t.sub ? '<div class="tile-sub">' + t.sub + '</div>' : '') + '</div>';
+    }).join('');
+  }
+
+  function renderProgress(latestRow){
+    if(!latestRow || latestRow.requests_used === null || !state.planCredits){
+      els.progressPct.textContent = '—';
+      els.progressFill.style.width = '0%';
+      return;
+    }
+    var pct = Math.min(100, (latestRow.requests_used / state.planCredits) * 100);
+    els.progressPct.textContent = fmtInt(latestRow.requests_used) + ' / ' + fmtInt(state.planCredits) + ' (' + pct.toFixed(1) + '%)';
+    els.progressFill.style.width = pct + '%';
+    els.progressFill.className = 'progress-fill' + (pct > 90 ? ' bad' : pct > 65 ? ' warn' : '');
+  }
+
+  function computeBurnRate(history){
+    if(!history || history.length < 2) return null;
+    var first = history[0], last = history[history.length - 1];
+    if(first.requests_used === null || last.requests_used === null) return null;
+    var deltaUsed = last.requests_used - first.requests_used;
+    var deltaHours = (new Date(last.recorded_at) - new Date(first.recorded_at)) / 3600000;
+    if(deltaHours <= 0) return null;
+    var perDay = (deltaUsed / deltaHours) * 24;
+    return perDay > 0 ? perDay : null;
+  }
+
+  function renderChart(history){
+    var svg = els.chartSvg;
+    if(!history || history.length < 2){
+      els.chartEmpty.style.display = 'block';
+      svg.style.display = 'none';
+      return;
+    }
+    els.chartEmpty.style.display = 'none';
+    svg.style.display = 'block';
+
+    var W = 640, H = 220, padL = 46, padR = 12, padT = 14, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+
+    var vals = history.map(function(r){ return r.requests_remaining; }).filter(function(v){ return v !== null; });
+    var minV = Math.min.apply(null, vals), maxV = Math.max.apply(null, vals);
+    if(minV === maxV){ minV = minV - 1; maxV = maxV + 1; }
+    var t0 = new Date(history[0].recorded_at).getTime();
+    var t1 = new Date(history[history.length-1].recorded_at).getTime();
+    if(t1 === t0) t1 = t0 + 1;
+
+    function x(t){ return padL + ((t - t0) / (t1 - t0)) * plotW; }
+    function y(v){ return padT + (1 - (v - minV) / (maxV - minV)) * plotH; }
+
+    var points = history.map(function(r){
+      return { t: new Date(r.recorded_at).getTime(), v: r.requests_remaining, raw: r };
+    }).filter(function(p){ return p.v !== null; });
+
+    var path = points.map(function(p, i){
+      return (i === 0 ? 'M' : 'L') + x(p.t).toFixed(1) + ',' + y(p.v).toFixed(1);
+    }).join(' ');
+
+    var accent = getComputedStyle(document.documentElement).getPropertyValue('--teal').trim() || '#1F8478';
+    var lineColor = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || '#DDD6C6';
+    var subColor = getComputedStyle(document.documentElement).getPropertyValue('--sub').trim() || '#5B6470';
+
+    var gridLines = '';
+    for(var i=0;i<=3;i++){
+      var gy = padT + (plotH/3)*i;
+      gridLines += '<line x1="'+padL+'" y1="'+gy.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+gy.toFixed(1)+'" stroke="'+lineColor+'" stroke-width="1" opacity="0.5"/>';
+      var val = maxV - (maxV-minV)/3*i;
+      gridLines += '<text x="'+(padL-8)+'" y="'+(gy+3).toFixed(1)+'" text-anchor="end" font-size="10" fill="'+subColor+'" font-family="JetBrains Mono, monospace">'+Math.round(val).toLocaleString()+'</text>';
+    }
+
+    var labelStep = Math.max(1, Math.ceil(points.length / 5));
+    var xLabels = '';
+    points.forEach(function(p, i){
+      if(i % labelStep === 0 || i === points.length-1){
+        var lbl = new Date(p.t).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric'});
+        xLabels += '<text x="'+x(p.t).toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle" font-size="9.5" fill="'+subColor+'" font-family="Inter, sans-serif">'+lbl+'</text>';
+      }
+    });
+
+    var lastP = points[points.length-1];
+    var dots = '<circle cx="'+x(lastP.t).toFixed(1)+'" cy="'+y(lastP.v).toFixed(1)+'" r="4" fill="'+accent+'"/>';
+
+    svg.innerHTML = gridLines + xLabels +
+      '<path d="'+path+'" fill="none" stroke="'+accent+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      dots;
+
+    // hover crosshair + tooltip
+    var tooltip = els.chartTooltip;
+    var hitLayer = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    hitLayer.setAttribute('x', padL); hitLayer.setAttribute('y', padT);
+    hitLayer.setAttribute('width', plotW); hitLayer.setAttribute('height', plotH);
+    hitLayer.setAttribute('fill', 'transparent');
+    svg.appendChild(hitLayer);
+
+    var crosshair = document.createElementNS('http://www.w3.org/2000/svg','line');
+    crosshair.setAttribute('stroke', subColor); crosshair.setAttribute('stroke-width','1');
+    crosshair.setAttribute('opacity','0'); crosshair.setAttribute('y1', padT); crosshair.setAttribute('y2', padT+plotH);
+    svg.appendChild(crosshair);
+
+    function nearestPoint(mouseX){
+      var best = points[0], bestDist = Infinity;
+      points.forEach(function(p){
+        var d = Math.abs(x(p.t) - mouseX);
+        if(d < bestDist){ bestDist = d; best = p; }
+      });
+      return best;
+    }
+
+    hitLayer.addEventListener('mousemove', function(e){
+      var rect = svg.getBoundingClientRect();
+      var scaleX = W / rect.width;
+      var mouseX = (e.clientX - rect.left) * scaleX;
+      var p = nearestPoint(mouseX);
+      crosshair.setAttribute('x1', x(p.t)); crosshair.setAttribute('x2', x(p.t));
+      crosshair.setAttribute('opacity','1');
+      var wrapRect = els.chartWrap.getBoundingClientRect();
+      tooltip.style.opacity = '1';
+      tooltip.style.left = ((e.clientX - wrapRect.left) + 12) + 'px';
+      tooltip.style.top = ((e.clientY - wrapRect.top) - 30) + 'px';
+      tooltip.textContent = fmtTime(p.raw.recorded_at) + ' · ' + fmtInt(p.v) + ' left';
+    });
+    hitLayer.addEventListener('mouseleave', function(){
+      crosshair.setAttribute('opacity','0');
+      tooltip.style.opacity = '0';
+    });
+  }
+
+  async function refresh(){
+    try{
+      var data = await fetchUsage();
+      var latestRow = (data.latest && data.latest.hasData) ? data.latest.latest : null;
+      var history = (data.history && data.history.available) ? data.history.history : [];
+      var stats = data.stats || { available: false };
+
+      var burnPerDay = computeBurnRate(history);
+      var daysLeft = (burnPerDay && latestRow && latestRow.requests_remaining !== null)
+        ? latestRow.requests_remaining / burnPerDay : null;
+
+      renderTiles(latestRow, stats, burnPerDay, daysLeft);
+      renderProgress(latestRow);
+      renderChart(history);
+      els.updatedLabel.textContent = 'Updated ' + new Date().toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
+    }catch(err){
+      if(err && err.code === 'auth'){
+        alert('Admin key rejected — reconnecting.');
+        disconnect();
+        return;
+      }
+      els.updatedLabel.textContent = (err && err.message) ? err.message : 'Failed to load usage data.';
+    }
+  }
+
+  function startPolling(){
+    if(state.pollTimer) clearInterval(state.pollTimer);
+    state.pollTimer = setInterval(refresh, 60000);
+  }
+
+  function showDash(){
+    els.gate.style.display = 'none';
+    els.dash.classList.add('show');
+    els.planCreditsInput.value = state.planCredits;
+    els.planPriceInput.value = state.planPrice;
+    refresh();
+    startPolling();
+  }
+
+  function disconnect(){
+    try{
+      localStorage.removeItem('betedge_usage_key');
+    }catch(e){}
+    state.adminKey = '';
+    if(state.pollTimer) clearInterval(state.pollTimer);
+    els.dash.classList.remove('show');
+    els.gate.style.display = 'block';
+    els.adminKeyInput.value = '';
+  }
+
+  els.connectBtn.addEventListener('click', function(){
+    var apiBase = els.apiBaseInput.value.trim();
+    var key = els.adminKeyInput.value.trim();
+    if(!apiBase || !key){
+      showGateError('Enter both the backend URL and the admin key.');
+      return;
+    }
+    state.apiBase = apiBase;
+    state.adminKey = key;
+    saveStored();
+    els.gateError.classList.remove('show');
+    fetchUsage().then(function(){
+      showDash();
+    }).catch(function(err){
+      showGateError((err && err.message) ? err.message : 'Could not connect.');
+    });
+  });
+
+  els.refreshBtn.addEventListener('click', refresh);
+  els.disconnectBtn.addEventListener('click', disconnect);
+  els.settingsToggle.addEventListener('click', function(){
+    els.settingsPanel.classList.toggle('show');
+  });
+  els.planCreditsInput.addEventListener('change', function(){
+    state.planCredits = Number(els.planCreditsInput.value) || 20000;
+    saveStored();
+    refresh();
+  });
+  els.planPriceInput.addEventListener('change', function(){
+    state.planPrice = Number(els.planPriceInput.value) || 30;
+    saveStored();
+  });
+  Array.prototype.forEach.call(els.rangeToggle.querySelectorAll('.range-btn'), function(btn){
+    btn.addEventListener('click', function(){
+      Array.prototype.forEach.call(els.rangeToggle.querySelectorAll('.range-btn'), function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      state.hours = Number(btn.dataset.hours);
+      refresh();
+    });
+  });
+
+  loadStored();
+  els.apiBaseInput.value = state.apiBase || 'https://betedge-ai-backend.onrender.com';
+  if(state.apiBase && state.adminKey){
+    els.adminKeyInput.value = state.adminKey;
+    fetchUsage().then(function(){
+      showDash();
+    }).catch(function(){
+      // stored key no longer valid / not reachable yet — fall back to gate
+    });
+  }
+})();
+</script>
+</body>
+</html>
