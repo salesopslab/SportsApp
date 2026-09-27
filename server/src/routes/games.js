@@ -4,15 +4,18 @@ import { getOddsForSport, getScoresForSport } from "../services/oddsService.js";
 const router = Router();
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+// The provider's own "last updated" timestamp turned out not to be a
+// reliable stand-in for "when the game ended" — it can stay fresh well after
+// a game is actually over, which let old final games linger past their
+// 24-hour window. Instead we approximate the end time as kickoff + a
+// generous max game length (covers overtime), then give it 24 more hours.
+// It's a slightly looser cutoff than a true end-time would give, but it's
+// deterministic and never has to guess based on data we can't trust.
+const MAX_GAME_LENGTH_MS = 5 * 60 * 60 * 1000; // 5 hours, generous even with OT
+const FINAL_WINDOW_MS = 24 * 60 * 60 * 1000 + MAX_GAME_LENGTH_MS;
 
-// Best guess at "when a final game actually ended," used to decide whether a
-// final game is still within its 24-hour window. Prefers the score
-// provider's own last-update timestamp; falls back to kickoff time if that's
-// ever missing (better than not showing it at all).
-function gameEndTime(commenceTime, lastUpdate) {
-  const t = lastUpdate ? new Date(lastUpdate).getTime() : NaN;
-  return Number.isNaN(t) ? new Date(commenceTime).getTime() : t;
+function pastFinalWindow(commenceTime, now) {
+  return now - new Date(commenceTime).getTime() > FINAL_WINDOW_MS;
 }
 
 // GET /api/games/:sport  -> odds board data for the Board screen
@@ -39,8 +42,7 @@ router.get("/:sport", async (req, res) => {
 
         const score = scores[g.id];
         if (score && score.completed) {
-          const endedAt = gameEndTime(g.commenceTime, score.lastUpdate);
-          if (now - endedAt > TWENTY_FOUR_HOURS_MS) return null; // finished too long ago
+          if (pastFinalWindow(g.commenceTime, now)) return null; // finished too long ago
           return {
             ...g,
             status: "final",
@@ -72,8 +74,7 @@ router.get("/:sport", async (req, res) => {
     const backfilled = Object.entries(scores)
       .filter(([id, s]) => {
         if (seenIds.has(id) || !s.completed || !s.homeTeam || !s.awayTeam) return false;
-        const endedAt = gameEndTime(s.commenceTime, s.lastUpdate);
-        return now - endedAt <= TWENTY_FOUR_HOURS_MS;
+        return !pastFinalWindow(s.commenceTime, now);
       })
       .map(([id, s]) => ({
         id,
