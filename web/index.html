@@ -88,6 +88,13 @@ body{
 .mover-alert-detail{ font-size:12.5px; color:var(--sub); }
 .mover-alert-close{ background:none; border:none; color:var(--sub); font-size:18px; line-height:1; cursor:pointer; padding:2px 4px; flex-shrink:0; }
 
+.big-move-badge{ display:inline-flex; align-items:center; gap:3px; font-size:10.5px; font-weight:700; color:var(--amber); background:rgba(199,127,29,0.12); border:1px solid var(--amber); padding:2px 7px; border-radius:20px; margin-left:6px; white-space:nowrap; }
+.mover-card{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px; margin:0 20px 12px; cursor:pointer; }
+.mover-card:active{ opacity:0.85; }
+.mover-card-top{ font-size:11px; color:var(--sub); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.3px; }
+.mover-card-teams{ font-size:15px; font-weight:600; margin-bottom:4px; }
+.mover-card-detail{ font-size:13px; color:var(--sub); }
+
 .game-row{ padding:16px 20px; border-bottom:1px solid var(--line); cursor:pointer; }
 .game-row:active{ background:var(--surface); }
 .game-meta{ display:flex; justify-content:space-between; font-size:12px; color:var(--sub); margin-bottom:10px; gap:10px; }
@@ -269,11 +276,18 @@ body{
     </div>
   </div>
 
+  <!-- BIG LINES -->
+  <div class="screen" id="bigLines">
+    <div class="board-msg" style="text-align:left; padding:16px 20px 4px;">Games with the sharpest recent line moves — tap one for the full breakdown.</div>
+    <div id="bigLinesList"><div class="board-msg"><div class="spin"></div><div>Loading…</div></div></div>
+  </div>
+
   <div class="navbar">
     <button class="nav-btn active" data-screen="board"><span class="ic">📋</span>Board</button>
     <button class="nav-btn" data-screen="chat"><span class="ic">💬</span>AI Chat</button>
     <button class="nav-btn" data-screen="dossier"><span class="ic">📑</span>Breakdown</button>
     <button class="nav-btn" data-screen="picks"><span class="ic">🎯</span>My Picks</button>
+    <button class="nav-btn" data-screen="bigLines"><span class="ic">🔥</span>Big Lines</button>
   </div>
 </div>
 
@@ -568,6 +582,7 @@ document.querySelectorAll('.nav-btn').forEach(b=>{
   b.addEventListener('click', ()=>{
     showScreen(b.dataset.screen, { resetHistory: true });
     if(b.dataset.screen === 'picks') loadPicks();
+    if(b.dataset.screen === 'bigLines') renderBigLines();
   });
 });
 
@@ -631,6 +646,14 @@ async function checkHealth(){
 let lastGames = [];
 let sortDir = 'asc'; // 'asc' = soonest kickoff first, 'desc' = latest kickoff first
 let statusFilter = 'all'; // 'all' | 'live' | 'final'
+
+// Big line moves: same underlying data (getTopMovers) drives both the
+// dismissible toast alerts (below, via checkMovers) and this longer-lived
+// list, so a move stays findable on the Board and in the Big Lines tab even
+// after its alert has been dismissed or expired.
+let bigLinesData = [];
+let bigMoverKeys = new Set(); // `${sport}:${gameId}` currently flagged as a big move
+function moverKey(sport, gameId){ return `${sport}:${gameId}`; }
 
 function visibleGames(){
   if(statusFilter === 'all') return lastGames;
@@ -706,6 +729,8 @@ async function loadBoard(sport){
 }
 
 function renderGameRow(g){
+  const bigMove = bigMoverKeys.has(moverKey(currentSport, g.id));
+  const bigMoveBadge = bigMove ? '<span class="big-move-badge">🔥 Big move</span>' : '';
   if(g.status === 'final' || g.status === 'live'){
     const score = g.status === 'final' ? g.finalScore : g.liveScore;
     const badge = g.status === 'final' ? 'Final' : 'Live';
@@ -714,7 +739,7 @@ function renderGameRow(g){
       : 'Game in progress — score may be a few minutes behind';
     return `
     <div class="game-row ${g.status}" data-id="${g.id}">
-      <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span></div>
+      <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${bigMoveBadge}</div>
       <div class="matchup">
         <div class="team-line">
           <span class="team-name">${g.awayTeam}</span>
@@ -737,7 +762,7 @@ function renderGameRow(g){
   const bookCount = (g.allBooks || []).length;
   return `
   <div class="game-row" data-id="${g.id}">
-    <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || g.primaryBook || ''}</span></div>
+    <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || g.primaryBook || ''}</span>${bigMoveBadge}</div>
     <div class="matchup">
       <div class="team-line">
         <span class="team-name">${g.awayTeam}</span>
@@ -1043,9 +1068,52 @@ async function checkMovers(){
   }catch(e){ /* alerts are best-effort — fail silently */ }
 }
 
+// Big Lines tab + per-game "🔥 Big move" badges: a wider, longer-lived view
+// of the same top-movers data (more games, longer window than the toast
+// alerts use), so a move stays findable after its alert has come and gone.
+function renderBigLines(){
+  const list = document.getElementById('bigLinesList');
+  if(bigLinesData.length === 0){
+    list.innerHTML = '<div class="board-msg">No big line moves in the last few hours — check back soon.</div>';
+    return;
+  }
+  list.innerHTML = bigLinesData.map(m => `
+    <div class="mover-card" data-sport="${m.sport}" data-id="${m.gameId}">
+      <div class="mover-card-top">🔥 ${m.sport.toUpperCase()} · ${timeLabel(m.commenceTime)}</div>
+      <div class="mover-card-teams">${m.awayTeam} @ ${m.homeTeam}</div>
+      <div class="mover-card-detail">${m.market}: ${m.movement}</div>
+    </div>
+  `).join('');
+  list.querySelectorAll('.mover-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const m = bigLinesData.find(x=>x.sport===card.dataset.sport && x.gameId===card.dataset.id);
+      if(m) openMoverGame(m);
+    });
+  });
+}
+
+async function refreshBigLines(){
+  try{
+    const res = await fetch(`${API}/api/movers?limit=10&minutes=180`);
+    if(!res.ok) return;
+    const data = await res.json();
+    if(!data.available){
+      bigLinesData = [];
+      bigMoverKeys = new Set();
+    }else{
+      bigLinesData = data.movers || [];
+      bigMoverKeys = new Set(bigLinesData.map(m => moverKey(m.sport, m.gameId)));
+    }
+    if(document.getElementById('bigLines').classList.contains('active')) renderBigLines();
+    if(lastGames.length) renderBoardList(); // refresh flame badges on whatever's showing
+  }catch(e){ /* best-effort */ }
+}
+
 checkHealth().then(()=>loadBoard('nfl'));
 checkMovers();
+refreshBigLines();
 setInterval(checkMovers, 3 * 60 * 1000); // re-check every 3 minutes
+setInterval(refreshBigLines, 3 * 60 * 1000);
 </script>
 
 </body>
