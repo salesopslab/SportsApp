@@ -40,7 +40,32 @@ router.get("/:sport", async (req, res) => {
       })
       .filter(Boolean);
 
-    res.json({ sport, games: enriched });
+    // Sportsbooks often pull a game from /odds the moment it starts (or
+    // shortly after) — very common on a busy college football/basketball
+    // slate with 40+ games kicking off at once. That means a lot of finished
+    // games never show up above at all, even though /scores has their final
+    // result. Fill those back in as score-only "final" entries so the board
+    // reflects every game that's actually done, not just the ones a book
+    // still has posted.
+    const seenIds = new Set(enriched.map((g) => g.id));
+    const backfilled = Object.entries(scores)
+      .filter(([id, s]) => !seenIds.has(id) && s.completed && s.homeTeam && s.awayTeam)
+      .map(([id, s]) => ({
+        id,
+        sport: sport,
+        commenceTime: s.commenceTime,
+        homeTeam: s.homeTeam,
+        awayTeam: s.awayTeam,
+        primaryBook: null,
+        moneyline: [],
+        spread: [],
+        total: [],
+        allBooks: [],
+        status: "final",
+        finalScore: { home: s.homeScore, away: s.awayScore },
+      }));
+
+    res.json({ sport, games: [...enriched, ...backfilled] });
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "Failed to fetch odds", detail: err.message });

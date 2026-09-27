@@ -34,6 +34,33 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_odds_snapshots_lookup
         ON odds_snapshots (game_id, market, side, captured_at);
+
+      CREATE TABLE IF NOT EXISTS users (
+        id BIGSERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE IF NOT EXISTS bets (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        sport TEXT NOT NULL,
+        game_id TEXT NOT NULL,
+        home_team TEXT,
+        away_team TEXT,
+        market TEXT NOT NULL,          -- 'moneyline' | 'spread' | 'total'
+        side TEXT NOT NULL,            -- team name, or 'Over'/'Under'
+        point NUMERIC,
+        price INTEGER NOT NULL,
+        stake NUMERIC NOT NULL DEFAULT 1,
+        commence_time TIMESTAMPTZ,
+        result TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'win' | 'loss' | 'push'
+        settled_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_bets_user ON bets (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_bets_grading ON bets (result, game_id);
     `);
   }
   return schemaReady;

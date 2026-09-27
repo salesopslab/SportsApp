@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getOddsForSport } from "../services/oddsService.js";
+import { getOddsForSport, getScoresForSport } from "../services/oddsService.js";
 import { getInjuries, getHeadToHead } from "../services/statsService.js";
 import { getGameWeather } from "../services/weatherService.js";
 import { getHeadToHeadResults } from "../services/espnService.js";
@@ -15,7 +15,32 @@ router.get("/:sport/:gameId", async (req, res) => {
 
   try {
     const games = await getOddsForSport(sport);
-    const game = games.find((g) => g.id === gameId);
+    let game = games.find((g) => g.id === gameId);
+
+    // Not in the live odds feed — likely a game that already finished and
+    // dropped off /odds (very common on a busy CFB/CBB slate). Fall back to
+    // /scores so the breakdown still opens instead of 404ing on any finished
+    // game the Board had to backfill.
+    let finalScoreFallback = null;
+    if (!game) {
+      const scores = await getScoresForSport(sport).catch(() => ({}));
+      const s = scores[gameId];
+      if (s && s.homeTeam && s.awayTeam) {
+        game = {
+          id: gameId,
+          sport,
+          commenceTime: s.commenceTime,
+          homeTeam: s.homeTeam,
+          awayTeam: s.awayTeam,
+          primaryBook: null,
+          moneyline: [],
+          spread: [],
+          total: [],
+          allBooks: [],
+        };
+        if (s.completed) finalScoreFallback = { home: s.homeScore, away: s.awayScore };
+      }
+    }
     if (!game) return res.status(404).json({ error: "Game not found" });
 
     const venue = VENUES[game.homeTeam];
@@ -31,7 +56,11 @@ router.get("/:sport/:gameId", async (req, res) => {
       ["nfl", "nba", "mlb"].includes(sport)
         ? getHeadToHeadResults(sport, game.homeTeam, game.awayTeam, season).catch(() => [])
         : Promise.resolve([]),
-      venue && !venue.dome
+      // A finished game's weather forecast isn't meaningful (and the forecast
+      // API generally can't look backward anyway), so skip it entirely.
+      finalScoreFallback
+        ? Promise.resolve(null)
+        : venue && !venue.dome
         ? getGameWeather(venue.lat, venue.lon, game.commenceTime).catch(() => null)
         : Promise.resolve(venue?.dome ? { conditions: "Dome — no weather impact" } : null),
       getLineHistory(game.id, game.primaryBook).catch(() => ({
@@ -42,6 +71,7 @@ router.get("/:sport/:gameId", async (req, res) => {
 
     res.json({
       game,
+      finalScore: finalScoreFallback,
       weather,
       injuries: (injuries || []).filter(
         (i) =>

@@ -6,6 +6,8 @@ import dossierRouter from "./routes/dossier.js";
 import chatRouter from "./routes/chat.js";
 import lineHistoryRouter from "./routes/lineHistory.js";
 import moversRouter from "./routes/movers.js";
+import authRouter from "./routes/auth.js";
+import betsRouter from "./routes/bets.js";
 
 const app = express();
 app.use(cors());
@@ -18,6 +20,8 @@ app.use("/api/dossier", dossierRouter);
 app.use("/api/chat", chatRouter);
 app.use("/api/line-history", lineHistoryRouter);
 app.use("/api/movers", moversRouter);
+app.use("/api/auth", authRouter);
+app.use("/api/bets", betsRouter);
 
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
