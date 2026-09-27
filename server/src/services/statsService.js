@@ -33,11 +33,25 @@ export async function getSeasonSchedule(sportSlug, season) {
   );
 }
 
+// Looks back across the current season plus the previous 3 seasons so real past
+// meetings show up, not just this season's (possibly still-upcoming) matchup.
 export async function getHeadToHead(sportSlug, season, teamA, teamB) {
-  const schedule = await getSeasonSchedule(sportSlug, season);
-  return (schedule || []).filter(
+  const baseYear = parseInt(season, 10);
+  const seasonsToCheck = [baseYear, baseYear - 1, baseYear - 2, baseYear - 3].map(String);
+
+  const schedules = await Promise.all(
+    seasonsToCheck.map((s) => getSeasonSchedule(sportSlug, s).catch(() => []))
+  );
+
+  const allGames = schedules.flat();
+  const matches = allGames.filter(
     (g) =>
       (g.HomeTeam === teamA && g.AwayTeam === teamB) ||
       (g.HomeTeam === teamB && g.AwayTeam === teamA)
   );
+
+  // Most recent meeting first.
+  matches.sort((a, b) => new Date(b.DateTime || b.Date || 0) - new Date(a.DateTime || a.Date || 0));
+
+  return matches;
 }
