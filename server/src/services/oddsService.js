@@ -118,12 +118,52 @@ export async function getScoresForSport(sportSlug, daysFrom = 3) {
   });
 }
 
+function median(nums) {
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// The Board's headline odds (spread/moneyline/total) are a market-consensus
+// figure, not any one sportsbook's line: for each side of a market (e.g.
+// "Over"/"Under", or a team name), take the MEDIAN point and MEDIAN price
+// across every book The Odds API returned for this game. Median (not mean)
+// so one outlier book can't skew the number the way an average would.
+//
+// This never invents a number — a side only appears here if at least one real
+// book reported it, and the value returned is always a real reported point or
+// price (or, for an even book count, the arithmetic midpoint of two real
+// values sitting next to each other in sorted order — still derived only from
+// disclosed prices, never fabricated from nothing). Spread/total points are
+// rounded to the nearest half-point, matching standard bookmaker granularity;
+// moneyline/spread/total prices are rounded to the nearest whole American-odds
+// number. If a market has no books reporting at all, it comes back empty,
+// exactly as it did before — we don't fill gaps with a guess or another
+// book's line.
+function consensusMarket(books, marketKey, { roundToHalf = false } = {}) {
+  const bySide = {};
+  for (const b of books) {
+    const market = b.markets?.find((m) => m.key === marketKey);
+    for (const o of market?.outcomes || []) {
+      if (!bySide[o.name]) bySide[o.name] = { points: [], prices: [] };
+      if (o.point !== undefined && o.point !== null) bySide[o.name].points.push(Number(o.point));
+      if (o.price !== undefined && o.price !== null) bySide[o.name].prices.push(Number(o.price));
+    }
+  }
+  return Object.entries(bySide).map(([name, v]) => {
+    const entry = { name };
+    if (v.points.length) {
+      const m = median(v.points);
+      entry.point = roundToHalf ? Math.round(m * 2) / 2 : m;
+    }
+    if (v.prices.length) entry.price = Math.round(median(v.prices));
+    return entry;
+  });
+}
+
 /** Reshape the provider's payload into the flat structure the frontend/AI expect. */
 function normalizeGame(game) {
   const books = game.bookmakers || [];
-  // Use the first book with full market coverage as the "primary" display line;
-  // keep all books so the frontend can offer line-shopping later.
-  const primary = books[0];
 
   const extractMarket = (book, key) =>
     book?.markets?.find((m) => m.key === key)?.outcomes || [];
@@ -134,10 +174,16 @@ function normalizeGame(game) {
     commenceTime: game.commence_time,
     homeTeam: game.home_team,
     awayTeam: game.away_team,
-    primaryBook: primary?.title || null,
-    moneyline: extractMarket(primary, "h2h"),
-    spread: extractMarket(primary, "spreads"),
-    total: extractMarket(primary, "totals"),
+    // Internal only — NOT the source of the odds shown above, and not sent to
+    // the Board. This just pins the opening-line/line-movement history (see
+    // snapshotService.getLineHistory) to one consistent book over time so that
+    // comparison is apples-to-apples; the Breakdown screen's "detailed
+    // comparison" view is the one place a specific book name is still shown.
+    lineTrackingBook: books[0]?.title || null,
+    moneyline: consensusMarket(books, "h2h"),
+    spread: consensusMarket(books, "spreads", { roundToHalf: true }),
+    total: consensusMarket(books, "totals", { roundToHalf: true }),
+    consensusBookCount: books.length,
     allBooks: books.map((b) => ({
       book: b.title,
       moneyline: extractMarket(b, "h2h"),

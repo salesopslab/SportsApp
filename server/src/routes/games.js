@@ -96,7 +96,7 @@ router.get("/:sport", withTier, async (req, res) => {
         commenceTime: s.commenceTime,
         homeTeam: s.homeTeam,
         awayTeam: s.awayTeam,
-        primaryBook: null,
+        lineTrackingBook: null,
         moneyline: [],
         spread: [],
         total: [],

@@ -29,9 +29,34 @@ export async function getTeamSeasonStats(sportSlug, season) {
 }
 
 export async function getSeasonSchedule(sportSlug, season) {
-  return cached(`schedule:${sportSlug}:${season}`, () =>
-    sdioGet(sportSlug, `scores/json/Schedules/${season}`)
-  );
+  return cached(`schedule:${sportSlug}:${season}`, () => fetchSeasonSchedule(sportSlug, season));
+}
+
+// MLB's Schedules endpoint 404s on a bare year ("2026") — SportsData.io's own
+// docs say the season parameter needs a season-type suffix there ("2026REG"
+// for regular season, "2026POST" for postseason; confirmed via their workflow
+// guide, not guessed). Every other sport here accepts the bare year fine, so
+// this only branches for MLB, and only when the caller passed a bare year
+// (a caller that already passed an explicit "...REG"/"...POST" is left alone).
+// Merges regular season + postseason so head-to-head/pitcher lookups keep
+// working correctly no matter where in the calendar "today" falls (e.g. late
+// September, when the regular season is wrapping up and the postseason is
+// starting at the same time).
+async function fetchSeasonSchedule(sportSlug, season) {
+  if (sportSlug === "mlb" && /^\d{4}$/.test(String(season))) {
+    const [reg, post] = await Promise.all([
+      sdioGet(sportSlug, `scores/json/Schedules/${season}REG`).catch((err) => {
+        console.error(`getSeasonSchedule(mlb, ${season}REG) failed:`, err.message);
+        return [];
+      }),
+      sdioGet(sportSlug, `scores/json/Schedules/${season}POST`).catch((err) => {
+        console.error(`getSeasonSchedule(mlb, ${season}POST) failed:`, err.message);
+        return [];
+      }),
+    ]);
+    return [...(reg || []), ...(post || [])];
+  }
+  return sdioGet(sportSlug, `scores/json/Schedules/${season}`);
 }
 
 // Looks back across the current season plus the previous 3 seasons so real past

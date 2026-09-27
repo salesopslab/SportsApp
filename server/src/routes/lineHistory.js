@@ -13,7 +13,7 @@ router.get("/:sport/:gameId", async (req, res) => {
     const game = games.find((g) => g.id === gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
 
-    const history = await getLineHistory(gameId, game.primaryBook);
+    const history = await getLineHistory(gameId, game.lineTrackingBook);
     res.json(history);
   } catch (err) {
     console.error(err);

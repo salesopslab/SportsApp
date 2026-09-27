@@ -6,10 +6,19 @@ import { getHeadToHeadResults } from "../services/espnService.js";
 import { getLineHistory } from "../services/snapshotService.js";
 import { VENUES } from "../data/venues.js";
 import { toTeamCode } from "../data/teamCodes.js";
+import { withTier } from "../middleware/tier.js";
+import { meetsTier } from "../services/tierService.js";
 
 const router = Router();
 
-router.get("/:sport/:gameId", async (req, res) => {
+const LINE_MOVEMENT_LOCKED = {
+  available: false,
+  locked: true,
+  reason: "Line movement tracking is an Edge feature.",
+  requiredTier: "edge",
+};
+
+router.get("/:sport/:gameId", withTier, async (req, res) => {
   const { sport, gameId } = req.params;
   const { season = "2026" } = req.query;
 
@@ -32,7 +41,7 @@ router.get("/:sport/:gameId", async (req, res) => {
           commenceTime: s.commenceTime,
           homeTeam: s.homeTeam,
           awayTeam: s.awayTeam,
-          primaryBook: null,
+          lineTrackingBook: null,
           moneyline: [],
           spread: [],
           total: [],
@@ -44,6 +53,7 @@ router.get("/:sport/:gameId", async (req, res) => {
     if (!game) return res.status(404).json({ error: "Game not found" });
 
     const venue = VENUES[game.homeTeam];
+    const includeLineMovement = meetsTier(req.userRow, "edge");
 
     const [injuries, h2h, h2hResults, weather, lineMovement] = await Promise.all([
       getInjuries(sport).catch(() => null),
@@ -63,10 +73,12 @@ router.get("/:sport/:gameId", async (req, res) => {
         : venue && !venue.dome
         ? getGameWeather(venue.lat, venue.lon, game.commenceTime).catch(() => null)
         : Promise.resolve(venue?.dome ? { conditions: "Dome — no weather impact" } : null),
-      getLineHistory(game.id, game.primaryBook).catch(() => ({
-        available: false,
-        reason: "Line history lookup failed.",
-      })),
+      includeLineMovement
+        ? getLineHistory(game.id, game.lineTrackingBook).catch(() => ({
+            available: false,
+            reason: "Line history lookup failed.",
+          }))
+        : Promise.resolve(LINE_MOVEMENT_LOCKED),
     ]);
 
     res.json({
