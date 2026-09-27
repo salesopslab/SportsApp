@@ -103,6 +103,8 @@ body{
 .matchup{ display:flex; flex-direction:column; gap:8px; }
 .team-line{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
 .team-name{ font-size:16px; font-weight:500; }
+.rank-badge{ font-size:10.5px; font-weight:700; color:var(--amber); margin-right:5px; white-space:nowrap; }
+.home-tag{ font-size:9px; font-weight:700; color:var(--sub); border:1px solid var(--line); border-radius:6px; padding:1px 5px; margin-left:6px; letter-spacing:0.3px; vertical-align:middle; }
 .odds-cluster{ display:flex; gap:14px; font-family:'Oswald',sans-serif; flex-shrink:0; }
 .odds-box{ text-align:right; min-width:44px; }
 .odds-box .num{ font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
@@ -766,6 +768,14 @@ async function loadBoard(sport){
   }
 }
 
+// Small "#3" / "1st AFC East" badge next to a team name, and a "HOME" tag on
+// the home team — both no-ops (empty string) when the data isn't there, so a
+// team with no rank or a sport with no ranking data just shows the plain name.
+function rankBadge(rank){
+  return rank ? `<span class="rank-badge">${rank}</span>` : '';
+}
+const homeTag = '<span class="home-tag">HOME</span>';
+
 function renderGameRow(g){
   const bigMove = bigMoverKeys.has(moverKey(currentSport, g.id));
   const bigMoveBadge = bigMove ? '<span class="big-move-badge">🔥 Big move</span>' : '';
@@ -780,11 +790,11 @@ function renderGameRow(g){
       <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${bigMoveBadge}</div>
       <div class="matchup">
         <div class="team-line">
-          <span class="team-name">${g.awayTeam}</span>
+          <span class="team-name">${rankBadge(g.awayRank)}${g.awayTeam}</span>
           <div class="score-num">${score.away ?? '—'}</div>
         </div>
         <div class="team-line">
-          <span class="team-name">${g.homeTeam}</span>
+          <span class="team-name">${rankBadge(g.homeRank)}${g.homeTeam}${homeTag}</span>
           <div class="score-num">${score.home ?? '—'}</div>
         </div>
       </div>
@@ -811,7 +821,7 @@ function renderGameRow(g){
     <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || g.primaryBook || ''}</span>${bigMoveBadge}</div>
     <div class="matchup">
       <div class="team-line">
-        <span class="team-name">${g.awayTeam}</span>
+        <span class="team-name">${rankBadge(g.awayRank)}${g.awayTeam}</span>
         <div class="odds-cluster">
           <div class="odds-box"><div class="num">${spreadAway ? fmtOdds(spreadAway.point) : '—'}</div><div class="lbl">Spread</div>${openAwayLabel}</div>
           <div class="odds-box"><div class="num">${away ? fmtOdds(away.price) : '—'}</div><div class="lbl">ML</div></div>
@@ -819,7 +829,7 @@ function renderGameRow(g){
         </div>
       </div>
       <div class="team-line">
-        <span class="team-name">${g.homeTeam}</span>
+        <span class="team-name">${rankBadge(g.homeRank)}${g.homeTeam}${homeTag}</span>
         <div class="odds-cluster">
           <div class="odds-box"><div class="num">${spreadHome ? fmtOdds(spreadHome.point) : '—'}</div><div class="lbl">Spread</div>${openHomeLabel}</div>
           <div class="odds-box"><div class="num">${home ? fmtOdds(home.price) : '—'}</div><div class="lbl">ML</div></div>

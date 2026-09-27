@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getOddsForSport, getScoresForSport } from "../services/oddsService.js";
 import { getOpeningSpreads } from "../services/snapshotService.js";
+import { getTeamRankings, lookupRankLabel } from "../services/statsService.js";
 
 const router = Router();
 
@@ -27,9 +28,11 @@ function commencedToday(commenceTime, now) {
 router.get("/:sport", async (req, res) => {
   try {
     const sport = req.params.sport;
-    const [games, scores] = await Promise.all([
+    const season = req.query.season || "2026";
+    const [games, scores, rankings] = await Promise.all([
       getOddsForSport(sport),
       getScoresForSport(sport).catch(() => ({})), // scores are a nice-to-have, never block the board
+      getTeamRankings(sport, season).catch(() => ({})), // same — a ranking miss shouldn't block the board
     ]);
 
     const now = Date.now();
@@ -117,7 +120,16 @@ router.get("/:sport", async (req, res) => {
     });
     const nonUpcoming = enriched.filter((g) => g.status !== "upcoming");
 
-    res.json({ sport, games: [...withOpening, ...nonUpcoming, ...backfilled] });
+    // Division/conference standing (NFL/NBA/MLB) or AP poll rank (CFB/CBB),
+    // attached to every game regardless of status — a ranking is a fact about
+    // the team, not about this particular game's state.
+    const withRanks = [...withOpening, ...nonUpcoming, ...backfilled].map((g) => ({
+      ...g,
+      homeRank: lookupRankLabel(sport, rankings, g.homeTeam),
+      awayRank: lookupRankLabel(sport, rankings, g.awayTeam),
+    }));
+
+    res.json({ sport, games: withRanks });
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "Failed to fetch odds", detail: err.message });
