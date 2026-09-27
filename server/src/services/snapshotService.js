@@ -121,6 +121,40 @@ export async function getLineHistory(gameId, primaryBook) {
 }
 
 /**
+ * Returns each game's opening spread (the earliest recorded point per side)
+ * for a batch of games in one query — used to show "opened -6.5" alongside
+ * the current line on the Board, so a move is visible without opening the
+ * full breakdown. Keyed by game_id, then by side (team name).
+ *
+ * This takes the single earliest snapshot per (game, side) regardless of
+ * which book recorded it — a reasonable approximation for a compact card;
+ * the dossier's full line-movement view is the one that pins everything to
+ * one book for an apples-to-apples comparison.
+ */
+export async function getOpeningSpreads(sportSlug, gameIds) {
+  if (!pool || !gameIds || !gameIds.length) return {};
+  try {
+    await ensureSchema();
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (game_id, side) game_id, side, point, captured_at
+       FROM odds_snapshots
+       WHERE sport = $1 AND market = 'spread' AND game_id = ANY($2)
+       ORDER BY game_id, side, captured_at ASC`,
+      [sportSlug, gameIds]
+    );
+    const byGame = {};
+    for (const r of rows) {
+      if (!byGame[r.game_id]) byGame[r.game_id] = {};
+      byGame[r.game_id][r.side] = r.point === null ? null : Number(r.point);
+    }
+    return byGame;
+  } catch (err) {
+    console.error("getOpeningSpreads failed:", err.message);
+    return {};
+  }
+}
+
+/**
  * Finds the games whose lines have moved the most in the last `sinceMinutes`
  * minutes, across every sport. For each (game, market, side, book) we compare
  * the earliest snapshot in that window to the latest snapshot overall, then

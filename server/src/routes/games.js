@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getOddsForSport, getScoresForSport } from "../services/oddsService.js";
+import { getOpeningSpreads } from "../services/snapshotService.js";
 
 const router = Router();
 
@@ -91,7 +92,28 @@ router.get("/:sport", async (req, res) => {
         finalScore: { home: s.homeScore, away: s.awayScore },
       }));
 
-    res.json({ sport, games: [...enriched, ...backfilled] });
+    // Attach each upcoming game's opening spread so the Board can show
+    // "current vs. opened" without a trip to the full breakdown. Only
+    // upcoming games actually display a spread card, so that's all we look up.
+    const upcoming = enriched.filter((g) => g.status === "upcoming");
+    const openingBySide = await getOpeningSpreads(
+      sport,
+      upcoming.map((g) => g.id)
+    ).catch(() => ({}));
+    const withOpening = upcoming.map((g) => {
+      const sides = openingBySide[g.id];
+      if (!sides) return g;
+      return {
+        ...g,
+        openingSpread: {
+          home: sides[g.homeTeam] ?? null,
+          away: sides[g.awayTeam] ?? null,
+        },
+      };
+    });
+    const nonUpcoming = enriched.filter((g) => g.status !== "upcoming");
+
+    res.json({ sport, games: [...withOpening, ...nonUpcoming, ...backfilled] });
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "Failed to fetch odds", detail: err.message });
