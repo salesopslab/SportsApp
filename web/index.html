@@ -185,6 +185,10 @@ body{
 .score-badge.live{ background:var(--red); color:#fff; }
 .score-num{ font-family:'Oswald',sans-serif; font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
 .game-row.final,.game-row.live{ opacity:0.9; }
+.board-controls{ display:flex; justify-content:flex-end; padding:8px 20px 0; }
+.sort-toggle{ font-size:12px; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:6px 12px; border-radius:16px; cursor:pointer; }
+.sort-toggle:active{ background:var(--surface2); }
+.game-countdown{ color:var(--amber); font-weight:700; }
 
 .chat-wrap{ display:flex; flex-direction:column; height:100%; padding:0 20px; }
 .chat-log{ flex:1; padding:16px 0; display:flex; flex-direction:column; gap:14px; overflow-y:auto; }
@@ -242,6 +246,9 @@ body{
       <div class="sport-tab" data-sport="mlb">MLB</div>
       <div class="sport-tab" data-sport="ncaaf">CFB</div>
       <div class="sport-tab" data-sport="ncaab">CBB</div>
+    </div>
+    <div class="board-controls">
+      <button class="sort-toggle" id="sortToggle">⇅ Soonest first</button>
     </div>
     <div id="boardList"><div class="board-msg"><div class="spin"></div><div>Loading live odds…</div></div></div>
   </div>
@@ -353,6 +360,30 @@ function timeLabel(iso){
   }catch(e){ return iso; }
 }
 
+// For a game kicking off within the next 60 minutes, show a live "Starts in
+// 42m" countdown instead of the plain date/time — makes it obvious which
+// games are about to start. Anything further out just shows the normal time.
+function minutesUntil(iso){
+  return (new Date(iso).getTime() - Date.now()) / 60000;
+}
+function formatCountdown(iso){
+  const mins = minutesUntil(iso);
+  if(mins <= 0) return 'Starting now';
+  return `Starts in ${Math.ceil(mins)}m`;
+}
+function gameMetaTime(g){
+  if(g.status === 'upcoming' && minutesUntil(g.commenceTime) <= 60){
+    return `<span class="game-countdown" data-commence="${g.commenceTime}">${formatCountdown(g.commenceTime)}</span>`;
+  }
+  return `<span>${timeLabel(g.commenceTime)}</span>`;
+}
+function updateCountdowns(){
+  document.querySelectorAll('.game-countdown').forEach(el=>{
+    el.textContent = formatCountdown(el.dataset.commence);
+  });
+}
+setInterval(updateCountdowns, 15000);
+
 async function checkHealth(){
   try{
     setStatus('waking','Connecting…');
@@ -364,6 +395,47 @@ async function checkHealth(){
   }
 }
 
+let lastGames = [];
+let sortDir = 'asc'; // 'asc' = soonest kickoff first, 'desc' = latest kickoff first
+
+function sortGames(games){
+  // Upcoming games always come before live, which always comes before
+  // finished — the soonest/latest toggle only controls order *within* each
+  // of those groups, so a "latest first" sort doesn't bury upcoming games
+  // under a pile of finished ones.
+  const statusRank = { upcoming: 0, live: 1, final: 2 };
+  return games.slice().sort((a, b) => {
+    const rankDiff = (statusRank[a.status] ?? 0) - (statusRank[b.status] ?? 0);
+    if(rankDiff !== 0) return rankDiff;
+    const diff = new Date(a.commenceTime) - new Date(b.commenceTime);
+    return sortDir === 'asc' ? diff : -diff;
+  });
+}
+
+function renderBoardList(){
+  const list = document.getElementById('boardList');
+  const games = sortGames(lastGames);
+  if(games.length === 0){
+    list.innerHTML = '<div class="board-msg">No games with posted odds for this sport right now — check back closer to game day.</div>';
+    return;
+  }
+  list.innerHTML = games.map(g => renderGameRow(g)).join('');
+  list.querySelectorAll('.game-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const id = row.dataset.id;
+      const game = games.find(x=>x.id===id);
+      openDossier(currentSport, game);
+    });
+  });
+  updateCountdowns();
+}
+
+document.getElementById('sortToggle').addEventListener('click', ()=>{
+  sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  document.getElementById('sortToggle').textContent = sortDir === 'asc' ? '⇅ Soonest first' : '⇅ Latest first';
+  renderBoardList();
+});
+
 async function loadBoard(sport){
   currentSport = sport;
   const list = document.getElementById('boardList');
@@ -373,27 +445,8 @@ async function loadBoard(sport){
     if(!res.ok) throw new Error('bad status ' + res.status);
     const data = await res.json();
     setStatus('', 'Live');
-    // Show upcoming games first, then in-progress, then finished — finished
-    // games are still shown (with their result) but shouldn't push upcoming
-    // games below the fold.
-    const statusRank = { upcoming: 0, live: 1, final: 2 };
-    const games = (data.games || []).slice().sort((a, b) => {
-      const rankDiff = (statusRank[a.status] ?? 0) - (statusRank[b.status] ?? 0);
-      if(rankDiff !== 0) return rankDiff;
-      return new Date(a.commenceTime) - new Date(b.commenceTime);
-    });
-    if(games.length === 0){
-      list.innerHTML = '<div class="board-msg">No games with posted odds for this sport right now — check back closer to game day.</div>';
-      return;
-    }
-    list.innerHTML = games.map(g => renderGameRow(g)).join('');
-    list.querySelectorAll('.game-row').forEach(row=>{
-      row.addEventListener('click', ()=>{
-        const id = row.dataset.id;
-        const game = games.find(x=>x.id===id);
-        openDossier(sport, game);
-      });
-    });
+    lastGames = data.games || [];
+    renderBoardList();
   }catch(e){
     setStatus('down','Unreachable');
     list.innerHTML = `<div class="board-msg">Couldn't load live odds (${e.message}). The free-tier server may still be waking up — pull down or reselect the sport tab to retry in a moment.</div>`;
@@ -432,7 +485,7 @@ function renderGameRow(g){
   const bookCount = (g.allBooks || []).length;
   return `
   <div class="game-row" data-id="${g.id}">
-    <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span>${venueLabel(g.homeTeam) || g.primaryBook || ''}</span></div>
+    <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || g.primaryBook || ''}</span></div>
     <div class="matchup">
       <div class="team-line">
         <span class="team-name">${g.awayTeam}</span>
