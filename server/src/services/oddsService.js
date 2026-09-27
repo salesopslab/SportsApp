@@ -1,4 +1,5 @@
 import { cached } from "./cache.js";
+import { recordSnapshot } from "./snapshotService.js";
 
 const BASE = process.env.ODDS_API_BASE;
 const KEY = process.env.ODDS_API_KEY;
@@ -32,7 +33,11 @@ export async function getOddsForSport(sportSlug) {
       throw new Error(`Odds API error ${res.status}: ${await res.text()}`);
     }
     const raw = await res.json();
-    return raw.map(normalizeGame);
+    const games = raw.map(normalizeGame);
+    // Fire-and-forget: record this fresh fetch as a line-movement snapshot.
+    // Never awaited so a slow/failed DB write can't delay the odds response.
+    recordSnapshot(sportSlug, games).catch(() => {});
+    return games;
   });
 }
 

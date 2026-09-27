@@ -426,17 +426,40 @@ async function openDossier(sport, game){
   }
 }
 
+function formatPrice(p){
+  if(p === null || p === undefined) return '—';
+  return p > 0 ? '+'+p : String(p);
+}
+function lineMovementRow(m){
+  const label = m.market === 'moneyline' ? `${m.side} ML`
+    : m.market === 'total' ? `Total (${m.side})`
+    : `${m.side} Spread`;
+  const fmt = (point, price) => m.market === 'moneyline'
+    ? formatPrice(price)
+    : `${point ?? '—'} (${formatPrice(price)})`;
+  const openStr = fmt(m.openPoint, m.openPrice);
+  const curStr = fmt(m.currentPoint, m.currentPrice);
+  return `<div class="fact-row"><span>${label}</span><span class="v">${m.moved ? `${openStr} → ${curStr}` : `${curStr} (unchanged)`}</span></div>`;
+}
+
 function renderDossier(d){
   const g = d.game;
   const w = d.weather;
   const inj = d.injuries || [];
   const h2h = d.headToHead || [];
   const h2hResults = d.headToHeadResults || [];
+  const lm = d.lineMovement || {};
   let html = `
     <div class="dossier-hero">
       <div class="dossier-title">${g.awayTeam} @ ${g.homeTeam}</div>
       <div class="dossier-sub">${timeLabel(g.commenceTime)}</div>
       <div class="dossier-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
+    </div>
+    <div class="section">
+      <h3>Line movement${lm.book ? ' · ' + lm.book : ''}</h3>
+      ${lm.available && lm.hasHistory && lm.summary && lm.summary.length
+        ? lm.summary.map(lineMovementRow).join('')
+        : `<div class="empty-note">${lm.reason || lm.note || 'Tracking line movement now — check back after the odds refresh a few times to see how the line has moved.'}</div>`}
     </div>
     <div class="section">
       <h3>Head-to-head results</h3>
