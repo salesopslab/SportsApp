@@ -43,6 +43,7 @@
   color-scheme:dark;
 }
 *{box-sizing:border-box; margin:0; padding:0;}
+.hidden{ display:none !important; }
 html,body{height:100%;}
 body{
   background:var(--bg); color:var(--text);
@@ -183,6 +184,36 @@ body{
 .modal-submit{ width:100%; padding:12px; border-radius:10px; border:none; background:var(--amber); color:var(--bg); font-weight:700; cursor:pointer; font-size:14px; }
 .modal-error{ color:var(--red); font-size:12.5px; margin-bottom:8px; min-height:0; }
 
+/* Tier badge + pricing / upgrade modal */
+.tier-badge{ font-size:10.5px; font-weight:700; padding:5px 10px; border-radius:20px; background:none; cursor:pointer; font-family:inherit; white-space:nowrap; border:1px solid var(--amber); color:var(--amber); }
+.tier-badge.paid{ border-color:var(--green); color:var(--green); }
+.tier-badge.expired{ border-color:var(--red); color:var(--red); }
+.pricing-modal-card{ max-width:400px; max-height:85vh; overflow-y:auto; }
+.pricing-intro{ font-size:12.5px; color:var(--sub); margin-bottom:14px; }
+.tier-card{ border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
+.tier-card.current{ border-color:var(--green); background:rgba(63,166,107,0.06); }
+.tier-card-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px; }
+.tier-card-name{ font-family:'Oswald',sans-serif; font-size:16px; font-weight:600; }
+.tier-card-price{ font-size:14px; font-weight:700; color:var(--amber); }
+.tier-card-price span{ font-size:11px; font-weight:400; color:var(--sub); }
+.tier-card-blurb{ font-size:12.5px; color:var(--sub); margin-bottom:10px; line-height:1.5; }
+.tier-card-btn{ width:100%; padding:9px; border-radius:9px; border:1px solid var(--amber); background:none; color:var(--amber); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; }
+.tier-card-btn.current-btn{ border-color:var(--green); color:var(--green); cursor:default; }
+.tier-card-btn:disabled{ opacity:0.6; cursor:default; }
+.pricing-trial-note{ font-size:11.5px; color:var(--sub); text-align:center; margin:4px 0 14px; }
+.manage-billing-link{ display:block; text-align:center; font-size:12.5px; color:var(--sub); text-decoration:underline; margin-top:6px; cursor:pointer; background:none; border:none; font-family:inherit; width:100%; padding:6px; }
+.pricing-error{ color:var(--red); font-size:12.5px; margin:8px 0; text-align:center; }
+
+/* Inline "this needs a plan" prompt shown in place of a gated feature */
+.upgrade-prompt{ margin:0 20px 12px; padding:18px 16px; border:1px dashed var(--amber); border-radius:12px; text-align:center; background:rgba(199,127,29,0.06); }
+.upgrade-prompt .lock{ font-size:22px; margin-bottom:6px; }
+.upgrade-prompt .headline{ font-size:14px; font-weight:700; margin-bottom:4px; }
+.upgrade-prompt .sub{ font-size:12.5px; color:var(--sub); margin-bottom:12px; line-height:1.5; }
+.upgrade-prompt button{ padding:9px 18px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; }
+.upgrade-prompt.inline{ margin:12px 0 0; }
+.msg.upgrade{ background:none; border:1px dashed var(--amber); text-align:center; max-width:100%; }
+.msg.upgrade button{ margin-top:8px; padding:8px 16px; border-radius:18px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; }
+
 /* Track-a-pick */
 .track-row{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
 .track-row:last-child{ border-bottom:none; }
@@ -206,6 +237,7 @@ body{
 </style>
 <body>
 
+
 <div class="app">
 
   <div class="mover-alerts" id="moverAlerts"></div>
@@ -217,6 +249,7 @@ body{
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
       <div class="status-pill waking" id="apiStatus"><span class="status-dot"></span><span id="apiStatusLabel">Connecting…</span></div>
+      <button class="tier-badge hidden" id="tierBadge"></button>
       <button class="profile-btn" id="profileBtn">Log in</button>
     </div>
   </div>
@@ -234,6 +267,18 @@ body{
       <input class="modal-input" id="authEmail" type="email" placeholder="Email" autocomplete="email">
       <input class="modal-input" id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
       <button class="modal-submit" id="authSubmit">Log In</button>
+    </div>
+  </div>
+
+  <!-- PRICING / UPGRADE MODAL -->
+  <div class="modal-overlay hidden" id="pricingModal">
+    <div class="modal-card pricing-modal-card">
+      <button class="modal-close" id="pricingModalClose">×</button>
+      <h2>Upgrade your plan</h2>
+      <div class="pricing-intro">Every plan starts with a 3-day free trial with full Edge Pro access — no charge until it ends.</div>
+      <div class="pricing-error" id="pricingError"></div>
+      <div id="pricingTiers"><div class="board-msg"><div class="spin"></div></div></div>
+      <button class="manage-billing-link hidden" id="manageBillingBtn">Manage billing / cancel subscription</button>
     </div>
   </div>
 
@@ -365,11 +410,176 @@ function apiFetch(path, opts = {}) {
   return fetch(`${API}${path}`, Object.assign({}, opts, { headers }));
 }
 
+let tiersCache = null;
+let trialDaysCache = 3;
+
+function tierDisplayName(tierId){
+  const t = (tiersCache || []).find(x => x.id === tierId);
+  if(t) return t.name;
+  return { trial: 'Trial', expired: 'Expired', none: 'Free' }[tierId] || tierId;
+}
+
 function updateProfileButton(){
   const btn = document.getElementById('profileBtn');
   btn.textContent = currentUser ? currentUser.email.split('@')[0] : 'Log in';
+  updateTierBadge();
+}
+
+function updateTierBadge(){
+  const badge = document.getElementById('tierBadge');
+  if(!currentUser){ badge.classList.add('hidden'); return; }
+  badge.classList.remove('hidden');
+  badge.classList.remove('paid', 'expired');
+  if(currentUser.tier === 'trial'){
+    const daysLeft = Math.max(1, Math.ceil((currentUser.trialMsRemaining || 0) / 86400000));
+    badge.textContent = `Trial · ${daysLeft}d left`;
+  } else if(currentUser.tier === 'expired'){
+    badge.textContent = 'Upgrade';
+    badge.classList.add('expired');
+  } else {
+    badge.textContent = tierDisplayName(currentUser.tier);
+    badge.classList.add('paid');
+  }
 }
 updateProfileButton();
+
+// Refreshes the logged-in user's tier/trial state from the server — used
+// right after login/signup isn't necessary (that response already has it),
+// but IS necessary after returning from Stripe Checkout, where the webhook
+// may take a moment but /me always reflects the latest we know.
+async function refreshAccount(){
+  if(!authToken) return;
+  try{
+    const res = await apiFetch('/api/auth/me');
+    if(!res.ok) return;
+    const data = await res.json();
+    currentUser = data.user;
+    try{ localStorage.setItem('betedge_user', JSON.stringify(currentUser)); }catch{}
+    updateProfileButton();
+  }catch(e){ /* best-effort */ }
+}
+
+// ---------------------------------------------------------------------------
+// Pricing / upgrade modal
+// ---------------------------------------------------------------------------
+async function fetchTiers(){
+  if(tiersCache) return tiersCache;
+  try{
+    const res = await fetch(`${API}/api/billing/tiers`);
+    const data = await res.json();
+    tiersCache = data.tiers || [];
+    trialDaysCache = data.trialDays || 3;
+  }catch(e){ tiersCache = []; }
+  return tiersCache;
+}
+
+function renderTierCard(t){
+  const isCurrent = currentUser && currentUser.tier === t.id;
+  const price = `$${(t.priceCents/100).toFixed(2)}<span>/mo</span>`;
+  return `
+    <div class="tier-card${isCurrent ? ' current' : ''}">
+      <div class="tier-card-top">
+        <span class="tier-card-name">${t.name}</span>
+        <span class="tier-card-price">${price}</span>
+      </div>
+      <div class="tier-card-blurb">${t.blurb}</div>
+      <button class="tier-card-btn${isCurrent ? ' current-btn' : ''}" data-tier="${t.id}" ${isCurrent ? 'disabled' : ''}>
+        ${isCurrent ? '✓ Current plan' : 'Upgrade'}
+      </button>
+    </div>
+  `;
+}
+
+async function renderPricingModal(){
+  const container = document.getElementById('pricingTiers');
+  const tiers = await fetchTiers();
+  document.querySelector('.pricing-intro').textContent =
+    `Every plan starts with a ${trialDaysCache}-day free trial with full Edge Pro access — no charge until it ends.`;
+  if(!tiers.length){
+    container.innerHTML = '<div class="board-msg">Couldn\'t load plans right now — try again in a moment.</div>';
+    return;
+  }
+  container.innerHTML = tiers.map(renderTierCard).join('');
+  container.querySelectorAll('.tier-card-btn:not(:disabled)').forEach(btn=>{
+    btn.addEventListener('click', ()=>startCheckout(btn.dataset.tier, btn));
+  });
+  const manageBtn = document.getElementById('manageBillingBtn');
+  // Only show "manage billing" once someone actually has a paid/trial
+  // account worth managing — a never-subscribed visitor has nothing to manage.
+  manageBtn.classList.toggle('hidden', !currentUser || currentUser.tier === 'none');
+}
+
+function openPricingModal(){
+  document.getElementById('pricingError').textContent = '';
+  document.getElementById('pricingModal').classList.remove('hidden');
+  renderPricingModal();
+}
+function closePricingModal(){
+  document.getElementById('pricingModal').classList.add('hidden');
+}
+document.getElementById('pricingModalClose').addEventListener('click', closePricingModal);
+document.getElementById('tierBadge').addEventListener('click', openPricingModal);
+
+async function startCheckout(tierId, btnEl){
+  if(!currentUser){ closePricingModal(); openAuthModal(); return; }
+  const errEl = document.getElementById('pricingError');
+  errEl.textContent = '';
+  if(btnEl){ btnEl.disabled = true; btnEl.textContent = 'Redirecting…'; }
+  try{
+    const res = await apiFetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        tier: tierId,
+        successUrl: window.location.href.split('?')[0] + '?upgraded=1',
+        cancelUrl: window.location.href.split('?')[0]
+      })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Failed to start checkout.');
+    window.location.href = data.url;
+  }catch(e){
+    errEl.textContent = e.message;
+    if(btnEl){ btnEl.disabled = false; btnEl.textContent = 'Upgrade'; }
+  }
+}
+
+document.getElementById('manageBillingBtn').addEventListener('click', async ()=>{
+  const errEl = document.getElementById('pricingError');
+  errEl.textContent = '';
+  try{
+    const res = await apiFetch('/api/billing/portal', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ returnUrl: window.location.href.split('?')[0] })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Failed to open billing portal.');
+    window.location.href = data.url;
+  }catch(e){
+    errEl.textContent = e.message;
+  }
+});
+
+// Small reusable "this needs a plan" block, dropped in place of a gated
+// feature. `requiredTier` picks the headline copy; the button opens the
+// same pricing modal everything else uses.
+function upgradePromptHtml(requiredTier, message){
+  const name = tierDisplayName(requiredTier);
+  return `
+    <div class="upgrade-prompt">
+      <div class="lock">🔒</div>
+      <div class="headline">${name} feature</div>
+      <div class="sub">${message || `This needs the ${name} plan or higher.`}</div>
+      <button class="upgrade-cta">See plans</button>
+    </div>
+  `;
+}
+function wireUpgradePrompts(root){
+  (root || document).querySelectorAll('.upgrade-cta').forEach(btn=>{
+    btn.addEventListener('click', openPricingModal);
+  });
+}
 
 function setAuthMode(mode){
   document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
@@ -761,7 +971,7 @@ async function loadBoard(sport){
   const list = document.getElementById('boardList');
   list.innerHTML = '<div class="board-msg"><div class="spin"></div><div>Loading live odds — first request can take up to a minute while the server wakes up…</div></div>';
   try{
-    const res = await fetch(`${API}/api/games/${sport}`);
+    const res = await apiFetch(`/api/games/${sport}`);
     if(!res.ok) throw new Error('bad status ' + res.status);
     const data = await res.json();
     setStatus('', 'Live');
@@ -855,12 +1065,13 @@ async function openDossier(sport, game){
   const body = document.getElementById('dossierBody');
   body.innerHTML = '<div class="board-msg"><div class="spin"></div><div>Pulling weather, injuries and head-to-head history…</div></div>';
   try{
-    const res = await fetch(`${API}/api/dossier/${sport}/${game.id}`);
+    const res = await apiFetch(`/api/dossier/${sport}/${game.id}`);
     if(!res.ok) throw new Error('bad status ' + res.status);
     const dossier = await res.json();
     currentDossier = dossier;
     body.innerHTML = renderDossier(dossier);
     wireTrackButtons();
+    wireUpgradePrompts(body);
     const btn = document.getElementById('askAiBtn');
     if(btn) btn.addEventListener('click', ()=>{
       showScreen('chat');
@@ -916,6 +1127,12 @@ function renderDossier(d){
       <div class="dossier-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
     </div>
     ${renderTrackSection(trackGame, lm)}
+    ${lm.locked ? `
+    <div class="section">
+      <h3>Original lines &amp; line movement</h3>
+      ${upgradePromptHtml(lm.requiredTier || 'edge', 'See the opening line and every move since, for every game.')}
+    </div>
+    ` : `
     <div class="section">
       <h3>Original lines${lm.book ? ' · ' + lm.book : ''}</h3>
       ${lm.available && lm.hasHistory && lm.summary && lm.summary.length
@@ -928,6 +1145,7 @@ function renderDossier(d){
         ? lm.summary.map(lineMovementRow).join('')
         : `<div class="empty-note">${lm.reason || lm.note || 'Tracking line movement now — check back after the odds refresh a few times to see how the line has moved.'}</div>`}
     </div>
+    `}
     <div class="section">
       <h3>Head-to-head results</h3>
       ${h2hResults.length ? h2hResults.slice(0,5).map(m=>`<div class="fact-row"><span>${m.awayTeam} ${m.awayScore} @ ${m.homeTeam} ${m.homeScore}</span><span class="v">${m.winner} won · ${m.date ? new Date(m.date).toLocaleDateString() : ''}</span></div>`).join('')
@@ -986,12 +1204,19 @@ async function sendChat(){
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try{
-      const res = await fetch(`${API}/api/chat`, {
+      const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ message, context: currentDossier }),
         signal: controller.signal
       });
+      if(res.status === 402){
+        const data = await res.json().catch(()=>({}));
+        const err = new Error('paywalled');
+        err.paywalled = true;
+        err.requiredTier = data.requiredTier || 'edge_pro';
+        throw err;
+      }
       if(!res.ok) throw new Error('bad status ' + res.status);
       const data = await res.json();
       return data.reply || null;
@@ -1000,12 +1225,23 @@ async function sendChat(){
     }
   }
 
+  function showUpgradeInChat(requiredTier){
+    thinking.remove();
+    const div = document.createElement('div');
+    div.className = 'msg upgrade';
+    div.innerHTML = `AI picks advice is a ${tierDisplayName(requiredTier)} feature.<br><button class="upgrade-cta">See plans</button>`;
+    document.getElementById('chatLog').appendChild(div);
+    document.getElementById('chatLog').scrollTop = document.getElementById('chatLog').scrollHeight;
+    wireUpgradePrompts(div);
+  }
+
   try{
     let reply;
     try{
       // Fast path: server is already warm.
       reply = await attempt(12000);
     }catch(firstErr){
+      if(firstErr.paywalled){ showUpgradeInChat(firstErr.requiredTier); return; }
       // Render's free tier spins the backend down after ~15 min idle, so a cold
       // server can take up to ~50s to wake up on the first request. Rather than
       // failing right away, tell the user what's happening and give it one more,
@@ -1015,6 +1251,7 @@ async function sendChat(){
     }
     thinking.textContent = reply || "The AI didn't return an answer — try rephrasing the question.";
   }catch(e){
+    if(e.paywalled){ showUpgradeInChat(e.requiredTier); return; }
     thinking.textContent = "Couldn't reach the AI server after waiting. It may still be starting up — wait about a minute and send your message again.";
   }
 }
@@ -1098,7 +1335,7 @@ function saveSeenMovers(){
 async function openMoverGame(m){
   try{
     document.querySelectorAll('.sport-tab').forEach(t=>t.classList.toggle('active', t.dataset.sport===m.sport));
-    const res = await fetch(`${API}/api/games/${m.sport}`);
+    const res = await apiFetch(`/api/games/${m.sport}`);
     const data = await res.json();
     const game = (data.games || []).find(g=>g.id===m.gameId);
     if(game) openDossier(m.sport, game);
@@ -1133,8 +1370,8 @@ function showMoverAlert(m){
 
 async function checkMovers(){
   try{
-    const res = await fetch(`${API}/api/movers?limit=3&minutes=60`);
-    if(!res.ok) return;
+    const res = await apiFetch('/api/movers?limit=3&minutes=60');
+    if(!res.ok) return; // includes 402 (not entitled) — toast alerts just stay quiet
     const data = await res.json();
     if(!data.available) return;
     let newOnes = false;
@@ -1162,8 +1399,15 @@ function spreadMoveRow(m){
   return `<div class="mover-spread-move">${m.side}  <span class="pt">${fmtPt(m.startPoint)}</span> <span class="arrow">→</span> <span class="pt">${fmtPt(m.endPoint)}</span></div>`;
 }
 
+let bigLinesPaywalled = null; // null = not paywalled; else the requiredTier string
+
 function renderBigLines(){
   const list = document.getElementById('bigLinesList');
+  if(bigLinesPaywalled){
+    list.innerHTML = upgradePromptHtml(bigLinesPaywalled, 'See every sharp line move across every sport, the moment it happens.');
+    wireUpgradePrompts(list);
+    return;
+  }
   if(bigLinesData.length === 0){
     list.innerHTML = '<div class="board-msg">No big line moves in the last few hours — check back soon.</div>';
     return;
@@ -1187,7 +1431,16 @@ function renderBigLines(){
 
 async function refreshBigLines(){
   try{
-    const res = await fetch(`${API}/api/movers?limit=10&minutes=180`);
+    const res = await apiFetch('/api/movers?limit=10&minutes=180');
+    if(res.status === 402){
+      const data = await res.json().catch(()=>({}));
+      bigLinesPaywalled = data.requiredTier || 'edge';
+      bigLinesData = [];
+      bigMoverKeys = new Set();
+      if(document.getElementById('bigLines').classList.contains('active')) renderBigLines();
+      return;
+    }
+    bigLinesPaywalled = null;
     if(!res.ok) return;
     const data = await res.json();
     if(!data.available){
@@ -1206,6 +1459,14 @@ async function refreshBigLines(){
   }catch(e){ /* best-effort */ }
 }
 
+// Returning from a Stripe Checkout redirect — refresh the account so the
+// tier badge reflects the upgrade right away (the webhook usually beats the
+// redirect back here, but /me is cheap to call again a moment later too).
+if(new URLSearchParams(window.location.search).get('upgraded') === '1'){
+  window.history.replaceState({}, '', window.location.pathname);
+  refreshAccount().then(()=>setTimeout(refreshAccount, 4000));
+}
+
 checkHealth().then(()=>loadBoard('nfl'));
 checkMovers();
 refreshBigLines();
@@ -1213,6 +1474,4 @@ setInterval(checkMovers, 3 * 60 * 1000); // re-check every 3 minutes
 setInterval(refreshBigLines, 3 * 60 * 1000);
 </script>
 
-
-</body>
-</html>
+</body></html>
