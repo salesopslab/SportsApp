@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { withTier, requireTier } from "../middleware/tier.js";
 
 const router = Router();
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
@@ -7,7 +8,7 @@ const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 // `context` is the dossier object from /api/dossier/:sport/:gameId — fetched by the
 // frontend first and passed in here, so the model reasons over real, current data
 // instead of guessing from training knowledge.
-router.post("/", async (req, res) => {
+router.post("/", withTier, requireTier("edge_pro"), async (req, res) => {
   const { message, context } = req.body;
   if (!message) return res.status(400).json({ error: "message is required" });
 

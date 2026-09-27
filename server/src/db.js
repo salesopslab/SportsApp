@@ -41,6 +41,18 @@ export function ensureSchema() {
         password_hash TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+      -- Subscription/tier fields, added via ALTER so this also upgrades
+      -- existing rows on an already-deployed database, not just fresh ones.
+      -- tier: 'trial' | 'standard' | 'edge' | 'edge_pro' | 'expired'
+      --   'trial' gets full (Edge Pro-level) access for trial_ends_at's window.
+      --   'expired' means a trial that ran out, or a subscription that lapsed
+      --   (canceled/unpaid) — falls back to the free Board-only experience.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'trial';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT;
+      CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users (stripe_customer_id);
 
       CREATE TABLE IF NOT EXISTS bets (
         id BIGSERIAL PRIMARY KEY,

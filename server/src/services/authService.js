@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool, ensureSchema } from "../db.js";
+import { effectiveTier, trialMsRemaining, TRIAL_DAYS } from "./tierService.js";
 
 // Falls back to a fixed dev secret if JWT_SECRET isn't set so local dev still
 // works, but in production you should always set JWT_SECRET on Render.
@@ -11,8 +12,16 @@ export function accountsAvailable() {
   return !!pool;
 }
 
-function toPublicUser(row) {
-  return { id: row.id, email: row.email, createdAt: row.created_at };
+export function toPublicUser(row) {
+  return {
+    id: row.id,
+    email: row.email,
+    createdAt: row.created_at,
+    tier: effectiveTier(row),
+    rawTier: row.tier,
+    trialEndsAt: row.trial_ends_at ?? null,
+    trialMsRemaining: trialMsRemaining(row),
+  };
 }
 
 export function signToken(user) {
@@ -35,9 +44,12 @@ export async function signup(email, password) {
   if (existing.rows.length) throw new Error("An account with that email already exists.");
 
   const passwordHash = await bcrypt.hash(password, 10);
+  const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
   const { rows } = await pool.query(
-    "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at",
-    [normalizedEmail, passwordHash]
+    `INSERT INTO users (email, password_hash, tier, trial_ends_at)
+     VALUES ($1, $2, 'trial', $3)
+     RETURNING id, email, created_at, tier, trial_ends_at, subscription_status`,
+    [normalizedEmail, passwordHash, trialEndsAt]
   );
   const user = toPublicUser(rows[0]);
   return { user, token: signToken(user) };

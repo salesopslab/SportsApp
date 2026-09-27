@@ -2,6 +2,8 @@ import { Router } from "express";
 import { getOddsForSport, getScoresForSport } from "../services/oddsService.js";
 import { getOpeningSpreads } from "../services/snapshotService.js";
 import { getTeamRankings, lookupRankLabel, isDivisionGame } from "../services/statsService.js";
+import { withTier } from "../middleware/tier.js";
+import { meetsTier } from "../services/tierService.js";
 
 const router = Router();
 
@@ -24,8 +26,11 @@ function commencedToday(commenceTime, now) {
   );
 }
 
-// GET /api/games/:sport  -> odds board data for the Board screen
-router.get("/:sport", async (req, res) => {
+// GET /api/games/:sport  -> odds board data for the Board screen. The board
+// itself (odds, scores, rankings) stays free for everyone, logged in or not —
+// withTier just tells us who's asking so we can decide below whether to
+// include the Edge-gated opening-line comparison.
+router.get("/:sport", withTier, async (req, res) => {
   try {
     const sport = req.params.sport;
     const season = req.query.season || "2026";
@@ -102,11 +107,13 @@ router.get("/:sport", async (req, res) => {
     // Attach each upcoming game's opening spread so the Board can show
     // "current vs. opened" without a trip to the full breakdown. Only
     // upcoming games actually display a spread card, so that's all we look up.
+    // This "opened vs. current" comparison is part of line tracking, which is
+    // an Edge+ feature — Standard sees odds/board only, no opening line.
     const upcoming = enriched.filter((g) => g.status === "upcoming");
-    const openingBySide = await getOpeningSpreads(
-      sport,
-      upcoming.map((g) => g.id)
-    ).catch(() => ({}));
+    const includeOpeningLines = meetsTier(req.userRow, "edge");
+    const openingBySide = includeOpeningLines
+      ? await getOpeningSpreads(sport, upcoming.map((g) => g.id)).catch(() => ({}))
+      : {};
     const withOpening = upcoming.map((g) => {
       const sides = openingBySide[g.id];
       if (!sides) return g;

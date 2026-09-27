@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getTopMovers } from "../services/snapshotService.js";
 import { getOddsForSport } from "../services/oddsService.js";
+import { withTier, requireTier } from "../middleware/tier.js";
 
 const router = Router();
 
@@ -25,7 +26,7 @@ function movementSummary(m) {
 // GET /api/movers?limit=3&minutes=60 — the games with the biggest line moves
 // in the given window, across every sport, restricted to games that haven't
 // started yet (a move on a game already underway isn't actionable).
-router.get("/", async (req, res) => {
+router.get("/", withTier, requireTier("edge"), async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 3, 10);
   const minutes = Math.min(Number(req.query.minutes) || 60, 24 * 60);
 
