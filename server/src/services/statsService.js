@@ -85,6 +85,32 @@ function normalizeSchoolName(name) {
     .trim();
 }
 
+// SportsData.io's NFL Standings returns a bare Division ("East") alongside a
+// separate Conference ("AFC") — confirmed against the real, deployed API
+// response, which was showing "1st East" instead of "1st AFC East" before
+// this combined the two. The combined string doubles as the value used for
+// division-game matching below, which matters: comparing the bare "East"
+// would wrongly call an AFC East vs. NFC East matchup a division game, since
+// both divisions share that same bare name.
+function buildDivisionLabel(sportSlug, r) {
+  const division = r.Division || "";
+  if (!division) return r.Conference || r.League || "";
+  // Defensive: if the API's Division field ever comes back already
+  // conference-qualified ("AL East" rather than "East"), don't double it up.
+  const alreadyQualified = (prefix) => prefix && division.toLowerCase().startsWith(prefix.toLowerCase());
+  if (sportSlug === "nfl") {
+    const conf = r.Conference || "";
+    return conf && !alreadyQualified(conf) ? `${conf} ${division}` : division;
+  }
+  if (sportSlug === "mlb") {
+    const league = r.League || r.Conference || "";
+    return league && !alreadyQualified(league) ? `${league} ${division}` : division;
+  }
+  // NBA divisions (Atlantic, Pacific, ...) are unique on their own — no
+  // conference prefix needed, and that's also the conventional way people say them.
+  return division;
+}
+
 // NFL/NBA/MLB: division standing (e.g. "1st AFC East"), keyed by the same
 // team abbreviation used elsewhere in this app (toTeamCode / injury matching).
 async function getStandingsRankings(sportSlug, season) {
@@ -98,11 +124,11 @@ async function getStandingsRankings(sportSlug, season) {
           const code = r.Team || r.Key || r.Abbreviation;
           const rank = r.DivisionRank ?? r.ConferenceRank ?? null;
           if (!code || rank === null || rank === undefined) continue;
-          const group = r.Division || r.Conference || "";
+          const group = buildDivisionLabel(sportSlug, r);
           map[code] = {
             rank,
             label: group ? `${ordinal(rank)} ${group}` : ordinal(rank),
-            division: r.Division || null,
+            division: group || null,
           };
         }
         return map;
@@ -115,27 +141,24 @@ async function getStandingsRankings(sportSlug, season) {
   );
 }
 
-// CFB/CBB: current AP (or nearest named) poll, keyed by a normalized school
-// name for best-effort matching against whatever team-name spelling the odds
-// feed uses (college team naming isn't as standardized as the pro leagues).
-async function getPollRankings(sportSlug, season) {
+// CFB/CBB: SportsData.io doesn't have a separate "Rankings" endpoint for
+// either sport (an earlier version of this guessed one and got a 404 in
+// production) — the current AP rank lives right on each team's record in the
+// Teams endpoint instead (confirmed against SportsData.io's own data
+// dictionary: the Team object carries ApRank, and for CFB a CoachesRank too).
+// Keyed by a normalized school name for best-effort matching against
+// whatever spelling the odds feed uses (college team naming isn't as
+// standardized as the pro leagues' abbreviations).
+async function getPollRankings(sportSlug) {
   return cached(
-    `poll-rank:${sportSlug}:${season}`,
+    `poll-rank:${sportSlug}`,
     async () => {
       try {
-        let week = null;
-        if (sportSlug === "ncaaf") {
-          week = await sdioGet(sportSlug, "scores/json/CurrentWeek").catch(() => null);
-        }
-        const path = week ? `scores/json/Rankings/${season}/${week}` : `scores/json/Rankings/${season}`;
-        const polls = await sdioGet(sportSlug, path);
-        if (!Array.isArray(polls) || !polls.length) return {};
-        const apPoll = polls.find((p) => /ap/i.test(p.Name || p.PollName || "")) || polls[0];
-        const entries = apPoll.Rankings || apPoll.TeamRankings || [];
+        const teams = await sdioGet(sportSlug, "scores/json/Teams");
         const map = {};
-        for (const e of entries) {
-          const rank = e.Rank ?? e.CurrentRank;
-          const name = e.School || e.Name || e.Team;
+        for (const t of teams || []) {
+          const rank = t.ApRank ?? t.CoachesRank ?? null;
+          const name = t.School;
           if (!rank || !name) continue;
           map[normalizeSchoolName(name)] = rank;
         }
@@ -151,7 +174,7 @@ async function getPollRankings(sportSlug, season) {
 
 export async function getTeamRankings(sportSlug, season) {
   if (["nfl", "nba", "mlb"].includes(sportSlug)) return getStandingsRankings(sportSlug, season);
-  if (["ncaaf", "ncaab"].includes(sportSlug)) return getPollRankings(sportSlug, season);
+  if (["ncaaf", "ncaab"].includes(sportSlug)) return getPollRankings(sportSlug);
   return {};
 }
 
