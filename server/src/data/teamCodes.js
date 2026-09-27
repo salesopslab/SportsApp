@@ -95,7 +95,10 @@ export const MLB_TEAM_CODES = {
   "Minnesota Twins": "MIN",
   "New York Mets": "NYM",
   "New York Yankees": "NYY",
-  "Athletics": "OAK",
+  // SportsData.io uses "ATH" for the Athletics post-relocation (confirmed
+  // live against the real API), not the legacy Oakland "OAK" code — same
+  // class of bug as the White Sox one above.
+  "Athletics": "ATH",
   "Philadelphia Phillies": "PHI",
   "Pittsburgh Pirates": "PIT",
   "San Diego Padres": "SD",
