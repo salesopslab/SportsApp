@@ -185,7 +185,10 @@ body{
 .score-badge.live{ background:var(--red); color:#fff; }
 .score-num{ font-family:'Oswald',sans-serif; font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
 .game-row.final,.game-row.live{ opacity:0.9; }
-.board-controls{ display:flex; justify-content:flex-end; padding:8px 20px 0; }
+.board-controls{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 20px 0; flex-wrap:wrap; }
+.status-filters{ display:flex; gap:6px; }
+.status-filter{ font-size:12px; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:6px 12px; border-radius:16px; cursor:pointer; }
+.status-filter.active{ color:var(--bg); background:var(--amber); border-color:var(--amber); font-weight:600; }
 .sort-toggle{ font-size:12px; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:6px 12px; border-radius:16px; cursor:pointer; }
 .sort-toggle:active{ background:var(--surface2); }
 .game-countdown{ color:var(--amber); font-weight:700; }
@@ -248,6 +251,11 @@ body{
       <div class="sport-tab" data-sport="ncaab">CBB</div>
     </div>
     <div class="board-controls">
+      <div class="status-filters" id="statusFilters">
+        <button class="status-filter active" data-filter="all">All</button>
+        <button class="status-filter" data-filter="live">Live</button>
+        <button class="status-filter" data-filter="final">Final</button>
+      </div>
       <button class="sort-toggle" id="sortToggle">⇅ Soonest first</button>
     </div>
     <div id="boardList"><div class="board-msg"><div class="spin"></div><div>Loading live odds…</div></div></div>
@@ -397,6 +405,12 @@ async function checkHealth(){
 
 let lastGames = [];
 let sortDir = 'asc'; // 'asc' = soonest kickoff first, 'desc' = latest kickoff first
+let statusFilter = 'all'; // 'all' | 'live' | 'final'
+
+function visibleGames(){
+  if(statusFilter === 'all') return lastGames;
+  return lastGames.filter(g => g.status === statusFilter);
+}
 
 function sortGames(games){
   // Upcoming games always come before live, which always comes before
@@ -414,9 +428,12 @@ function sortGames(games){
 
 function renderBoardList(){
   const list = document.getElementById('boardList');
-  const games = sortGames(lastGames);
+  const games = sortGames(visibleGames());
   if(games.length === 0){
-    list.innerHTML = '<div class="board-msg">No games with posted odds for this sport right now — check back closer to game day.</div>';
+    const msg = statusFilter === 'live' ? 'No live games right now.'
+      : statusFilter === 'final' ? 'No finished games yet.'
+      : 'No games with posted odds for this sport right now — check back closer to game day.';
+    list.innerHTML = `<div class="board-msg">${msg}</div>`;
     return;
   }
   list.innerHTML = games.map(g => renderGameRow(g)).join('');
@@ -434,6 +451,16 @@ document.getElementById('sortToggle').addEventListener('click', ()=>{
   sortDir = sortDir === 'asc' ? 'desc' : 'asc';
   document.getElementById('sortToggle').textContent = sortDir === 'asc' ? '⇅ Soonest first' : '⇅ Latest first';
   renderBoardList();
+});
+
+document.querySelectorAll('#statusFilters .status-filter').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    statusFilter = btn.dataset.filter;
+    document.querySelectorAll('#statusFilters .status-filter').forEach(b=>{
+      b.classList.toggle('active', b === btn);
+    });
+    renderBoardList();
+  });
 });
 
 async function loadBoard(sport){
@@ -790,7 +817,6 @@ checkHealth().then(()=>loadBoard('nfl'));
 checkMovers();
 setInterval(checkMovers, 3 * 60 * 1000); // re-check every 3 minutes
 </script>
-
 
 </body>
 </html>
