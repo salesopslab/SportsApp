@@ -1099,10 +1099,13 @@ function renderGameRow(g){
   const divisionBadge = g.divisionGame ? '<span class="division-badge">DIVISION</span>' : '';
   if(g.status === 'final' || g.status === 'live'){
     const score = g.status === 'final' ? g.finalScore : g.liveScore;
-    const badge = g.status === 'final' ? 'Final' : 'Live';
+    // g.liveState (quarter/inning + clock, down-distance or balls-strikes-outs)
+    // is only ever present on a live row, and only once the provider has it —
+    // fall back to the generic "Live" badge/note when it isn't there yet.
+    const badge = g.status === 'final' ? 'Final' : (g.liveState?.line || 'Live');
     const note = g.status === 'final'
       ? 'Game finished — tap for the full breakdown'
-      : 'Game in progress — score may be a few minutes behind';
+      : (g.liveState?.detail || 'Game in progress — score may be a few minutes behind');
     return `
     <div class="game-row ${g.status}${divisionClass}" data-id="${g.id}" tabindex="0" role="button" aria-label="${g.awayTeam} at ${g.homeTeam}, view breakdown">
       <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${divisionBadge}${bigMoveBadge}</div>

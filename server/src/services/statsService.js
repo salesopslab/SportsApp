@@ -3,8 +3,18 @@ import { toTeamCode } from "../data/teamCodes.js";
 
 const KEY = process.env.SPORTSDATA_API_KEY;
 
+// This app's internal sport slugs ("ncaaf"/"ncaab", shared with the-odds-api
+// sport keys) don't match SportsData.io's own URL segments for college sports
+// ("cfb"/"cbb") — confirmed live against the real API: /v3/ncaaf/... 404s,
+// /v3/cfb/... works. Every SportsData.io call in this file goes through
+// sdioGet, so fixing the segment here fixes it everywhere at once (poll
+// rankings, injuries, team stats, schedules, live state) rather than needing
+// a patch per function.
+const SDIO_SPORT_SEGMENT = { ncaaf: "cfb", ncaab: "cbb" };
+
 async function sdioGet(sportSlug, path) {
-  const url = `https://api.sportsdata.io/v3/${sportSlug}/${path}`;
+  const segment = SDIO_SPORT_SEGMENT[sportSlug] || sportSlug;
+  const url = `https://api.sportsdata.io/v3/${segment}/${path}`;
   const res = await fetch(url, {
     headers: { "Ocp-Apim-Subscription-Key": KEY },
   });
@@ -39,7 +49,16 @@ export async function getSeasonSchedule(sportSlug, season) {
 // head-to-head/pitcher lookups keep working correctly no matter where in the
 // calendar "today" falls (e.g. late September, when the regular season is
 // wrapping up and the postseason is starting at the same time).
+//
+// CFB/CBB have the same "Schedules" 404 problem (confirmed live), but their
+// fix is simpler: "Games/{bare year}" with no REG/POST suffix returns the
+// whole season (confirmed live: 953 CFB games, 6,516 CBB games for 2026).
 async function fetchSeasonSchedule(sportSlug, season) {
+  if (sportSlug === "ncaaf" || sportSlug === "ncaab") {
+    const bareYear = String(season).replace(/(REG|POST|PRE)$/, "");
+    return sdioGet(sportSlug, `scores/json/Games/${bareYear}`);
+  }
+
   if (sportSlug !== "mlb") return sdioGet(sportSlug, `scores/json/Schedules/${season}`);
 
   const bareYear = String(season).replace(/(REG|POST|PRE)$/, "");
@@ -343,4 +362,139 @@ export function lookupPitchers(sportSlug, pitcherMap, homeTeamFullName, awayTeam
     console.error("lookupPitchers failed:", err.message);
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Live game state — quarter/period, clock, down & distance, balls/strikes/
+// outs — for the Board's "live" rows.
+//
+// Confirmed directly against the live API (not guessed), Sept 27 2026, during
+// actual in-progress NFL and MLB games: our existing SportsData.io key
+// already returns real values for every field this uses. Only a few
+// cosmetic/text fields are anonymized on this account (the raw numeric Down,
+// the free-text LastPlay description, player names) — none of which this
+// needs, since DownAndDistance ("3rd & 7") is itself a real, unscrambled
+// convenience field. So this works today, on the same key already used for
+// pitchers, with no plan/cost change required to show it.
+// ---------------------------------------------------------------------------
+
+function todayYMD() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function clockLabel(minutes, seconds) {
+  if (minutes === null || minutes === undefined || seconds === null || seconds === undefined) return null;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function mlbInningLabel(half, inning) {
+  if (!inning) return null;
+  const label = { T: "Top", B: "Bot", M: "Mid", E: "End" }[half] || "";
+  return `${label} ${ordinal(inning)}`.trim();
+}
+
+async function fetchLiveByDate(sportSlug, date) {
+  // NFL is the one sport in this account where "ScoresByDate" (not
+  // "GamesByDate") is the resource that carries the live Quarter/
+  // TimeRemaining/DownAndDistance fields — confirmed live.
+  if (sportSlug === "nfl") return sdioGet(sportSlug, `scores/json/ScoresByDate/${date}`);
+  return sdioGet(sportSlug, `scores/json/GamesByDate/${date}`);
+}
+
+function buildNflCfbLiveEntry(g) {
+  const inProgress = g.IsInProgress === true || g.Status === "InProgress";
+  if (!inProgress) return null;
+  const quarterLabel = g.QuarterDescription || (g.Quarter ? `Q${g.Quarter}` : g.Period ? `Q${g.Period}` : null);
+  const clock = g.TimeRemaining || clockLabel(g.TimeRemainingMinutes, g.TimeRemainingSeconds);
+  const line = [quarterLabel, clock].filter(Boolean).join(" ") || null;
+  if (!line) return null;
+  const detail = g.DownAndDistance && g.Possession
+    ? `${g.DownAndDistance}${g.YardLine ? ` at ${g.Possession} ${g.YardLine}` : ""}`
+    : null;
+  return { line, detail };
+}
+
+function buildMlbLiveEntry(g) {
+  if (g.Status !== "InProgress") return null;
+  const line = mlbInningLabel(g.InningHalf, g.Inning);
+  if (!line) return null;
+  const parts = [];
+  if (g.Outs !== null && g.Outs !== undefined) parts.push(`${g.Outs} out${g.Outs === 1 ? "" : "s"}`);
+  if (g.Balls !== null && g.Balls !== undefined && g.Strikes !== null && g.Strikes !== undefined) {
+    parts.push(`${g.Balls}-${g.Strikes} count`);
+  }
+  return { line, detail: parts.length ? parts.join(" • ") : null };
+}
+
+function buildHoopsLiveEntry(g) {
+  if (g.Status !== "InProgress") return null;
+  const period = g.Quarter || g.Period;
+  if (!period) return null;
+  const periodLabel = /^\d+$/.test(String(period)) ? `Q${period}` : String(period);
+  const clock = clockLabel(g.TimeRemainingMinutes, g.TimeRemainingSeconds);
+  const line = [periodLabel, clock].filter(Boolean).join(" ") || null;
+  if (!line) return null;
+  return { line, detail: null };
+}
+
+// Keyed by team code ("code:AWAY@HOME") for NFL/MLB/NBA, or normalized school
+// name ("name:away@home") for CFB/CBB — SportsData's college team names don't
+// reliably line up with the odds feed's naming, same reasoning as the poll
+// rankings matching above. Cached briefly (20s): this is live, time-sensitive
+// data, unlike the multi-hour caches elsewhere in this file.
+export async function getLiveGameState(sportSlug) {
+  if (!["nfl", "mlb", "nba", "ncaaf", "ncaab"].includes(sportSlug)) return {};
+  return cached(
+    `livestate:${sportSlug}:${todayYMD()}`,
+    async () => {
+      try {
+        const games = await fetchLiveByDate(sportSlug, todayYMD());
+        const map = {};
+        for (const g of games || []) {
+          let entry = null;
+          if (sportSlug === "nfl" || sportSlug === "ncaaf") entry = buildNflCfbLiveEntry(g);
+          else if (sportSlug === "mlb") entry = buildMlbLiveEntry(g);
+          else entry = buildHoopsLiveEntry(g);
+          if (!entry) continue;
+
+          if (sportSlug === "nfl" || sportSlug === "mlb" || sportSlug === "nba") {
+            const away = toTeamCode(sportSlug, g.AwayTeam) || g.AwayTeam;
+            const home = toTeamCode(sportSlug, g.HomeTeam) || g.HomeTeam;
+            map[`code:${away}@${home}`] = entry;
+          } else {
+            const away = normalizeSchoolName(g.AwayTeamName || g.AwayTeam);
+            const home = normalizeSchoolName(g.HomeTeamName || g.HomeTeam);
+            map[`name:${away}@${home}`] = entry;
+          }
+        }
+        return map;
+      } catch (err) {
+        console.error(`getLiveGameState(${sportSlug}) failed:`, err.message);
+        return {};
+      }
+    },
+    20
+  );
+}
+
+// Never fabricates: a game the provider doesn't have live state for yet (or
+// at all) resolves to null, and the Board falls back to its existing generic
+// "Live" badge/note for that row.
+export function lookupLiveState(sportSlug, liveMap, homeTeamFullName, awayTeamFullName) {
+  if (!liveMap) return null;
+  try {
+    if (sportSlug === "nfl" || sportSlug === "mlb" || sportSlug === "nba") {
+      const home = toTeamCode(sportSlug, homeTeamFullName);
+      const away = toTeamCode(sportSlug, awayTeamFullName);
+      return liveMap[`code:${away}@${home}`] || null;
+    }
+    if (sportSlug === "ncaaf" || sportSlug === "ncaab") {
+      const home = normalizeSchoolName(homeTeamFullName);
+      const away = normalizeSchoolName(awayTeamFullName);
+      return liveMap[`name:${away}@${home}`] || null;
+    }
+  } catch (err) {
+    console.error("lookupLiveState failed:", err.message);
+  }
+  return null;
 }

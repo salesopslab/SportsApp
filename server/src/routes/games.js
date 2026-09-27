@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getOddsForSport, getScoresForSport } from "../services/oddsService.js";
 import { getOpeningSpreads } from "../services/snapshotService.js";
-import { getTeamRankings, lookupRankLabel, isDivisionGame, getProbablePitchers, lookupPitchers } from "../services/statsService.js";
+import { getTeamRankings, lookupRankLabel, isDivisionGame, getProbablePitchers, lookupPitchers, getLiveGameState, lookupLiveState } from "../services/statsService.js";
 import { withTier } from "../middleware/tier.js";
 import { meetsTier } from "../services/tierService.js";
 
@@ -34,11 +34,12 @@ router.get("/:sport", withTier, async (req, res) => {
   try {
     const sport = req.params.sport;
     const season = req.query.season || "2026";
-    const [games, scores, rankings, pitchers] = await Promise.all([
+    const [games, scores, rankings, pitchers, liveState] = await Promise.all([
       getOddsForSport(sport),
       getScoresForSport(sport).catch(() => ({})), // scores are a nice-to-have, never block the board
       getTeamRankings(sport, season).catch(() => ({})), // same — a ranking miss shouldn't block the board
       getProbablePitchers(sport, season).catch(() => ({})), // MLB only; empty map for every other sport
+      getLiveGameState(sport).catch(() => ({})), // quarter/inning/clock for live rows; empty map on any hiccup
     ]);
 
     const now = Date.now();
@@ -140,6 +141,10 @@ router.get("/:sport", withTier, async (req, res) => {
         divisionGame: isDivisionGame(sport, rankings, g.homeTeam, g.awayTeam),
         homePitcher: pitcherInfo?.homePitcher || null,
         awayPitcher: pitcherInfo?.awayPitcher || null,
+        // Quarter/inning, clock, down-distance-or-balls-strikes-outs — only
+        // ever populated for status === "live" rows; null otherwise (or when
+        // the provider doesn't have this game's live state yet).
+        liveState: g.status === "live" ? lookupLiveState(sport, liveState, g.homeTeam, g.awayTeam) : null,
       };
     });
 
