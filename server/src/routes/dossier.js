@@ -64,7 +64,13 @@ router.get("/:sport/:gameId", withTier, async (req, res) => {
         toTeamCode(sport, game.awayTeam)
       ).catch(() => null),
       ["nfl", "nba", "mlb"].includes(sport)
-        ? getHeadToHeadResults(sport, game.homeTeam, game.awayTeam, season).catch(() => [])
+        ? getHeadToHeadResults(sport, game.homeTeam, game.awayTeam, season).catch((err) => {
+            // This used to fail silently — no log line, no visible difference
+            // from "genuinely no past meetings." Logging it is what lets us
+            // actually diagnose why this section came back empty.
+            console.error(`getHeadToHeadResults(${sport}) failed for dossier ${gameId}:`, err.message);
+            return [];
+          })
         : Promise.resolve([]),
       // A finished game's weather forecast isn't meaningful (and the forecast
       // API generally can't look backward anyway), so skip it entirely.

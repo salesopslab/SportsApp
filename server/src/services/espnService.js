@@ -25,17 +25,28 @@ async function espnGet(sportSlug, path) {
   if (!sportPath) throw new Error(`ESPN integration not set up for sport: ${sportSlug}`);
 
   const url = `https://site.api.espn.com/apis/site/v2/sports/${sportPath}${path}`;
-  // ESPN's public API blocks plain server-side requests without browser-like
-  // headers — this makes the request look like it's coming from a real browser.
+  // ESPN's public site API isn't an official/documented endpoint and has been
+  // seen blocking requests from datacenter IPs (Render, AWS, etc.) even with
+  // browser-like headers — this is the leading suspect for why this comes back
+  // empty in production despite the same URL working fine from a real browser.
+  // Sending a fuller header set (Referer/Origin/Accept-Language, not just
+  // User-Agent) at least rules out the simplest form of that block.
   const res = await fetch(url, {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-      Accept: "application/json",
+      Accept: "application/json, text/plain, */*",
+      "Accept-Language": "en-US,en;q=0.9",
+      Referer: "https://www.espn.com/",
+      Origin: "https://www.espn.com",
     },
   });
   if (!res.ok) {
-    throw new Error(`ESPN API error ${res.status}`);
+    // Include a snippet of the body — ESPN's block page (if that's what this
+    // is) usually says so in plain text, which is otherwise invisible since
+    // callers only see "ESPN API error 403" with no detail.
+    const bodySnippet = await res.text().catch(() => "");
+    throw new Error(`ESPN API error ${res.status} for ${url}: ${bodySnippet.slice(0, 200)}`);
   }
   return res.json();
 }
@@ -82,14 +93,38 @@ export async function getHeadToHeadResults(sportSlug, homeFullName, awayFullName
 
   const teamCode = toEspnCode(sportSlug, homeFullName);
   const oppCode = toEspnCode(sportSlug, awayFullName);
-  if (!teamCode || !oppCode) return [];
+  if (!teamCode || !oppCode) {
+    // A missing code mapping (not an ESPN failure) looks identical to "no
+    // meetings found" downstream unless this is logged — worth knowing which
+    // one it is when a specific matchup comes back empty.
+    console.error(
+      `getHeadToHeadResults(${sportSlug}) failed: no ESPN code mapping for "${homeFullName}" (${teamCode}) or "${awayFullName}" (${oppCode})`
+    );
+    return [];
+  }
 
   const baseYear = parseInt(season, 10);
   const seasonsToCheck = [baseYear, baseYear - 1, baseYear - 2, baseYear - 3];
 
+  let sawFailure = false;
   const schedules = await Promise.all(
-    seasonsToCheck.map((y) => getTeamSchedule(sportSlug, teamCode, y).catch(() => null))
+    seasonsToCheck.map((y) =>
+      getTeamSchedule(sportSlug, teamCode, y).catch((err) => {
+        // This is the failure this whole function was silently swallowing —
+        // logged now so a production run tells us definitively whether it's
+        // a network/IP block (fetch throws before a status code) or an HTTP
+        // error status (403/429/etc. from espnGet above).
+        sawFailure = true;
+        console.error(`getHeadToHeadResults(${sportSlug}) schedule fetch failed for ${teamCode} ${y}:`, err.message);
+        return null;
+      })
+    )
   );
+  if (sawFailure) {
+    console.error(
+      `getHeadToHeadResults(${sportSlug}, ${teamCode} vs ${oppCode}): at least one season fetch failed — results below may be incomplete.`
+    );
+  }
 
   const results = [];
   for (const schedule of schedules) {

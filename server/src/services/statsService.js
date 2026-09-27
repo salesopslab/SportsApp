@@ -450,11 +450,13 @@ export async function getLiveGameState(sportSlug) {
       try {
         const games = await fetchLiveByDate(sportSlug, todayYMD());
         const map = {};
+        let inProgressSeen = 0;
         for (const g of games || []) {
           let entry = null;
           if (sportSlug === "nfl" || sportSlug === "ncaaf") entry = buildNflCfbLiveEntry(g);
           else if (sportSlug === "mlb") entry = buildMlbLiveEntry(g);
           else entry = buildHoopsLiveEntry(g);
+          if (g.Status === "InProgress" || g.IsInProgress === true) inProgressSeen++;
           if (!entry) continue;
 
           if (sportSlug === "nfl" || sportSlug === "mlb" || sportSlug === "nba") {
@@ -467,6 +469,15 @@ export async function getLiveGameState(sportSlug) {
             map[`name:${away}@${home}`] = entry;
           }
         }
+        // Temporary diagnostic: MLB live state has come back empty in
+        // production despite the same call/key/code working when tested
+        // directly, and with no thrown error to explain why. This line
+        // narrows it down next time it runs: 0 games fetched points to a
+        // request/auth issue for this specific call; games fetched but 0
+        // in-progress/0 entries points to a data-shape or key-matching issue.
+        console.log(
+          `getLiveGameState(${sportSlug}): fetched ${Array.isArray(games) ? games.length : 0} games, ${inProgressSeen} in progress, built ${Object.keys(map).length} live-state entries`
+        );
         return map;
       } catch (err) {
         console.error(`getLiveGameState(${sportSlug}) failed:`, err.message);
