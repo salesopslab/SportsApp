@@ -94,6 +94,7 @@ body{
 .mover-card-top{ font-size:11px; color:var(--sub); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.3px; }
 .mover-card-teams{ font-size:15px; font-weight:600; margin-bottom:4px; }
 .mover-card-detail{ font-size:13px; color:var(--sub); }
+.mover-card-time{ font-size:11px; color:var(--amber); margin-top:6px; font-weight:600; }
 
 .game-row{ padding:16px 20px; border-bottom:1px solid var(--line); cursor:pointer; }
 .game-row:active{ background:var(--surface); }
@@ -240,6 +241,7 @@ body{
     <div class="board-controls">
       <div class="status-filters" id="statusFilters">
         <button class="status-filter active" data-filter="all">All</button>
+        <button class="status-filter" data-filter="upcoming">Upcoming</button>
         <button class="status-filter" data-filter="live">Live</button>
         <button class="status-filter" data-filter="final">Final</button>
       </div>
@@ -615,6 +617,18 @@ function timeLabel(iso){
 function minutesUntil(iso){
   return (new Date(iso).getTime() - Date.now()) / 60000;
 }
+// Relative "how long ago" label for a line-movement timestamp — recent moves
+// read as minutes/hours ago (more useful for "is this fresh?" at a glance
+// than a full date), older ones fall back to the full date/time.
+function formatMoveTime(iso){
+  if(!iso) return '';
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if(mins < 1) return 'just now';
+  if(mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if(hrs < 24) return `${hrs}h ago`;
+  return timeLabel(iso);
+}
 function formatCountdown(iso){
   const mins = minutesUntil(iso);
   if(mins <= 0) return 'Starting now';
@@ -632,6 +646,11 @@ function updateCountdowns(){
   });
 }
 setInterval(updateCountdowns, 15000);
+// Keep "Moved Xm ago" fresh between the 3-minute data refreshes, without
+// re-fetching — just re-render off the data already in hand.
+setInterval(()=>{
+  if(document.getElementById('bigLines').classList.contains('active')) renderBigLines();
+}, 30000);
 
 async function checkHealth(){
   try{
@@ -679,7 +698,8 @@ function renderBoardList(){
   const list = document.getElementById('boardList');
   const games = sortGames(visibleGames());
   if(games.length === 0){
-    const msg = statusFilter === 'live' ? 'No live games right now.'
+    const msg = statusFilter === 'upcoming' ? 'No upcoming games in the next 7 days.'
+      : statusFilter === 'live' ? 'No live games right now.'
       : statusFilter === 'final' ? 'No finished games yet.'
       : 'No games with posted odds for this sport right now — check back closer to game day.';
     list.innerHTML = `<div class="board-msg">${msg}</div>`;
@@ -1091,6 +1111,7 @@ function renderBigLines(){
       <div class="mover-card-top">🔥 ${m.sport.toUpperCase()} · ${timeLabel(m.commenceTime)}</div>
       <div class="mover-card-teams">${m.awayTeam} @ ${m.homeTeam}</div>
       <div class="mover-card-detail">${m.market}: ${m.movement}</div>
+      <div class="mover-card-time">Moved ${formatMoveTime(m.lastSeen)}</div>
     </div>
   `).join('');
   list.querySelectorAll('.mover-card').forEach(card=>{
@@ -1110,7 +1131,11 @@ async function refreshBigLines(){
       bigLinesData = [];
       bigMoverKeys = new Set();
     }else{
-      bigLinesData = data.movers || [];
+      // Most recently moved line first — freshness matters more here than
+      // the size of the move (the list is already pre-filtered to sharp
+      // movers by the backend's scoring, so re-sorting by time doesn't
+      // surface noise, just reorders what's already noteworthy).
+      bigLinesData = (data.movers || []).slice().sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
       bigMoverKeys = new Set(bigLinesData.map(m => moverKey(m.sport, m.gameId)));
     }
     if(document.getElementById('bigLines').classList.contains('active')) renderBigLines();
@@ -1124,6 +1149,7 @@ refreshBigLines();
 setInterval(checkMovers, 3 * 60 * 1000); // re-check every 3 minutes
 setInterval(refreshBigLines, 3 * 60 * 1000);
 </script>
+
 
 </body>
 </html>
