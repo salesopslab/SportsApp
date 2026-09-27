@@ -100,6 +100,8 @@ body{
 .mover-spread-move .arrow{ color:var(--amber); margin:0 2px; }
 
 .game-row{ padding:16px 20px; border-bottom:1px solid var(--line); cursor:pointer; }
+.game-row.division-game{ border-left:3px solid var(--teal); background:color-mix(in srgb, var(--teal) 6%, transparent); }
+.division-badge{ font-size:9.5px; font-weight:700; color:var(--teal); border:1px solid var(--teal); border-radius:8px; padding:1px 6px; letter-spacing:0.3px; }
 .game-row:active{ background:var(--surface); }
 .game-meta{ display:flex; justify-content:space-between; font-size:12px; color:var(--sub); margin-bottom:10px; gap:10px; }
 .game-meta span:last-child{ text-align:right; }
@@ -782,6 +784,8 @@ const homeTag = '<span class="home-tag">HOME</span>';
 function renderGameRow(g){
   const bigMove = bigMoverKeys.has(moverKey(currentSport, g.id));
   const bigMoveBadge = bigMove ? '<span class="big-move-badge">🔥 Big move</span>' : '';
+  const divisionClass = g.divisionGame ? ' division-game' : '';
+  const divisionBadge = g.divisionGame ? '<span class="division-badge">DIVISION</span>' : '';
   if(g.status === 'final' || g.status === 'live'){
     const score = g.status === 'final' ? g.finalScore : g.liveScore;
     const badge = g.status === 'final' ? 'Final' : 'Live';
@@ -789,8 +793,8 @@ function renderGameRow(g){
       ? 'Game finished — tap for the full breakdown'
       : 'Game in progress — score may be a few minutes behind';
     return `
-    <div class="game-row ${g.status}" data-id="${g.id}">
-      <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${bigMoveBadge}</div>
+    <div class="game-row ${g.status}${divisionClass}" data-id="${g.id}">
+      <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${divisionBadge}${bigMoveBadge}</div>
       <div class="matchup">
         <div class="team-line">
           <span class="team-name">${rankBadge(g.awayRank)}${g.awayTeam}</span>
@@ -820,8 +824,8 @@ function renderGameRow(g){
   const openAwayLabel = openAway !== null ? `<div class="open">open ${fmtOdds(openAway)}</div>` : '';
   const openHomeLabel = openHome !== null ? `<div class="open">open ${fmtOdds(openHome)}</div>` : '';
   return `
-  <div class="game-row" data-id="${g.id}">
-    <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || g.primaryBook || ''}</span>${bigMoveBadge}</div>
+  <div class="game-row${divisionClass}" data-id="${g.id}">
+    <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || g.primaryBook || ''}</span>${divisionBadge}${bigMoveBadge}</div>
     <div class="matchup">
       <div class="team-line">
         <span class="team-name">${rankBadge(g.awayRank)}${g.awayTeam}</span>

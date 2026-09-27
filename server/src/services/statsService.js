@@ -99,7 +99,11 @@ async function getStandingsRankings(sportSlug, season) {
           const rank = r.DivisionRank ?? r.ConferenceRank ?? null;
           if (!code || rank === null || rank === undefined) continue;
           const group = r.Division || r.Conference || "";
-          map[code] = { rank, label: group ? `${ordinal(rank)} ${group}` : ordinal(rank) };
+          map[code] = {
+            rank,
+            label: group ? `${ordinal(rank)} ${group}` : ordinal(rank),
+            division: r.Division || null,
+          };
         }
         return map;
       } catch (err) {
@@ -175,4 +179,20 @@ export function lookupRankLabel(sportSlug, rankings, teamFullName) {
     console.error("lookupRankLabel failed:", err.message);
   }
   return null;
+}
+
+// NFL only for now (that's what was asked for) — true when both teams share
+// the same division, so the Board can call out a divisional matchup. NBA and
+// MLB have the same `division` data sitting in `rankings` already, so this
+// is a one-line change to extend later if that's wanted too.
+export function isDivisionGame(sportSlug, rankings, homeTeam, awayTeam) {
+  if (sportSlug !== "nfl" || !rankings) return false;
+  try {
+    const homeDiv = rankings[toTeamCode(sportSlug, homeTeam)]?.division;
+    const awayDiv = rankings[toTeamCode(sportSlug, awayTeam)]?.division;
+    return !!homeDiv && !!awayDiv && homeDiv === awayDiv;
+  } catch (err) {
+    console.error("isDivisionGame failed:", err.message);
+    return false;
+  }
 }

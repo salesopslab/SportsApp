@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getOddsForSport, getScoresForSport } from "../services/oddsService.js";
 import { getOpeningSpreads } from "../services/snapshotService.js";
-import { getTeamRankings, lookupRankLabel } from "../services/statsService.js";
+import { getTeamRankings, lookupRankLabel, isDivisionGame } from "../services/statsService.js";
 
 const router = Router();
 
@@ -127,6 +127,7 @@ router.get("/:sport", async (req, res) => {
       ...g,
       homeRank: lookupRankLabel(sport, rankings, g.homeTeam),
       awayRank: lookupRankLabel(sport, rankings, g.awayTeam),
+      divisionGame: isDivisionGame(sport, rankings, g.homeTeam, g.awayTeam),
     }));
 
     res.json({ sport, games: withRanks });
