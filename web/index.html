@@ -155,6 +155,47 @@ body{
 
 <script>
 const API = "https://betedge-ai-backend.onrender.com";
+
+// Stadium name + city for the home team of each game — shown so it's clear where
+// the game is being played, not just what time.
+const STADIUM_INFO = {
+  "Arizona Cardinals": { name: "State Farm Stadium", city: "Glendale, AZ" },
+  "Atlanta Falcons": { name: "Mercedes-Benz Stadium", city: "Atlanta, GA" },
+  "Baltimore Ravens": { name: "M&T Bank Stadium", city: "Baltimore, MD" },
+  "Buffalo Bills": { name: "Highmark Stadium", city: "Orchard Park, NY" },
+  "Carolina Panthers": { name: "Bank of America Stadium", city: "Charlotte, NC" },
+  "Chicago Bears": { name: "Soldier Field", city: "Chicago, IL" },
+  "Cincinnati Bengals": { name: "Paycor Stadium", city: "Cincinnati, OH" },
+  "Cleveland Browns": { name: "Huntington Bank Field", city: "Cleveland, OH" },
+  "Dallas Cowboys": { name: "AT&T Stadium", city: "Arlington, TX" },
+  "Denver Broncos": { name: "Empower Field at Mile High", city: "Denver, CO" },
+  "Detroit Lions": { name: "Ford Field", city: "Detroit, MI" },
+  "Green Bay Packers": { name: "Lambeau Field", city: "Green Bay, WI" },
+  "Houston Texans": { name: "NRG Stadium", city: "Houston, TX" },
+  "Indianapolis Colts": { name: "Lucas Oil Stadium", city: "Indianapolis, IN" },
+  "Jacksonville Jaguars": { name: "EverBank Stadium", city: "Jacksonville, FL" },
+  "Kansas City Chiefs": { name: "Arrowhead Stadium", city: "Kansas City, MO" },
+  "Las Vegas Raiders": { name: "Allegiant Stadium", city: "Las Vegas, NV" },
+  "Los Angeles Chargers": { name: "SoFi Stadium", city: "Inglewood, CA" },
+  "Los Angeles Rams": { name: "SoFi Stadium", city: "Inglewood, CA" },
+  "Miami Dolphins": { name: "Hard Rock Stadium", city: "Miami Gardens, FL" },
+  "Minnesota Vikings": { name: "U.S. Bank Stadium", city: "Minneapolis, MN" },
+  "New England Patriots": { name: "Gillette Stadium", city: "Foxborough, MA" },
+  "New Orleans Saints": { name: "Caesars Superdome", city: "New Orleans, LA" },
+  "New York Giants": { name: "MetLife Stadium", city: "East Rutherford, NJ" },
+  "New York Jets": { name: "MetLife Stadium", city: "East Rutherford, NJ" },
+  "Philadelphia Eagles": { name: "Lincoln Financial Field", city: "Philadelphia, PA" },
+  "Pittsburgh Steelers": { name: "Acrisure Stadium", city: "Pittsburgh, PA" },
+  "San Francisco 49ers": { name: "Levi's Stadium", city: "Santa Clara, CA" },
+  "Seattle Seahawks": { name: "Lumen Field", city: "Seattle, WA" },
+  "Tampa Bay Buccaneers": { name: "Raymond James Stadium", city: "Tampa, FL" },
+  "Tennessee Titans": { name: "Nissan Stadium", city: "Nashville, TN" },
+  "Washington Commanders": { name: "Northwest Stadium", city: "Landover, MD" },
+};
+function venueLabel(homeTeamFullName){
+  const v = STADIUM_INFO[homeTeamFullName];
+  return v ? `${v.name}, ${v.city}` : '';
+}
 let currentSport = "nfl";
 let currentGame = null;
 let currentDossier = null;
@@ -240,7 +281,7 @@ function renderGameRow(g){
   const bookCount = (g.allBooks || []).length;
   return `
   <div class="game-row" data-id="${g.id}">
-    <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span>${g.primaryBook || ''}</span></div>
+    <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span>${venueLabel(g.homeTeam) || g.primaryBook || ''}</span></div>
     <div class="matchup">
       <div class="team-line">
         <span class="team-name">${g.awayTeam}</span>
@@ -290,13 +331,20 @@ function renderDossier(d){
   const w = d.weather;
   const inj = d.injuries || [];
   const h2h = d.headToHead || [];
+  const h2hResults = d.headToHeadResults || [];
   let html = `
     <div class="dossier-hero">
       <div class="dossier-title">${g.awayTeam} @ ${g.homeTeam}</div>
       <div class="dossier-sub">${timeLabel(g.commenceTime)}</div>
+      <div class="dossier-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
     </div>
     <div class="section">
-      <h3>Head-to-head</h3>
+      <h3>Head-to-head results</h3>
+      ${h2hResults.length ? h2hResults.slice(0,5).map(m=>`<div class="fact-row"><span>${m.awayTeam} ${m.awayScore} @ ${m.homeTeam} ${m.homeScore}</span><span class="v">${m.winner} won · ${m.date ? new Date(m.date).toLocaleDateString() : ''}</span></div>`).join('')
+        : '<div class="empty-note">No completed past meetings found in the last 4 seasons.</div>'}
+    </div>
+    <div class="section">
+      <h3>Scheduled meetings (no scores)</h3>
       ${h2h.length ? h2h.slice(0,5).map(m=>`<div class="fact-row"><span>${m.AwayTeam || m.AwayTeamName || ''} @ ${m.HomeTeam || m.HomeTeamName || ''}</span><span class="v">${m.Season || ''} ${m.DateTime ? new Date(m.DateTime).toLocaleDateString() : ''}</span></div>`).join('')
         : '<div class="empty-note">No recent meetings found in this season\'s schedule data.</div>'}
     </div>
