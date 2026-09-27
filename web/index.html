@@ -181,6 +181,7 @@ body{
 .track-row:last-child{ border-bottom:none; }
 .track-btn{ font-size:11.5px; padding:5px 11px; border-radius:14px; border:1px solid var(--amber); color:var(--amber); background:none; cursor:pointer; font-family:inherit; white-space:nowrap; }
 .track-btn.tracked{ border-color:var(--green); color:var(--green); cursor:default; }
+.open-tag{ font-size:9.5px; color:var(--amber); border:1px solid var(--amber); border-radius:8px; padding:1px 6px; margin-left:5px; font-weight:600; white-space:nowrap; }
 
 /* My Picks screen */
 .picks-summary{ display:flex; gap:8px; padding:14px 20px; flex-wrap:wrap; }
@@ -458,7 +459,7 @@ async function trackPick(market, side, point, price, btnEl){
   }
 }
 
-function renderTrackSection(g){
+function renderTrackSection(g, lm){
   if(!g || g.status === 'final') return '';
   const rows = [];
   const priceLabel = (p) => p === null || p === undefined ? '—' : (p > 0 ? '+'+p : String(p));
@@ -476,6 +477,22 @@ function renderTrackSection(g){
       label:`${o.name} ${o.point ?? ''}`, odds: priceLabel(o.price) });
   });
 
+  // Opening-line options — for anyone who locked in a bet before the line
+  // moved, so they can log the number they actually got instead of only
+  // being able to track whatever the board shows right now. Only offered
+  // where the line has actually moved; if it hasn't, opening === current
+  // and the row above already covers it.
+  if(lm && lm.available && lm.hasHistory && Array.isArray(lm.summary)){
+    lm.summary.forEach(m=>{
+      if(!m.moved) return;
+      const base = m.market === 'moneyline' ? `${m.side} ML`
+        : m.market === 'total' ? `${m.side} ${m.openPoint ?? ''}`
+        : `${m.side} ${m.openPoint > 0 ? '+'+m.openPoint : m.openPoint}`;
+      rows.push({ market: m.market, side: m.side, point: m.openPoint, price: m.openPrice,
+        label: base, odds: priceLabel(m.openPrice), opening: true });
+    });
+  }
+
   if(!rows.length) return '';
 
   // Stashed here (rather than re-derived from the DOM) so wireTrackButtons()
@@ -488,7 +505,7 @@ function renderTrackSection(g){
       <h3>Track a pick</h3>
       ${rows.map((r,i)=>`
         <div class="track-row">
-          <span>${r.label} <span style="color:var(--sub)">(${r.odds})</span></span>
+          <span>${r.label} <span style="color:var(--sub)">(${r.odds})</span>${r.opening ? ' <span class="open-tag">Locked in early</span>' : ''}</span>
           <button class="track-btn" data-idx="${i}">Track</button>
         </div>
       `).join('')}
@@ -852,6 +869,18 @@ function lineMovementRow(m){
   const curStr = fmt(m.currentPoint, m.currentPrice);
   return `<div class="fact-row"><span>${label}</span><span class="v">${m.moved ? `${openStr} → ${curStr}` : `${curStr} (unchanged)`}</span></div>`;
 }
+// The very first line we recorded for each market/side — shown as its own
+// section ahead of Line Movement so "what did this open at" is a fact on its
+// own, not something to reconstruct from the movement arrows.
+function originalLineRow(m){
+  const label = m.market === 'moneyline' ? `${m.side} ML`
+    : m.market === 'total' ? `Total (${m.side})`
+    : `${m.side} Spread`;
+  const fmt = (point, price) => m.market === 'moneyline'
+    ? formatPrice(price)
+    : `${point ?? '—'} (${formatPrice(price)})`;
+  return `<div class="fact-row"><span>${label}</span><span class="v">${fmt(m.openPoint, m.openPrice)}</span></div>`;
+}
 
 function renderDossier(d){
   const g = d.game;
@@ -869,7 +898,13 @@ function renderDossier(d){
       <div class="dossier-sub">${timeLabel(g.commenceTime)}</div>
       <div class="dossier-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
     </div>
-    ${renderTrackSection(trackGame)}
+    ${renderTrackSection(trackGame, lm)}
+    <div class="section">
+      <h3>Original lines${lm.book ? ' · ' + lm.book : ''}</h3>
+      ${lm.available && lm.hasHistory && lm.summary && lm.summary.length
+        ? lm.summary.map(originalLineRow).join('')
+        : `<div class="empty-note">${lm.reason || lm.note || 'Opening lines will show here once we\'ve recorded the first odds snapshot for this game.'}</div>`}
+    </div>
     <div class="section">
       <h3>Line movement${lm.book ? ' · ' + lm.book : ''}</h3>
       ${lm.available && lm.hasHistory && lm.summary && lm.summary.length
