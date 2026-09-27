@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool, ensureSchema } from "../db.js";
 import { effectiveTier, trialMsRemaining, TRIAL_DAYS } from "./tierService.js";
+import { assignReferralCodeOnSignup, lookupReferrerByCode } from "./referralService.js";
 
 // Falls back to a fixed dev secret if JWT_SECRET isn't set so local dev still
 // works, but in production you should always set JWT_SECRET on Render.
@@ -21,6 +22,8 @@ export function toPublicUser(row) {
     rawTier: row.tier,
     trialEndsAt: row.trial_ends_at ?? null,
     trialMsRemaining: trialMsRemaining(row),
+    referralCode: row.referral_code ?? null,
+    bonusAccessUntil: row.bonus_access_until ?? null,
   };
 }
 
@@ -32,7 +35,7 @@ export function verifyToken(token) {
   return jwt.verify(token, JWT_SECRET);
 }
 
-export async function signup(email, password) {
+export async function signup(email, password, referralCode, signupIp) {
   if (!pool) throw new Error("Accounts aren't available yet — no database configured.");
   if (!email || !password) throw new Error("Email and password are required.");
   if (password.length < 8) throw new Error("Password must be at least 8 characters.");
@@ -43,15 +46,27 @@ export async function signup(email, password) {
   const existing = await pool.query("SELECT id FROM users WHERE email = $1", [normalizedEmail]);
   if (existing.rows.length) throw new Error("An account with that email already exists.");
 
+  // A referral code is optional and best-effort: an unknown/mistyped code
+  // just means the signup proceeds without a referrer attached, rather than
+  // blocking account creation.
+  let referrerId = null;
+  if (referralCode) {
+    const referrer = await lookupReferrerByCode(referralCode);
+    if (referrer) referrerId = referrer.id;
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
   const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
   const { rows } = await pool.query(
-    `INSERT INTO users (email, password_hash, tier, trial_ends_at)
-     VALUES ($1, $2, 'trial', $3)
-     RETURNING id, email, created_at, tier, trial_ends_at, subscription_status`,
-    [normalizedEmail, passwordHash, trialEndsAt]
+    `INSERT INTO users (email, password_hash, tier, trial_ends_at, referred_by_user_id, signup_ip)
+     VALUES ($1, $2, 'trial', $3, $4, $5)
+     RETURNING id, email, created_at, tier, trial_ends_at, subscription_status, referred_by_user_id`,
+    [normalizedEmail, passwordHash, trialEndsAt, referrerId, signupIp || null]
   );
-  const user = toPublicUser(rows[0]);
+  const row = rows[0];
+  row.referral_code = await assignReferralCodeOnSignup(row.id);
+
+  const user = toPublicUser(row);
   return { user, token: signToken(user) };
 }
 

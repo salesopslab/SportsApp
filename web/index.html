@@ -64,6 +64,15 @@ body{
   .navbar{ max-width:720px; }
   .mover-alert{ max-width:680px; }
 }
+/* On larger desktop viewports the 720px shell still leaves a lot of empty
+   gutter on either side — this isn't a layout redesign (still one centered
+   column, same components), just giving it more room to breathe on big
+   screens rather than staying phone-width forever. */
+@media (min-width: 1280px){
+  .app{ max-width:920px; }
+  .navbar{ max-width:920px; }
+  .mover-alert{ max-width:880px; }
+}
 
 /* Hover/focus feedback — applies to every real button/link on the page
    (almost everything already is one; the one holdout, .sport-tab, is fixed
@@ -76,6 +85,18 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 }
 .game-row:hover{ background:var(--surface); }
 .mover-card:hover{ background:var(--surface2); border-color:var(--amber); }
+
+/* Outline-style buttons (transparent/no background) barely show the generic
+   brightness-filter hover above since there's no fill to darken — give them
+   their own subtle tint using their own border color so hover is visible
+   whichever color variant (amber/green/red) is currently showing. */
+.tier-badge:hover:not(:disabled),
+.track-btn:hover:not(:disabled):not(.tracked),
+.referral-copy-btn:hover:not(:disabled):not(.copied){
+  background:color-mix(in srgb, currentColor 10%, transparent);
+}
+.modal-tab:hover:not(.active){ background:var(--line); color:var(--text); }
+.manage-billing-link:hover{ color:var(--text); }
 .game-row:focus-visible, .mover-card:focus-visible{ outline:2px solid var(--amber); outline-offset:-2px; }
 
 .topbar{
@@ -224,6 +245,16 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .modal-input{ width:100%; box-sizing:border-box; padding:11px 12px; margin-bottom:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:14px; font-family:inherit; }
 .modal-submit{ width:100%; padding:12px; border-radius:10px; border:none; background:var(--amber); color:var(--bg); font-weight:700; cursor:pointer; font-size:14px; }
 .modal-error{ color:var(--red); font-size:12.5px; margin-bottom:8px; min-height:0; }
+.account-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
+.account-row:last-of-type{ border-bottom:none; }
+.account-label{ color:var(--sub); }
+.referral-block{ margin:16px 0; padding:14px; border:1px dashed var(--amber); border-radius:12px; background:rgba(199,127,29,0.06); }
+.referral-title{ font-size:13.5px; font-weight:700; margin-bottom:4px; }
+.referral-sub{ font-size:12px; color:var(--sub); line-height:1.5; margin-bottom:10px; }
+.referral-link-row{ display:flex; gap:8px; align-items:center; }
+.referral-link-input{ margin-bottom:0; font-size:12.5px; }
+.referral-copy-btn{ flex-shrink:0; padding:11px 14px; border-radius:10px; border:1px solid var(--amber); color:var(--amber); background:none; font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; }
+.referral-copy-btn.copied{ border-color:var(--green); color:var(--green); }
 
 /* Tier badge + pricing / upgrade modal */
 .tier-badge{ font-size:10.5px; font-weight:700; padding:5px 10px; border-radius:20px; background:none; cursor:pointer; font-family:inherit; white-space:nowrap; border:1px solid var(--amber); color:var(--amber); }
@@ -307,6 +338,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <div class="modal-error" id="authError"></div>
       <input class="modal-input" id="authEmail" type="email" placeholder="Email" autocomplete="email">
       <input class="modal-input" id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
+      <input class="modal-input hidden" id="authReferralCode" type="text" placeholder="Referral code (optional)" autocomplete="off">
       <button class="modal-submit" id="authSubmit">Log in</button>
     </div>
   </div>
@@ -320,6 +352,26 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <div class="pricing-error" id="pricingError"></div>
       <div id="pricingTiers"><div class="board-msg"><div class="spin"></div></div></div>
       <button class="manage-billing-link hidden" id="manageBillingBtn">Manage billing / cancel subscription</button>
+    </div>
+  </div>
+
+  <!-- ACCOUNT MODAL -->
+  <div class="modal-overlay hidden" id="accountModal">
+    <div class="modal-card">
+      <button class="modal-close" id="accountModalClose">×</button>
+      <h2>Your account</h2>
+      <div class="account-row"><span class="account-label">Email</span><span id="accountEmail"></span></div>
+      <div class="account-row"><span class="account-label">Plan</span><span id="accountTier"></span></div>
+      <div class="referral-block">
+        <div class="referral-title">Give 30 days, get 30 days</div>
+        <div class="referral-sub">Share your link — when a friend subscribes, you both get 30 free days of Edge Pro.</div>
+        <div class="referral-link-row">
+          <input class="modal-input referral-link-input" id="referralLinkInput" type="text" readonly>
+          <button class="referral-copy-btn" id="referralCopyBtn">Copy</button>
+        </div>
+      </div>
+      <button class="modal-submit" id="accountUpgradeBtn">See plans</button>
+      <button class="manage-billing-link" id="accountLogoutBtn">Log out</button>
     </div>
   </div>
 
@@ -467,6 +519,13 @@ try {
   currentUser = JSON.parse(localStorage.getItem('betedge_user') || 'null');
 } catch { /* localStorage unavailable — just stay logged out */ }
 
+// Remember a ?ref=CODE referral link right away, in case the visitor signs
+// up later rather than immediately (defined below; safe to call now).
+try{
+  const refFromUrl = new URLSearchParams(location.search).get('ref');
+  if(refFromUrl) localStorage.setItem('betedge_ref_code', refFromUrl);
+}catch{ /* best-effort */ }
+
 function apiFetch(path, opts = {}) {
   const headers = Object.assign({}, opts.headers || {});
   if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
@@ -480,6 +539,13 @@ function tierDisplayName(tierId){
   const t = (tiersCache || []).find(x => x.id === tierId);
   if(t) return t.name;
   return { trial: 'Trial', expired: 'Expired', none: 'Free' }[tierId] || tierId;
+}
+
+// "a Standard feature" vs "an Edge Pro feature" — picks the right article
+// from the name's actual leading sound rather than hardcoding one or the
+// other, so this stays correct if a tier is ever renamed.
+function articleFor(name){
+  return /^[aeiou]/i.test(name) ? 'an' : 'a';
 }
 
 function updateProfileButton(){
@@ -640,9 +706,22 @@ document.getElementById('manageBillingBtn').addEventListener('click', async ()=>
 
 // Small reusable "this needs a plan" block, dropped in place of a gated
 // feature. `requiredTier` picks the headline copy; the button opens the
-// same pricing modal everything else uses.
-function upgradePromptHtml(requiredTier, message){
+// same pricing modal everything else uses. Pass `{signedOut:true}` for a
+// visitor who isn't logged in at all — a bare "See plans" reads oddly for a
+// guest who hasn't even created an account yet, so this shows a distinct
+// "sign in / sign up" prompt instead, wired to the auth modal.
+function upgradePromptHtml(requiredTier, message, opts){
   const name = tierDisplayName(requiredTier);
+  if(opts && opts.signedOut){
+    return `
+      <div class="upgrade-prompt">
+        <div class="lock">🔒</div>
+        <div class="headline">Sign in to see this</div>
+        <div class="sub">${message || `Log in or create a free account to see it.`}</div>
+        <button class="upgrade-cta" data-action="signin">Log in / Sign up</button>
+      </div>
+    `;
+  }
   return `
     <div class="upgrade-prompt">
       <div class="lock">🔒</div>
@@ -654,7 +733,11 @@ function upgradePromptHtml(requiredTier, message){
 }
 function wireUpgradePrompts(root){
   (root || document).querySelectorAll('.upgrade-cta').forEach(btn=>{
-    btn.addEventListener('click', openPricingModal);
+    if(btn.dataset.action === 'signin'){
+      btn.addEventListener('click', ()=>openAuthModal('signup'));
+    } else {
+      btn.addEventListener('click', openPricingModal);
+    }
   });
 }
 
@@ -665,12 +748,24 @@ function setAuthMode(mode){
   document.getElementById('authSubmit').textContent = mode === 'login' ? 'Log in' : 'Sign up';
   document.getElementById('authSubmit').dataset.mode = mode;
   document.getElementById('authError').textContent = '';
+  document.getElementById('authReferralCode').classList.toggle('hidden', mode !== 'signup');
+}
+
+// A visit via someone's referral link (?ref=CODE) is remembered so the code
+// is still applied even if the person browses a bit before signing up.
+function storedReferralCode(){
+  try{
+    const fromUrl = new URLSearchParams(location.search).get('ref');
+    if(fromUrl){ localStorage.setItem('betedge_ref_code', fromUrl); return fromUrl; }
+    return localStorage.getItem('betedge_ref_code') || '';
+  }catch{ return ''; }
 }
 
 function openAuthModal(mode = 'login'){
   document.getElementById('authModal').classList.remove('hidden');
   document.getElementById('authEmail').value = '';
   document.getElementById('authPassword').value = '';
+  document.getElementById('authReferralCode').value = storedReferralCode();
   setAuthMode(mode);
 }
 function closeAuthModal(){
@@ -679,17 +774,68 @@ function closeAuthModal(){
 
 document.getElementById('profileBtn').addEventListener('click', ()=>{
   if(currentUser){
-    if(confirm(`Logged in as ${currentUser.email}. Log out?`)){
-      authToken = null; currentUser = null;
-      try{ localStorage.removeItem('betedge_token'); localStorage.removeItem('betedge_user'); }catch{}
-      updateProfileButton();
-      if(document.getElementById('picks').classList.contains('active')) loadPicks();
-    }
+    openAccountModal();
   } else {
     openAuthModal();
   }
 });
 document.getElementById('authModalClose').addEventListener('click', closeAuthModal);
+
+// ---------------------------------------------------------------------------
+// Account modal: plan/email summary, referral link, log out
+// ---------------------------------------------------------------------------
+function openAccountModal(){
+  if(!currentUser) return;
+  document.getElementById('accountEmail').textContent = currentUser.email;
+  document.getElementById('accountTier').textContent = tierDisplayName(currentUser.tier);
+  const link = currentUser.referralCode
+    ? `${location.origin}${location.pathname}?ref=${currentUser.referralCode}`
+    : '';
+  const linkInput = document.getElementById('referralLinkInput');
+  linkInput.value = link || 'Refreshing your referral link…';
+  const copyBtn = document.getElementById('referralCopyBtn');
+  copyBtn.textContent = 'Copy';
+  copyBtn.classList.remove('copied');
+  copyBtn.disabled = !link;
+  document.getElementById('accountModal').classList.remove('hidden');
+  // Referral codes are backfilled lazily server-side, so an older account
+  // might not have one on its cached currentUser yet — refresh once to pick
+  // it up rather than showing a blank/placeholder link indefinitely.
+  if(!currentUser.referralCode) refreshAccount().then(()=>{
+    if(!document.getElementById('accountModal').classList.contains('hidden')) openAccountModal();
+  });
+}
+function closeAccountModal(){
+  document.getElementById('accountModal').classList.add('hidden');
+}
+document.getElementById('accountModalClose').addEventListener('click', closeAccountModal);
+document.getElementById('accountUpgradeBtn').addEventListener('click', ()=>{
+  closeAccountModal();
+  openPricingModal();
+});
+document.getElementById('accountLogoutBtn').addEventListener('click', ()=>{
+  authToken = null; currentUser = null;
+  try{ localStorage.removeItem('betedge_token'); localStorage.removeItem('betedge_user'); }catch{}
+  updateProfileButton();
+  closeAccountModal();
+  if(document.getElementById('picks').classList.contains('active')) loadPicks();
+});
+document.getElementById('referralCopyBtn').addEventListener('click', async ()=>{
+  const input = document.getElementById('referralLinkInput');
+  if(!input.value) return;
+  const btn = document.getElementById('referralCopyBtn');
+  try{
+    await navigator.clipboard.writeText(input.value);
+  }catch{
+    // Clipboard API unavailable (older browser, non-HTTPS) — fall back to
+    // the classic select+execCommand trick so Copy still works.
+    input.select();
+    try{ document.execCommand('copy'); }catch{}
+  }
+  btn.textContent = 'Copied!';
+  btn.classList.add('copied');
+  setTimeout(()=>{ btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+});
 document.getElementById('valueBannerCta').addEventListener('click', ()=>openAuthModal('signup'));
 document.getElementById('valueBannerClose').addEventListener('click', ()=>{
   document.getElementById('valueBanner').classList.add('hidden');
@@ -707,11 +853,17 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
   errEl.textContent = '';
   if(!email || !password){ errEl.textContent = 'Enter an email and password.'; return; }
 
+  const body = { email, password };
+  if(mode === 'signup'){
+    const referralCode = document.getElementById('authReferralCode').value.trim();
+    if(referralCode) body.referralCode = referralCode;
+  }
+
   try{
     const res = await fetch(`${API}/api/auth/${mode === 'login' ? 'login' : 'signup'}`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify(body)
     });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || 'Something went wrong.');
@@ -720,6 +872,7 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
     try{
       localStorage.setItem('betedge_token', authToken);
       localStorage.setItem('betedge_user', JSON.stringify(currentUser));
+      if(mode === 'signup') localStorage.removeItem('betedge_ref_code');
     }catch{}
     updateProfileButton();
     closeAuthModal();
@@ -1333,7 +1486,8 @@ async function sendChat(){
     thinking.remove();
     const div = document.createElement('div');
     div.className = 'msg upgrade';
-    div.innerHTML = `AI picks advice is a ${tierDisplayName(requiredTier)} feature.<br><button class="upgrade-cta">See plans</button>`;
+    const tierName = tierDisplayName(requiredTier);
+    div.innerHTML = `AI picks advice is ${articleFor(tierName)} ${tierName} feature.<br><button class="upgrade-cta">See plans</button>`;
     document.getElementById('chatLog').appendChild(div);
     document.getElementById('chatLog').scrollTop = document.getElementById('chatLog').scrollHeight;
     wireUpgradePrompts(div);
@@ -1525,11 +1679,14 @@ function spreadMoveRow(m){
 }
 
 let bigLinesPaywalled = null; // null = not paywalled; else the requiredTier string
+let bigLinesSignedOut = false; // true when the 402 was "please log in", not "please upgrade"
 
 function renderBigLines(){
   const list = document.getElementById('bigLinesList');
   if(bigLinesPaywalled){
-    list.innerHTML = upgradePromptHtml(bigLinesPaywalled, 'See every sharp line move across every sport, the moment it happens.');
+    list.innerHTML = bigLinesSignedOut
+      ? upgradePromptHtml(bigLinesPaywalled, 'Sign in or create a free account to see sharp line moves across every sport.', { signedOut: true })
+      : upgradePromptHtml(bigLinesPaywalled, 'See every sharp line move across every sport, the moment it happens.');
     wireUpgradePrompts(list);
     return;
   }
@@ -1564,6 +1721,7 @@ async function refreshBigLines(){
     if(res.status === 402){
       const data = await res.json().catch(()=>({}));
       bigLinesPaywalled = data.requiredTier || 'edge';
+      bigLinesSignedOut = data.loggedIn === false;
       bigLinesData = [];
       bigMoverKeys = new Set();
       if(document.getElementById('bigLines').classList.contains('active')) renderBigLines();

@@ -12,6 +12,12 @@ import adminRouter from "./routes/admin.js";
 import billingRouter, { handleStripeWebhook } from "./routes/billing.js";
 
 const app = express();
+// Render puts the app behind a reverse proxy, so without this every request
+// looks like it comes from that proxy's own IP — req.ip would be identical
+// for every visitor. This makes Express read the real client IP from the
+// X-Forwarded-For header the proxy sets, which the referral program's
+// same-IP self-referral check (referralService.js) depends on being correct.
+app.set("trust proxy", true);
 app.use(cors());
 
 // The Stripe webhook needs the RAW request body to verify its signature, so

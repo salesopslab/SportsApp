@@ -26,23 +26,28 @@ export const TRIAL_DAYS = 3;
 // trial that has run out or a subscription that lapsed.
 export function effectiveTier(userRow) {
   if (!userRow) return "none";
-  const { tier, trial_ends_at, subscription_status } = userRow;
+  const { tier, trial_ends_at, subscription_status, bonus_access_until } = userRow;
+
+  // Referral bonus days (see referralService.js) grant Edge Pro-level access
+  // on top of whatever the account's own tier/subscription works out to, so
+  // check it first and let it override an expired/lapsed base tier too.
+  const hasBonus = bonus_access_until && new Date(bonus_access_until).getTime() > Date.now();
 
   if (tier === "trial") {
     if (trial_ends_at && new Date(trial_ends_at).getTime() > Date.now()) return "trial";
-    return "expired";
+    return hasBonus ? "edge_pro" : "expired";
   }
 
   if (["standard", "edge", "edge_pro"].includes(tier)) {
     // A subscription that isn't currently active/trialing on Stripe's side
     // (canceled, unpaid, past_due, incomplete_expired) no longer grants access.
     if (subscription_status && !["active", "trialing"].includes(subscription_status)) {
-      return "expired";
+      return hasBonus ? "edge_pro" : "expired";
     }
-    return tier;
+    return hasBonus ? "edge_pro" : tier;
   }
 
-  return "expired";
+  return hasBonus ? "edge_pro" : "expired";
 }
 
 export function meetsTier(userRow, minTierId) {

@@ -54,6 +54,42 @@ export function ensureSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT;
       CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users (stripe_customer_id);
 
+      -- Referral program: every user gets their own shareable code; signing
+      -- up with someone else's code links the two accounts so that, once the
+      -- referee actually subscribes, both sides can be granted bonus access.
+      -- bonus_access_until works exactly like trial_ends_at (effectiveTier
+      -- treats a live one as Edge Pro-level access) but stacks on top of
+      -- whatever tier/subscription the account already has.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code TEXT UNIQUE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by_user_id BIGINT REFERENCES users(id);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_access_until TIMESTAMPTZ;
+      -- Captured at signup for referral self-abuse checks (see referralService.js
+      -- isSelfReferral) — not used for anything else, and never shown to users.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_ip TEXT;
+      CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users (referral_code);
+
+      -- One row per referee whose reward was blocked as a likely self-referral
+      -- (same normalized email or same signup IP as the referrer), so it's
+      -- visible/auditable rather than just silently skipped.
+      CREATE TABLE IF NOT EXISTS referral_rewards_blocked (
+        id BIGSERIAL PRIMARY KEY,
+        referrer_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        referee_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reason TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      -- One row per referee who has triggered a reward, so a webhook retry
+      -- (or a plan change that fires checkout.session.completed again) can
+      -- never grant the bonus twice for the same referral.
+      CREATE TABLE IF NOT EXISTS referral_rewards (
+        id BIGSERIAL PRIMARY KEY,
+        referrer_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        referee_user_id BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        bonus_days INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
       CREATE TABLE IF NOT EXISTS bets (
         id BIGSERIAL PRIMARY KEY,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

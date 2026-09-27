@@ -11,6 +11,7 @@ import {
   createPortalSession,
   constructWebhookEvent,
 } from "../services/stripeService.js";
+import { grantReferralRewardIfEligible } from "../services/referralService.js";
 
 const router = Router();
 
@@ -142,6 +143,15 @@ export async function handleStripeWebhook(req, res) {
            WHERE id = $4`,
           [tier, session.customer, session.subscription, userId]
         );
+        // If this new subscriber signed up with someone else's referral
+        // code, this is the moment the referral "counts" — grant both sides
+        // their 30 bonus days. Idempotent, and never blocks the tier update
+        // above if it fails for any reason.
+        try {
+          await grantReferralRewardIfEligible(userId);
+        } catch (err) {
+          console.error(`grantReferralRewardIfEligible failed for user ${userId}:`, err.message);
+        }
         break;
       }
 
