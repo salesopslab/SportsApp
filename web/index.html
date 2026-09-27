@@ -95,6 +95,9 @@ body{
 .mover-card-teams{ font-size:15px; font-weight:600; margin-bottom:4px; }
 .mover-card-detail{ font-size:13px; color:var(--sub); }
 .mover-card-time{ font-size:11px; color:var(--amber); margin-top:6px; font-weight:600; }
+.mover-spread-move{ font-size:15px; font-weight:700; margin-bottom:4px; }
+.mover-spread-move .pt{ font-variant-numeric:tabular-nums; }
+.mover-spread-move .arrow{ color:var(--amber); margin:0 2px; }
 
 .game-row{ padding:16px 20px; border-bottom:1px solid var(--line); cursor:pointer; }
 .game-row:active{ background:var(--surface); }
@@ -1145,6 +1148,16 @@ async function checkMovers(){
 // Big Lines tab + per-game "🔥 Big move" badges: a wider, longer-lived view
 // of the same top-movers data (more games, longer window than the toast
 // alerts use), so a move stays findable after its alert has come and gone.
+// A prominent "-2.5 → -3.5" callout for spread moves specifically — the
+// generic detail line below still shows the full point+price move for every
+// market, but a spread number moving is the thing worth calling out big.
+function spreadMoveRow(m){
+  if(m.marketType !== 'spread') return '';
+  if(m.startPoint === null || m.startPoint === undefined || m.endPoint === null || m.endPoint === undefined) return '';
+  const fmtPt = (p) => p > 0 ? '+'+p : String(p);
+  return `<div class="mover-spread-move">${m.side}  <span class="pt">${fmtPt(m.startPoint)}</span> <span class="arrow">→</span> <span class="pt">${fmtPt(m.endPoint)}</span></div>`;
+}
+
 function renderBigLines(){
   const list = document.getElementById('bigLinesList');
   if(bigLinesData.length === 0){
@@ -1155,8 +1168,9 @@ function renderBigLines(){
     <div class="mover-card" data-sport="${m.sport}" data-id="${m.gameId}">
       <div class="mover-card-top">🔥 ${m.sport.toUpperCase()} · ${timeLabel(m.commenceTime)}</div>
       <div class="mover-card-teams">${m.awayTeam} @ ${m.homeTeam}</div>
+      ${spreadMoveRow(m)}
       <div class="mover-card-detail">${m.market}: ${m.movement}</div>
-      <div class="mover-card-time">Moved ${formatMoveTime(m.lastSeen)}</div>
+      <div class="mover-card-time">Line moved ${formatMoveTime(m.lastSeen)}</div>
     </div>
   `).join('');
   list.querySelectorAll('.mover-card').forEach(card=>{

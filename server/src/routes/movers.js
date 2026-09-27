@@ -61,6 +61,13 @@ router.get("/", async (req, res) => {
           commenceTime: game.commenceTime,
           book: m.book,
           market: marketLabel(m),
+          // Raw (unformatted) fields alongside the display-ready ones above,
+          // so the frontend can build its own compact "-2.5 → -3.5" callout
+          // for spread moves without having to parse the formatted string.
+          marketType: m.market,
+          side: m.side,
+          startPoint: m.startPoint,
+          endPoint: m.endPoint,
           movement: movementSummary(m),
           score: Math.round(m.score * 10) / 10,
           firstSeen: m.firstSeen,
