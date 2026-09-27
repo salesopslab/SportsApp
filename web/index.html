@@ -108,9 +108,10 @@ body{
 .game-meta span:last-child{ text-align:right; }
 .matchup{ display:flex; flex-direction:column; gap:8px; }
 .team-line{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
-.team-name{ font-size:16px; font-weight:500; }
-.rank-badge{ font-size:10.5px; font-weight:700; color:var(--amber); margin-right:5px; white-space:nowrap; }
-.home-tag{ font-size:9px; font-weight:700; color:var(--sub); border:1px solid var(--line); border-radius:6px; padding:1px 5px; margin-left:6px; letter-spacing:0.3px; vertical-align:middle; }
+.team-info{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.team-name{ font-size:16px; font-weight:500; display:flex; align-items:center; gap:6px; line-height:1.25; }
+.rank-line{ font-size:10.5px; font-weight:700; color:var(--amber); white-space:nowrap; letter-spacing:0.2px; }
+.home-tag{ font-size:9px; font-weight:700; color:var(--sub); border:1px solid var(--line); border-radius:6px; padding:1px 5px; letter-spacing:0.3px; white-space:nowrap; flex-shrink:0; }
 .odds-cluster{ display:flex; gap:14px; font-family:'Oswald',sans-serif; flex-shrink:0; }
 .odds-box{ text-align:right; min-width:44px; }
 .odds-box .num{ font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
@@ -442,6 +443,9 @@ function updateTierBadge(){
   }
 }
 updateProfileButton();
+// Pre-warm the tier name list so the badge shows "Standard"/"Edge"/"Edge Pro"
+// right away instead of the raw tier id until the pricing modal is opened.
+fetchTiers().then(updateTierBadge);
 
 // Refreshes the logged-in user's tier/trial state from the server — used
 // right after login/signup isn't necessary (that response already has it),
@@ -983,11 +987,19 @@ async function loadBoard(sport){
   }
 }
 
-// Small "#3" / "1st AFC East" badge next to a team name, and a "HOME" tag on
-// the home team — both no-ops (empty string) when the data isn't there, so a
-// team with no rank or a sport with no ranking data just shows the plain name.
-function rankBadge(rank){
-  return rank ? `<span class="rank-badge">${rank}</span>` : '';
+// Team name block for a matchup row: the name (with a "HOME" tag right next
+// to it for the home team) on top, and its rank/division standing — "#3" or
+// "1st AFC East" — in smaller amber text underneath. Both the rank line and
+// the HOME tag are no-ops (omitted) when there's nothing to show, so an
+// unranked team or an away team just shows the plain name, still centered
+// against whatever's on the other side of the row (odds or score).
+function teamInfoBlock(name, rank, isHome){
+  return `
+    <div class="team-info">
+      <span class="team-name">${name}${isHome ? homeTag : ''}</span>
+      ${rank ? `<span class="rank-line">${rank}</span>` : ''}
+    </div>
+  `;
 }
 const homeTag = '<span class="home-tag">HOME</span>';
 
@@ -1007,11 +1019,11 @@ function renderGameRow(g){
       <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${divisionBadge}${bigMoveBadge}</div>
       <div class="matchup">
         <div class="team-line">
-          <span class="team-name">${rankBadge(g.awayRank)}${g.awayTeam}</span>
+          ${teamInfoBlock(g.awayTeam, g.awayRank, false)}
           <div class="score-num">${score.away ?? '—'}</div>
         </div>
         <div class="team-line">
-          <span class="team-name">${rankBadge(g.homeRank)}${g.homeTeam}${homeTag}</span>
+          ${teamInfoBlock(g.homeTeam, g.homeRank, true)}
           <div class="score-num">${score.home ?? '—'}</div>
         </div>
       </div>
@@ -1038,7 +1050,7 @@ function renderGameRow(g){
     <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || g.primaryBook || ''}</span>${divisionBadge}${bigMoveBadge}</div>
     <div class="matchup">
       <div class="team-line">
-        <span class="team-name">${rankBadge(g.awayRank)}${g.awayTeam}</span>
+        ${teamInfoBlock(g.awayTeam, g.awayRank, false)}
         <div class="odds-cluster">
           <div class="odds-box"><div class="num">${spreadAway ? fmtOdds(spreadAway.point) : '—'}</div><div class="lbl">Spread</div>${openAwayLabel}</div>
           <div class="odds-box"><div class="num">${away ? fmtOdds(away.price) : '—'}</div><div class="lbl">ML</div></div>
@@ -1046,7 +1058,7 @@ function renderGameRow(g){
         </div>
       </div>
       <div class="team-line">
-        <span class="team-name">${rankBadge(g.homeRank)}${g.homeTeam}${homeTag}</span>
+        ${teamInfoBlock(g.homeTeam, g.homeRank, true)}
         <div class="odds-cluster">
           <div class="odds-box"><div class="num">${spreadHome ? fmtOdds(spreadHome.point) : '—'}</div><div class="lbl">Spread</div>${openHomeLabel}</div>
           <div class="odds-box"><div class="num">${home ? fmtOdds(home.price) : '—'}</div><div class="lbl">ML</div></div>
