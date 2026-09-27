@@ -180,6 +180,11 @@ body{
 .odds-box .num{ font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
 .odds-box .lbl{ font-size:9px; color:var(--sub); text-transform:uppercase; letter-spacing:0.4px; }
 .book-note{ margin-top:10px; font-size:11.5px; color:var(--sub); }
+.score-badge{ font-size:10px; font-weight:700; padding:3px 9px; border-radius:10px; text-transform:uppercase; letter-spacing:0.4px; }
+.score-badge.final{ background:var(--surface2); color:var(--sub); }
+.score-badge.live{ background:var(--red); color:#fff; }
+.score-num{ font-family:'Oswald',sans-serif; font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
+.game-row.final,.game-row.live{ opacity:0.9; }
 
 .chat-wrap{ display:flex; flex-direction:column; height:100%; padding:0 20px; }
 .chat-log{ flex:1; padding:16px 0; display:flex; flex-direction:column; gap:14px; overflow-y:auto; }
@@ -368,7 +373,15 @@ async function loadBoard(sport){
     if(!res.ok) throw new Error('bad status ' + res.status);
     const data = await res.json();
     setStatus('', 'Live');
-    const games = data.games || [];
+    // Show upcoming games first, then in-progress, then finished — finished
+    // games are still shown (with their result) but shouldn't push upcoming
+    // games below the fold.
+    const statusRank = { upcoming: 0, live: 1, final: 2 };
+    const games = (data.games || []).slice().sort((a, b) => {
+      const rankDiff = (statusRank[a.status] ?? 0) - (statusRank[b.status] ?? 0);
+      if(rankDiff !== 0) return rankDiff;
+      return new Date(a.commenceTime) - new Date(b.commenceTime);
+    });
     if(games.length === 0){
       list.innerHTML = '<div class="board-msg">No games with posted odds for this sport right now — check back closer to game day.</div>';
       return;
@@ -388,6 +401,28 @@ async function loadBoard(sport){
 }
 
 function renderGameRow(g){
+  if(g.status === 'final' || g.status === 'live'){
+    const score = g.status === 'final' ? g.finalScore : g.liveScore;
+    const badge = g.status === 'final' ? 'Final' : 'Live';
+    const note = g.status === 'final'
+      ? 'Game finished — tap for the full breakdown'
+      : 'Game in progress — score may be a few minutes behind';
+    return `
+    <div class="game-row ${g.status}" data-id="${g.id}">
+      <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span></div>
+      <div class="matchup">
+        <div class="team-line">
+          <span class="team-name">${g.awayTeam}</span>
+          <div class="score-num">${score.away ?? '—'}</div>
+        </div>
+        <div class="team-line">
+          <span class="team-name">${g.homeTeam}</span>
+          <div class="score-num">${score.home ?? '—'}</div>
+        </div>
+      </div>
+      <div class="book-note">${note}</div>
+    </div>`;
+  }
   const home = findPrice(g.moneyline, g.homeTeam);
   const away = findPrice(g.moneyline, g.awayTeam);
   const spreadHome = findPrice(g.spread, g.homeTeam);

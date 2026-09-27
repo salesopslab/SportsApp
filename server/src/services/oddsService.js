@@ -41,6 +41,44 @@ export async function getOddsForSport(sportSlug) {
   });
 }
 
+/**
+ * Fetch recent game results (final scores, and in-progress scores where the
+ * provider has them) for a sport. The Odds API's /scores endpoint covers
+ * games from up to `daysFrom` days ago through any in-progress ones — this
+ * is the same account/key as the odds themselves, so no new provider needed.
+ * Cached briefly since live scores change during a game.
+ */
+export async function getScoresForSport(sportSlug, daysFrom = 3) {
+  const sportKey = SPORT_KEYS[sportSlug];
+  if (!sportKey) throw new Error(`Unknown sport: ${sportSlug}`);
+
+  return cached(`scores:${sportSlug}:${daysFrom}`, async () => {
+    const url = new URL(`${BASE}/sports/${sportKey}/scores`);
+    url.searchParams.set("daysFrom", String(daysFrom));
+    url.searchParams.set("apiKey", KEY);
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Odds API scores error ${res.status}: ${await res.text()}`);
+    }
+    const raw = await res.json();
+
+    // Index by game id for easy lookup, keeping only what we need.
+    const byId = {};
+    for (const g of raw) {
+      const scores = g.scores
+        ? Object.fromEntries(g.scores.map((s) => [s.name, s.score]))
+        : null;
+      byId[g.id] = {
+        completed: !!g.completed,
+        homeScore: scores ? scores[g.home_team] : null,
+        awayScore: scores ? scores[g.away_team] : null,
+      };
+    }
+    return byId;
+  });
+}
+
 /** Reshape the provider's payload into the flat structure the frontend/AI expect. */
 function normalizeGame(game) {
   const books = game.bookmakers || [];
