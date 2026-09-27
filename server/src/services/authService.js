@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { pool, ensureSchema } from "../db.js";
 import { effectiveTier, trialMsRemaining, TRIAL_DAYS } from "./tierService.js";
 import { assignReferralCodeOnSignup, lookupReferrerByCode } from "./referralService.js";
+import { notifyNewSignup } from "./notifyService.js";
 
 // Falls back to a fixed dev secret if JWT_SECRET isn't set so local dev still
 // works, but in production you should always set JWT_SECRET on Render.
@@ -67,6 +68,9 @@ export async function signup(email, password, referralCode, signupIp) {
   row.referral_code = await assignReferralCodeOnSignup(row.id);
 
   const user = toPublicUser(row);
+  // Best-effort: notifyNewSignup never throws, so a mail hiccup can never
+  // fail the signup response itself.
+  notifyNewSignup({ ...user, referredByUserId: row.referred_by_user_id ?? null });
   return { user, token: signToken(user) };
 }
 
