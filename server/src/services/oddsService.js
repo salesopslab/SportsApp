@@ -82,6 +82,12 @@ export async function getScoresForSport(sportSlug, daysFrom = 3) {
         homeTeam: g.home_team,
         awayTeam: g.away_team,
         commenceTime: g.commence_time,
+        // When the provider last touched this game's score — for a completed
+        // game this is effectively "when it ended," and is what the Board
+        // uses to drop final games off the list after 24 hours. Falls back
+        // to commenceTime (set below, after this loop) if the provider ever
+        // omits it.
+        lastUpdate: g.last_update || null,
       };
     }
     return byId;
