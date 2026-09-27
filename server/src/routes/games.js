@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getOddsForSport, getScoresForSport } from "../services/oddsService.js";
 import { getOpeningSpreads } from "../services/snapshotService.js";
-import { getTeamRankings, lookupRankLabel, isDivisionGame } from "../services/statsService.js";
+import { getTeamRankings, lookupRankLabel, isDivisionGame, getProbablePitchers, lookupPitchers } from "../services/statsService.js";
 import { withTier } from "../middleware/tier.js";
 import { meetsTier } from "../services/tierService.js";
 
@@ -34,10 +34,11 @@ router.get("/:sport", withTier, async (req, res) => {
   try {
     const sport = req.params.sport;
     const season = req.query.season || "2026";
-    const [games, scores, rankings] = await Promise.all([
+    const [games, scores, rankings, pitchers] = await Promise.all([
       getOddsForSport(sport),
       getScoresForSport(sport).catch(() => ({})), // scores are a nice-to-have, never block the board
       getTeamRankings(sport, season).catch(() => ({})), // same — a ranking miss shouldn't block the board
+      getProbablePitchers(sport, season).catch(() => ({})), // MLB only; empty map for every other sport
     ]);
 
     const now = Date.now();
@@ -130,12 +131,17 @@ router.get("/:sport", withTier, async (req, res) => {
     // Division/conference standing (NFL/NBA/MLB) or AP poll rank (CFB/CBB),
     // attached to every game regardless of status — a ranking is a fact about
     // the team, not about this particular game's state.
-    const withRanks = [...withOpening, ...nonUpcoming, ...backfilled].map((g) => ({
-      ...g,
-      homeRank: lookupRankLabel(sport, rankings, g.homeTeam),
-      awayRank: lookupRankLabel(sport, rankings, g.awayTeam),
-      divisionGame: isDivisionGame(sport, rankings, g.homeTeam, g.awayTeam),
-    }));
+    const withRanks = [...withOpening, ...nonUpcoming, ...backfilled].map((g) => {
+      const pitcherInfo = lookupPitchers(sport, pitchers, g.homeTeam, g.awayTeam, g.commenceTime);
+      return {
+        ...g,
+        homeRank: lookupRankLabel(sport, rankings, g.homeTeam),
+        awayRank: lookupRankLabel(sport, rankings, g.awayTeam),
+        divisionGame: isDivisionGame(sport, rankings, g.homeTeam, g.awayTeam),
+        homePitcher: pitcherInfo?.homePitcher || null,
+        awayPitcher: pitcherInfo?.awayPitcher || null,
+      };
+    });
 
     res.json({ sport, games: withRanks });
   } catch (err) {

@@ -219,3 +219,71 @@ export function isDivisionGame(sportSlug, rankings, homeTeam, awayTeam) {
     return false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// MLB starting/probable pitchers for the Board — built from the same season
+// schedule data already fetched for head-to-head (scores/json/Schedules),
+// so this doesn't cost an extra API call. SportsData.io populates the
+// "Probable" pitcher fields ahead of first pitch and swaps to the
+// "StartingPitcher" fields once it's confirmed/the game is underway; field
+// names have varied across SportsData.io sports/endpoints in the past (see
+// the CFB/CBB rankings fix above), so this checks every variant we know of
+// rather than trusting one and 404-ing or silently showing nothing.
+// ---------------------------------------------------------------------------
+function pitcherName(g, side) {
+  return (
+    g[`${side}TeamStartingPitcher`] ||
+    g[`${side}TeamProbablePitcher`] ||
+    g[`${side}StartingPitcher`] ||
+    g[`${side}ProbablePitcher`] ||
+    null
+  );
+}
+
+// Keyed by "AWAY@HOME:YYYY-MM-DD" (team codes + calendar date of the game),
+// same team-code convention the schedule already uses for head-to-head
+// matching. MLB-only; every other sport resolves to an empty map for free.
+export async function getProbablePitchers(sportSlug, season) {
+  if (sportSlug !== "mlb") return {};
+  try {
+    const schedule = await getSeasonSchedule(sportSlug, season);
+    const map = {};
+    for (const g of schedule || []) {
+      const home = g.HomeTeam;
+      const away = g.AwayTeam;
+      const dateStr = String(g.Day || g.DateTime || "").slice(0, 10);
+      if (!home || !away || !dateStr) continue;
+      const homePitcher = pitcherName(g, "Home");
+      const awayPitcher = pitcherName(g, "Away");
+      if (!homePitcher && !awayPitcher) continue;
+      map[`${away}@${home}:${dateStr}`] = { homePitcher, awayPitcher };
+    }
+    return map;
+  } catch (err) {
+    console.error(`getProbablePitchers(${sportSlug}) failed:`, err.message);
+    return {};
+  }
+}
+
+// Looks up a specific game's pitchers from the map above, matching by team
+// code + date. Checks the day before/after too — MLB doubleheaders and a
+// game's date landing on either side of a UTC-vs-local boundary both mean
+// the schedule's date string can be one day off from commenceTime's.
+export function lookupPitchers(sportSlug, pitcherMap, homeTeamFullName, awayTeamFullName, commenceTime) {
+  if (sportSlug !== "mlb" || !pitcherMap) return null;
+  try {
+    const home = toTeamCode(sportSlug, homeTeamFullName);
+    const away = toTeamCode(sportSlug, awayTeamFullName);
+    const base = new Date(commenceTime);
+    for (const offsetDays of [0, -1, 1]) {
+      const d = new Date(base);
+      d.setUTCDate(d.getUTCDate() + offsetDays);
+      const key = `${away}@${home}:${d.toISOString().slice(0, 10)}`;
+      if (pitcherMap[key]) return pitcherMap[key];
+    }
+    return null;
+  } catch (err) {
+    console.error("lookupPitchers failed:", err.message);
+    return null;
+  }
+}
