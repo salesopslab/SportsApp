@@ -63,7 +63,13 @@ export async function getScoresForSport(sportSlug, daysFrom = 3) {
     }
     const raw = await res.json();
 
-    // Index by game id for easy lookup, keeping only what we need.
+    // Index by game id for easy lookup. Keep team names + kickoff time too —
+    // not just the score — because a game that has already finished (or even
+    // kicked off) is often dropped from the /odds endpoint entirely once
+    // sportsbooks stop taking action on it. That's especially common on a
+    // busy college football/basketball Saturday with 40+ games — without
+    // these fields, games.js has no way to show that game at all once it
+    // falls out of /odds, even though we know its final score right here.
     const byId = {};
     for (const g of raw) {
       const scores = g.scores
@@ -73,6 +79,9 @@ export async function getScoresForSport(sportSlug, daysFrom = 3) {
         completed: !!g.completed,
         homeScore: scores ? scores[g.home_team] : null,
         awayScore: scores ? scores[g.away_team] : null,
+        homeTeam: g.home_team,
+        awayTeam: g.away_team,
+        commenceTime: g.commence_time,
       };
     }
     return byId;
