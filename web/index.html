@@ -55,110 +55,9 @@ body{
   padding:18px 20px 14px; display:flex; align-items:center; justify-content:space-between;
   border-bottom:1px solid var(--line); flex-shrink:0;
 }
-.brand{ font-family:'Oswald',sans-serif; font-weight:600; font-size:20px; letter-spacing:0.5px; }
+.brand{ display:flex; align-items:center; gap:8px; font-family:'Oswald',sans-serif; font-weight:600; font-size:20px; letter-spacing:0.5px; }
 .brand span{ color:var(--amber); }
-.status-pill{ font-size:11px; color:var(--sub); border:1px solid var(--line); padding:4px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; }
-.status-dot{ width:6px; height:6px; border-radius:50%; background:var(--green); }
-.status-pill.down .status-dot{ background:var(--red); }
-.status-pill.waking .status-dot{ background:var(--amber); }
-
-.screen{ display:none; flex:1; overflow-y:auto; padding-bottom:90px; min-height:0; }
-.screen.active{ display:block; }
-
-.sport-tabs{ display:flex; gap:8px; padding:14px 20px 4px; overflow-x:auto; }
-.sport-tab{ font-size:13px; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:7px 14px; border-radius:20px; white-space:nowrap; cursor:pointer; }
-.sport-tab.active{ color:var(--bg); background:var(--amber); border-color:var(--amber); font-weight:600; }
-
-.board-msg{ padding:40px 20px; text-align:center; color:var(--sub); font-size:13.5px; line-height:1.6; }
-.board-msg .spin{ display:inline-block; width:18px; height:18px; border:2px solid var(--line); border-top-color:var(--amber); border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:10px; }
-@keyframes spin{ to{ transform:rotate(360deg); } }
-
-.game-row{ padding:16px 20px; border-bottom:1px solid var(--line); cursor:pointer; }
-.game-row:active{ background:var(--surface); }
-.game-meta{ display:flex; justify-content:space-between; font-size:12px; color:var(--sub); margin-bottom:10px; gap:10px; }
-.game-meta span:last-child{ text-align:right; }
-.matchup{ display:flex; flex-direction:column; gap:8px; }
-.team-line{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
-.team-name{ font-size:16px; font-weight:500; }
-.odds-cluster{ display:flex; gap:14px; font-family:'Oswald',sans-serif; flex-shrink:0; }
-.odds-box{ text-align:right; min-width:44px; }
-.odds-box .num{ font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
-.odds-box .lbl{ font-size:9px; color:var(--sub); text-transform:uppercase; letter-spacing:0.4px; }
-.book-note{ margin-top:10px; font-size:11.5px; color:var(--sub); }
-
-.chat-wrap{ display:flex; flex-direction:column; height:100%; padding:0 20px; }
-.chat-log{ flex:1; padding:16px 0; display:flex; flex-direction:column; gap:14px; overflow-y:auto; }
-.msg{ max-width:82%; padding:12px 14px; border-radius:14px; font-size:14px; line-height:1.55; white-space:pre-wrap; }
-.msg.ai{ background:var(--surface); align-self:flex-start; border-bottom-left-radius:4px; }
-.msg.user{ background:var(--surface2); align-self:flex-end; border-bottom-right-radius:4px; }
-.msg.ai .src{ display:block; margin-top:8px; font-size:11px; color:var(--teal); }
-.msg.hint{ background:none; border:1px dashed var(--line); color:var(--sub); font-size:12.5px; align-self:center; max-width:100%; text-align:center; }
-.chat-input-row{ display:flex; gap:10px; align-items:center; padding:14px 0 20px; border-top:1px solid var(--line); flex-shrink:0; }
-.chat-input{ flex:1; background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:11px 16px; color:var(--text); font-size:14px; font-family:inherit; }
-.chat-input:focus{ outline:2px solid var(--teal); outline-offset:1px; }
-.mic-btn,.send-btn{ width:42px; height:42px; border-radius:50%; border:none; color:var(--bg); font-size:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
-.mic-btn{ background:var(--teal); }
-.mic-btn.listening{ background:var(--red); animation:pulse 1s ease-in-out infinite; }
-.send-btn{ background:var(--amber); }
-@keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.55; } }
-
-.dossier-hero{ padding:20px; border-bottom:1px solid var(--line); }
-.dossier-title{ font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:4px; }
-.dossier-sub{ font-size:12px; color:var(--sub); }
-.section{ padding:16px 20px; border-bottom:1px solid var(--line); }
-.section h3{ font-size:12px; text-transform:uppercase; letter-spacing:0.6px; color:var(--sub); font-weight:600; margin-bottom:10px; }
-.fact-row{ display:flex; justify-content:space-between; gap:10px; font-size:13.5px; padding:6px 0; border-bottom:1px dashed var(--line); }
-.fact-row:last-child{ border-bottom:none; }
-.fact-row .v{ color:var(--sub); text-align:right; }
-.tag{ display:inline-block; font-size:11px; padding:3px 8px; border-radius:5px; background:rgba(217,97,79,0.15); color:var(--red); margin-right:6px; }
-.tag.ok{ background:rgba(63,166,107,0.15); color:var(--green); }
-.empty-note{ font-size:13px; color:var(--sub); }
-.ask-ai-btn{ margin:16px 20px 0; padding:11px; border-radius:10px; background:var(--teal); color:var(--bg); border:none; font-size:13.5px; font-weight:600; width:calc(100% - 40px); cursor:pointer; }
-
-.navbar{
-  position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:460px;
-  display:flex; background:var(--surface); border-top:1px solid var(--line);
-  padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));
-}
-.nav-btn{ flex:1; text-align:center; font-size:11px; color:var(--sub); background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; font-family:inherit; }
-.nav-btn .ic{ font-size:19px; }
-.nav-btn.active{ color:var(--amber); }
-</style>
-</head>
-<body>
-<title>BetEdge AI</title>
-<style>
-:root{
-  --bg:#F4F1EA; --surface:#FFFFFF; --surface2:#EDE9DF; --line:#DDD6C6;
-  --text:#14181F; --sub:#5B6470; --amber:#C77F1D; --teal:#1F8478; --green:#2C8A55; --red:#B84332;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#10151C; --surface:#1B222C; --surface2:#212B37; --line:#2C3644;
-    --text:#F4F1EA; --sub:#9AA5B1; --amber:#E8A33D; --teal:#3FB6A8; --green:#3FA66B; --red:#D9614F;
-    color-scheme:dark;
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#10151C; --surface:#1B222C; --surface2:#212B37; --line:#2C3644;
-  --text:#F4F1EA; --sub:#9AA5B1; --amber:#E8A33D; --teal:#3FB6A8; --green:#3FA66B; --red:#D9614F;
-  color-scheme:dark;
-}
-*{box-sizing:border-box; margin:0; padding:0;}
-html,body{height:100%;}
-body{
-  background:var(--bg); color:var(--text);
-  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
-  display:flex; justify-content:center;
-}
-.app{ width:100%; max-width:460px; height:100%; display:flex; flex-direction:column; position:relative; }
-
-.topbar{
-  padding:18px 20px 14px; display:flex; align-items:center; justify-content:space-between;
-  border-bottom:1px solid var(--line); flex-shrink:0;
-}
-.brand{ font-family:'Oswald',sans-serif; font-weight:600; font-size:20px; letter-spacing:0.5px; }
-.brand span{ color:var(--amber); }
+.brand-logo{ width:30px; height:30px; flex-shrink:0; display:block; }
 .status-pill{ font-size:11px; color:var(--sub); border:1px solid var(--line); padding:4px 10px; border-radius:20px; display:flex; align-items:center; gap:6px; }
 .status-dot{ width:6px; height:6px; border-radius:50%; background:var(--green); }
 .status-pill.down .status-dot{ background:var(--red); }
@@ -288,13 +187,17 @@ body{
 .pick-result.loss{ background:var(--red); color:#fff; }
 .pick-result.push{ background:var(--surface2); color:var(--text); }
 </style>
+<body>
 
 <div class="app">
 
   <div class="mover-alerts" id="moverAlerts"></div>
 
   <div class="topbar">
-    <div class="brand">Bet<span>Edge</span> AI</div>
+    <div class="brand">
+      <img class="brand-logo" src="/betedge-mark-compact.png" srcset="/betedge-mark-compact.png 1x, /betedge-mark-compact@2x.png 2x" alt="BetEdge AI">
+      Bet<span>Edge</span> AI
+    </div>
     <div style="display:flex; align-items:center; gap:8px;">
       <div class="status-pill waking" id="apiStatus"><span class="status-dot"></span><span id="apiStatusLabel">Connecting…</span></div>
       <button class="profile-btn" id="profileBtn">Log in</button>
