@@ -5,18 +5,22 @@ import { getOpeningSpreads } from "../services/snapshotService.js";
 const router = Router();
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-// The provider's own "last updated" timestamp turned out not to be a
-// reliable stand-in for "when the game ended" — it can stay fresh well after
-// a game is actually over, which let old final games linger past their
-// 24-hour window. Instead we approximate the end time as kickoff + a
-// generous max game length (covers overtime), then give it 24 more hours.
-// It's a slightly looser cutoff than a true end-time would give, but it's
-// deterministic and never has to guess based on data we can't trust.
-const MAX_GAME_LENGTH_MS = 5 * 60 * 60 * 1000; // 5 hours, generous even with OT
-const FINAL_WINDOW_MS = 24 * 60 * 60 * 1000 + MAX_GAME_LENGTH_MS;
 
-function pastFinalWindow(commenceTime, now) {
-  return now - new Date(commenceTime).getTime() > FINAL_WINDOW_MS;
+// A live/final game only stays on the board through the rest of its UTC
+// calendar day — a flat "hours since kickoff" buffer (the previous approach)
+// had to guess at a game's length, and on a high-volume slate like MLB
+// (multiple games a day, every day) that guess let finished games linger
+// noticeably longer than "today" for anyone watching. "Commenced today"
+// is simple, deterministic, and matches what "still showing old games"
+// actually means: something that didn't happen today.
+function commencedToday(commenceTime, now) {
+  const c = new Date(commenceTime);
+  const n = new Date(now);
+  return (
+    c.getUTCFullYear() === n.getUTCFullYear() &&
+    c.getUTCMonth() === n.getUTCMonth() &&
+    c.getUTCDate() === n.getUTCDate()
+  );
 }
 
 // GET /api/games/:sport  -> odds board data for the Board screen
@@ -43,7 +47,7 @@ router.get("/:sport", async (req, res) => {
 
         const score = scores[g.id];
         if (score && score.completed) {
-          if (pastFinalWindow(g.commenceTime, now)) return null; // finished too long ago
+          if (!commencedToday(g.commenceTime, now)) return null; // finished on a previous day
           return {
             ...g,
             status: "final",
@@ -69,13 +73,13 @@ router.get("/:sport", async (req, res) => {
     // slate with 40+ games kicking off at once. That means a lot of finished
     // games never show up above at all, even though /scores has their final
     // result. Fill those back in as score-only "final" entries (still capped
-    // to the same 24-hour final window) so the board reflects every game
-    // that's actually done, not just the ones a book still has posted.
+    // to games that commenced today) so the board reflects every game that's
+    // actually done, not just the ones a book still has posted.
     const seenIds = new Set(enriched.map((g) => g.id));
     const backfilled = Object.entries(scores)
       .filter(([id, s]) => {
         if (seenIds.has(id) || !s.completed || !s.homeTeam || !s.awayTeam) return false;
-        return !pastFinalWindow(s.commenceTime, now);
+        return commencedToday(s.commenceTime, now);
       })
       .map(([id, s]) => ({
         id,
