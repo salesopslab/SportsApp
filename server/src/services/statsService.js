@@ -32,31 +32,28 @@ export async function getSeasonSchedule(sportSlug, season) {
   return cached(`schedule:${sportSlug}:${season}`, () => fetchSeasonSchedule(sportSlug, season));
 }
 
-// MLB's Schedules endpoint 404s on a bare year ("2026") — SportsData.io's own
-// docs say the season parameter needs a season-type suffix there ("2026REG"
-// for regular season, "2026POST" for postseason; confirmed via their workflow
-// guide, not guessed). Every other sport here accepts the bare year fine, so
-// this only branches for MLB, and only when the caller passed a bare year
-// (a caller that already passed an explicit "...REG"/"...POST" is left alone).
-// Merges regular season + postseason so head-to-head/pitcher lookups keep
-// working correctly no matter where in the calendar "today" falls (e.g. late
-// September, when the regular season is wrapping up and the postseason is
-// starting at the same time).
+// MLB doesn't use the "Schedules" resource the other sports in this file use
+// — confirmed directly against the live API (not guessed): "Games" is the
+// correct resource, and it needs a season-TYPE-suffixed year ("2026REG",
+// "2026POST"), not a bare one. Merges regular season + postseason so
+// head-to-head/pitcher lookups keep working correctly no matter where in the
+// calendar "today" falls (e.g. late September, when the regular season is
+// wrapping up and the postseason is starting at the same time).
 async function fetchSeasonSchedule(sportSlug, season) {
-  if (sportSlug === "mlb" && /^\d{4}$/.test(String(season))) {
-    const [reg, post] = await Promise.all([
-      sdioGet(sportSlug, `scores/json/Schedules/${season}REG`).catch((err) => {
-        console.error(`getSeasonSchedule(mlb, ${season}REG) failed:`, err.message);
-        return [];
-      }),
-      sdioGet(sportSlug, `scores/json/Schedules/${season}POST`).catch((err) => {
-        console.error(`getSeasonSchedule(mlb, ${season}POST) failed:`, err.message);
-        return [];
-      }),
-    ]);
-    return [...(reg || []), ...(post || [])];
-  }
-  return sdioGet(sportSlug, `scores/json/Schedules/${season}`);
+  if (sportSlug !== "mlb") return sdioGet(sportSlug, `scores/json/Schedules/${season}`);
+
+  const bareYear = String(season).replace(/(REG|POST|PRE)$/, "");
+  const [reg, post] = await Promise.all([
+    sdioGet("mlb", `scores/json/Games/${bareYear}REG`).catch((err) => {
+      console.error(`getSeasonSchedule(mlb, ${bareYear}REG) failed:`, err.message);
+      return [];
+    }),
+    sdioGet("mlb", `scores/json/Games/${bareYear}POST`).catch((err) => {
+      console.error(`getSeasonSchedule(mlb, ${bareYear}POST) failed:`, err.message);
+      return [];
+    }),
+  ]);
+  return [...(Array.isArray(reg) ? reg : []), ...(Array.isArray(post) ? post : [])];
 }
 
 // Looks back across the current season plus the previous 3 seasons so real past
@@ -247,22 +244,52 @@ export function isDivisionGame(sportSlug, rankings, homeTeam, awayTeam) {
 
 // ---------------------------------------------------------------------------
 // MLB starting/probable pitchers for the Board — built from the same season
-// schedule data already fetched for head-to-head (scores/json/Schedules),
-// so this doesn't cost an extra API call. SportsData.io populates the
-// "Probable" pitcher fields ahead of first pitch and swaps to the
-// "StartingPitcher" fields once it's confirmed/the game is underway; field
-// names have varied across SportsData.io sports/endpoints in the past (see
-// the CFB/CBB rankings fix above), so this checks every variant we know of
-// rather than trusting one and 404-ing or silently showing nothing.
+// schedule data already fetched for head-to-head (scores/json/Games), so this
+// doesn't cost an extra API call for the schedule itself.
+//
+// Confirmed directly against the live API (not guessed): the Games resource's
+// convenience name fields (HomeTeamStartingPitcher, etc.) are unreliable as a
+// presence check — on at least some SportsData.io accounts they come back as
+// a fixed placeholder string regardless of whether real data exists behind
+// them. The corresponding *ID* fields (HomeTeamProbablePitcherID,
+// HomeTeamStartingPitcherID) are the trustworthy signal: null really means
+// "not set yet." So pitcher name resolution always goes through the player-ID
+// -> name lookup below rather than trusting a name field directly off the
+// game object — that also means it keeps working even on accounts where the
+// convenience name fields are scrambled/anonymized.
 // ---------------------------------------------------------------------------
-function pitcherName(g, side) {
-  return (
-    g[`${side}TeamStartingPitcher`] ||
-    g[`${side}TeamProbablePitcher`] ||
-    g[`${side}StartingPitcher`] ||
-    g[`${side}ProbablePitcher`] ||
-    null
+
+// One-time (long-cached) roster pull so resolving pitcher IDs to names never
+// costs a per-player API call. Keyed by PlayerID.
+async function getPlayerNameMap(sportSlug) {
+  return cached(
+    `players:${sportSlug}`,
+    async () => {
+      try {
+        const players = await sdioGet(sportSlug, "scores/json/Players");
+        const map = {};
+        for (const p of players || []) {
+          if (!p.PlayerID) continue;
+          const name = [p.FirstName, p.LastName].filter(Boolean).join(" ").trim();
+          if (name) map[p.PlayerID] = name;
+        }
+        return map;
+      } catch (err) {
+        console.error(`getPlayerNameMap(${sportSlug}) failed:`, err.message);
+        return {};
+      }
+    },
+    12 * 60 * 60 // rosters barely change hour to hour — 12h cache is plenty fresh
   );
+}
+
+// Prefer the probable pitcher (announced ahead of the game) and fall back to
+// the confirmed starter (set once the game is underway/closer to first
+// pitch) — whichever ID is actually populated. Never fabricates a name: a
+// missing ID (not announced yet) or an ID this roster pull doesn't recognize
+// both resolve to null rather than a guess.
+function pitcherId(g, side) {
+  return g[`${side}TeamProbablePitcherID`] || g[`${side}TeamStartingPitcherID`] || null;
 }
 
 // Keyed by "AWAY@HOME:YYYY-MM-DD" (team codes + calendar date of the game),
@@ -271,15 +298,20 @@ function pitcherName(g, side) {
 export async function getProbablePitchers(sportSlug, season) {
   if (sportSlug !== "mlb") return {};
   try {
-    const schedule = await getSeasonSchedule(sportSlug, season);
+    const [schedule, playerNames] = await Promise.all([
+      getSeasonSchedule(sportSlug, season),
+      getPlayerNameMap(sportSlug),
+    ]);
     const map = {};
     for (const g of schedule || []) {
       const home = g.HomeTeam;
       const away = g.AwayTeam;
       const dateStr = String(g.Day || g.DateTime || "").slice(0, 10);
       if (!home || !away || !dateStr) continue;
-      const homePitcher = pitcherName(g, "Home");
-      const awayPitcher = pitcherName(g, "Away");
+      const homeId = pitcherId(g, "Home");
+      const awayId = pitcherId(g, "Away");
+      const homePitcher = homeId ? playerNames[homeId] || null : null;
+      const awayPitcher = awayId ? playerNames[awayId] || null : null;
       if (!homePitcher && !awayPitcher) continue;
       map[`${away}@${home}:${dateStr}`] = { homePitcher, awayPitcher };
     }
