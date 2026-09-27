@@ -5,12 +5,19 @@ import NodeCache from "node-cache";
 const ttl = Number(process.env.CACHE_TTL_SECONDS || 90);
 const cache = new NodeCache({ stdTTL: ttl, checkperiod: 30 });
 
-export async function cached(key, fetcher) {
+// ttlSeconds is optional — pass it to override the default TTL for just this
+// key (e.g. a longer-lived cache for calls that are expensive/quota-limited
+// but don't need to be second-fresh, like odds lines vs. live scores).
+export async function cached(key, fetcher, ttlSeconds) {
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
 
   const value = await fetcher();
-  cache.set(key, value);
+  if (ttlSeconds !== undefined) {
+    cache.set(key, value, ttlSeconds);
+  } else {
+    cache.set(key, value);
+  }
   return value;
 }
 

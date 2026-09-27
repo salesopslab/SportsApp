@@ -4,6 +4,11 @@ import { recordSnapshot } from "./snapshotService.js";
 const BASE = process.env.ODDS_API_BASE;
 const KEY = process.env.ODDS_API_KEY;
 
+// Odds lines don't need to be second-fresh, and each odds call is metered
+// against the Odds API's usage credits — so this is cached much longer than
+// scores. Override with ODDS_CACHE_TTL_SECONDS if you want a different window.
+const ODDS_CACHE_TTL_SECONDS = Number(process.env.ODDS_CACHE_TTL_SECONDS || 1800); // 30 min
+
 // The Odds API sport keys — https://the-odds-api.com/sports-odds-data/sports-apis.html
 export const SPORT_KEYS = {
   nfl: "americanfootball_nfl",
@@ -21,24 +26,28 @@ export async function getOddsForSport(sportSlug) {
   const sportKey = SPORT_KEYS[sportSlug];
   if (!sportKey) throw new Error(`Unknown sport: ${sportSlug}`);
 
-  return cached(`odds:${sportSlug}`, async () => {
-    const url = new URL(`${BASE}/sports/${sportKey}/odds`);
-    url.searchParams.set("regions", "us");
-    url.searchParams.set("markets", "h2h,spreads,totals");
-    url.searchParams.set("oddsFormat", "american");
-    url.searchParams.set("apiKey", KEY);
+  return cached(
+    `odds:${sportSlug}`,
+    async () => {
+      const url = new URL(`${BASE}/sports/${sportKey}/odds`);
+      url.searchParams.set("regions", "us");
+      url.searchParams.set("markets", "h2h,spreads,totals");
+      url.searchParams.set("oddsFormat", "american");
+      url.searchParams.set("apiKey", KEY);
 
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Odds API error ${res.status}: ${await res.text()}`);
-    }
-    const raw = await res.json();
-    const games = raw.map(normalizeGame);
-    // Fire-and-forget: record this fresh fetch as a line-movement snapshot.
-    // Never awaited so a slow/failed DB write can't delay the odds response.
-    recordSnapshot(sportSlug, games).catch(() => {});
-    return games;
-  });
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`Odds API error ${res.status}: ${await res.text()}`);
+      }
+      const raw = await res.json();
+      const games = raw.map(normalizeGame);
+      // Fire-and-forget: record this fresh fetch as a line-movement snapshot.
+      // Never awaited so a slow/failed DB write can't delay the odds response.
+      recordSnapshot(sportSlug, games).catch(() => {});
+      return games;
+    },
+    ODDS_CACHE_TTL_SECONDS
+  );
 }
 
 /**
