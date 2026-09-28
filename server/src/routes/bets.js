@@ -1,10 +1,20 @@
 import { Router } from "express";
 import { pool, ensureSchema } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { withTier, requireTier } from "../middleware/tier.js";
+import { meetsTier } from "../services/tierService.js";
 import { getScoresForSport } from "../services/oddsService.js";
 
 const router = Router();
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+
+// Bet tracking itself (add/list/edit/settle/delete) is a Basic/free feature
+// -- just needs an account, no subscription. withTier runs after requireAuth
+// so every route below also has req.tier/req.userRow available for the
+// Edge/Edge Pro analytics gating further down, without hard-blocking the
+// basic routes.
 router.use(requireAuth);
+router.use(withTier);
 
 const VALID_SETTLE_RESULTS = new Set(["win", "loss", "push", "cashed_out"]);
 
@@ -105,9 +115,24 @@ router.post("/", async (req, res) => {
 
 // List this user's bets, auto-grading any pending BetEdge picks whose games
 // have finished, plus a running record/P&L summary.
+//
+// `record` (win/loss/push/pending counts, plus per-bet dollar figures on
+// each bet in `bets`) is Basic/free -- a useful tracker has to show your
+// record and your own bets' profit/loss without a paywall. `access` tells
+// the frontend which Edge/Edge Pro analytics it's allowed to render (Net
+// P/L, ROI, performance breakdowns, bankroll, AI insights); those are
+// computed by the frontend from the same `bets` array but gated behind
+// `access.edge`/`access.edgePro` in the UI, and `bankroll` here is the one
+// piece that has to come from the server either way, since it's a stored
+// per-user setting.
 router.get("/", async (req, res) => {
   try {
-    if (!pool) return res.json({ bets: [], record: emptyRecord() });
+    const access = {
+      tier: req.tier || "none",
+      edge: meetsTier(req.userRow, "edge"),
+      edgePro: meetsTier(req.userRow, "edge_pro"),
+    };
+    if (!pool) return res.json({ bets: [], record: emptyRecord(), access, bankroll: null });
     await ensureSchema();
 
     const { rows } = await pool.query(
@@ -117,10 +142,117 @@ router.get("/", async (req, res) => {
 
     const graded = await autoGradePending(rows);
     const record = computeRecord(graded);
-    res.json({ bets: graded, record });
+
+    let bankroll = null;
+    if (access.edge) {
+      const startingBankroll = req.userRow?.starting_bankroll != null ? Number(req.userRow.starting_bankroll) : null;
+      bankroll = {
+        startingBankroll,
+        currentBankroll: startingBankroll != null ? round2(startingBankroll + record.profit) : null,
+      };
+    }
+
+    res.json({ bets: graded, record, access, bankroll });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load your picks." });
+  }
+});
+
+// Set (or clear) the starting bankroll bankroll tracking is measured
+// against. Edge feature -- Basic tracking works fine without it.
+// Body: { startingBankroll: number|null }
+router.patch("/bankroll", requireTier("edge"), async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "Bet tracking isn't available yet." });
+    const { startingBankroll } = req.body || {};
+    if (startingBankroll !== null && !(Number(startingBankroll) >= 0)) {
+      return res.status(400).json({ error: "Enter a starting bankroll of $0 or more." });
+    }
+    await pool.query("UPDATE users SET starting_bankroll = $1 WHERE id = $2", [
+      startingBankroll,
+      req.user.id,
+    ]);
+    res.json({ startingBankroll: startingBankroll === null ? null : Number(startingBankroll) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to save your bankroll." });
+  }
+});
+
+// AI analysis of the user's betting history -- Edge Pro. Grounded the same
+// way the matchup chat is (chat.js): only reason over a real, computed
+// summary of this user's own bets, say plainly when a category (live vs.
+// pregame, CLV) isn't tracked yet rather than guessing, never invent a
+// number. Returns the computed summary too, so the UI has real stat
+// callouts to show even independent of the AI prose.
+router.get("/insights", requireTier("edge_pro"), async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "Bet tracking isn't available yet." });
+    await ensureSchema();
+
+    const { rows } = await pool.query(
+      "SELECT * FROM bets WHERE user_id = $1 AND result != 'pending' ORDER BY settled_at ASC",
+      [req.user.id]
+    );
+
+    if (rows.length < 5) {
+      return res.json({
+        insights: null,
+        summary: null,
+        reason: "Settle at least 5 bets to unlock AI analysis of your betting history.",
+      });
+    }
+
+    const summary = buildInsightsSummary(rows);
+
+    if (!ANTHROPIC_KEY) {
+      return res.json({ insights: null, summary, reason: "AI analysis isn't configured yet." });
+    }
+
+    const systemPrompt = `You are BetEdge AI's betting-history analyst. Analyze ONLY the BET_HISTORY_SUMMARY JSON provided -- a real, computed summary of this one user's own settled bets. Never invent a number, a sport, or a pattern not present in it.
+
+Voice: professional, concise, specific -- like a short analyst note, not hype. No emojis, no guarantees, no "lock"/"smash" language.
+
+Rules:
+- If a category has fewer than 3 settled bets (see each bucket's "count"), don't draw a conclusion from it -- say there's not enough sample size yet.
+- The summary's "liveVsPregame" and "clv" fields are always { "available": false } -- BetEdge AI doesn't capture that data yet. If asked about it or if it seems relevant, say plainly it isn't tracked yet. Never estimate it.
+- Cite real numbers from the summary (ROI%, profit, record) for every claim.
+- 3-5 short bullet points plus one closing takeaway sentence. Reference specific sports/bet-type combos by name, the way a real analyst note would (e.g. "+8.4% ROI on MLB moneylines but -11.2% on parlays").
+- End with one concrete, specific suggestion grounded in the data (e.g. reduce volume on a leaking category, or lean into a strong one) -- never generic bankroll-management advice not tied to this user's own numbers.
+
+BET_HISTORY_SUMMARY:
+${JSON.stringify(summary, null, 2)}`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 700,
+        temperature: 0.3,
+        system: systemPrompt,
+        messages: [{ role: "user", content: "Analyze my betting history." }],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Anthropic API error ${response.status}: ${await response.text()}`);
+    }
+    const data = await response.json();
+    const text = data.content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("\n");
+
+    res.json({ insights: text, summary });
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: "Failed to generate insights", detail: err.message });
   }
 });
 
@@ -355,6 +487,103 @@ function computeRecord(bets) {
   rec.potentialReturn = round2(rec.potentialReturn);
   rec.roi = rec.staked > 0 ? Math.round((rec.profit / rec.staked) * 1000) / 10 : null;
   return rec;
+}
+
+// --- AI insights (Edge Pro) --------------------------------------------
+
+// Win/loss/push/cashed-out counts plus dollar staked/profit/ROI for one
+// bucket of settled bets. Only bets with a real wager_amount count toward
+// the dollar figures (same rule as computeRecord) -- a units-only legacy
+// pick still counts toward the bucket's win/loss counts, just not its ROI.
+function bucketStats(bets) {
+  let staked = 0, profit = 0, wins = 0, losses = 0, pushes = 0, cashedOut = 0;
+  for (const b of bets) {
+    if (b.result === "win") wins++;
+    else if (b.result === "loss") losses++;
+    else if (b.result === "push") pushes++;
+    else if (b.result === "cashed_out") cashedOut++;
+
+    const wager = b.wager_amount != null ? Number(b.wager_amount) : null;
+    if (!wager) continue;
+    if (b.result === "win") {
+      staked += wager;
+      profit += americanPayout(wager, b.price).toWin;
+    } else if (b.result === "loss") {
+      staked += wager;
+      profit -= wager;
+    } else if (b.result === "cashed_out" && b.cash_out_amount != null) {
+      staked += wager;
+      profit += Number(b.cash_out_amount) - wager;
+    }
+  }
+  return {
+    count: bets.length, wins, losses, pushes, cashedOut,
+    staked: round2(staked), profit: round2(profit),
+    roi: staked > 0 ? Math.round((profit / staked) * 1000) / 10 : null,
+  };
+}
+
+function groupBy(bets, keyFn) {
+  const groups = {};
+  for (const b of bets) {
+    const key = keyFn(b);
+    if (!key) continue; // bets that don't fit this dimension (e.g. custom bets have no home/away) are left out, not miscounted
+    (groups[key] = groups[key] || []).push(b);
+  }
+  const out = {};
+  for (const [k, arr] of Object.entries(groups)) out[k] = bucketStats(arr);
+  return out;
+}
+
+// Everything the Edge Pro AI-insights prompt reasons over -- a real,
+// computed summary of this one user's settled bets, grouped every way the
+// product spec's example insights need (by sport, by bet type, the two
+// combined, favorite vs. underdog, home vs. away, and streaks). liveVsPregame
+// and clv are always { available: false } since BetEdge AI doesn't capture
+// that data yet -- included explicitly so the model states that plainly
+// instead of guessing, the same grounding discipline chat.js uses.
+function buildInsightsSummary(bets) {
+  const overall = bucketStats(bets);
+  const bySport = groupBy(bets, (b) => (b.sport || "").toLowerCase());
+  const byBetType = groupBy(bets, (b) => b.market || "other");
+  const bySportAndType = groupBy(bets, (b) => `${(b.sport || "").toLowerCase()}_${b.market || "other"}`);
+
+  const favoriteVsUnderdog = groupBy(bets, (b) => {
+    if (b.market === "moneyline") return Number(b.price) < 0 ? "favorite" : "underdog";
+    if (b.market === "spread") return Number(b.point) < 0 ? "favorite" : "underdog";
+    return null; // totals/custom/props have no favorite/underdog concept
+  });
+
+  const homeVsAway = groupBy(bets, (b) => {
+    if (!b.home_team || !b.away_team) return null; // custom bets carry no team data
+    if (b.side === b.home_team) return "home";
+    if (b.side === b.away_team) return "away";
+    return null;
+  });
+
+  // Streaks only count decided (win/loss) results -- a push or cash-out
+  // doesn't break or extend a streak either way, the usual tracker convention.
+  const decided = bets.filter((b) => b.result === "win" || b.result === "loss");
+  let longestWinStreak = 0, longestLossStreak = 0, curType = null, curLen = 0;
+  for (const b of decided) {
+    curLen = b.result === curType ? curLen + 1 : 1;
+    curType = b.result;
+    if (curType === "win") longestWinStreak = Math.max(longestWinStreak, curLen);
+    else longestLossStreak = Math.max(longestLossStreak, curLen);
+  }
+  const currentStreak = decided.length ? { result: curType, length: curLen } : null;
+
+  return {
+    overall,
+    bySport,
+    byBetType,
+    bySportAndType,
+    favoriteVsUnderdog,
+    homeVsAway,
+    streaks: { longestWinStreak, longestLossStreak, current: currentStreak },
+    liveVsPregame: { available: false },
+    clv: { available: false },
+  };
 }
 
 export default router;

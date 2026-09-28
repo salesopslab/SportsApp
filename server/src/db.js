@@ -68,6 +68,12 @@ export function ensureSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_ip TEXT;
       CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users (referral_code);
 
+      -- Bankroll tracking is an Edge-tier bet-tracker feature: the user sets
+      -- a starting bankroll once, and current bankroll (starting + net P/L)
+      -- is derived from it rather than stored, so it always stays correct
+      -- as bets settle. Nullable -- bankroll tracking is opt-in.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS starting_bankroll NUMERIC;
+
       -- One row per referee whose reward was blocked as a likely self-referral
       -- (same normalized email or same signup IP as the referrer), so it's
       -- visible/auditable rather than just silently skipped.

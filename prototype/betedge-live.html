@@ -350,9 +350,24 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .picks-perf-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:12.5px; padding:4px 0; }
 .picks-perf-row .name{ color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .picks-perf-row .val{ flex-shrink:0; font-weight:600; }
+.picks-perf-row .val.pl-positive{ color:var(--green); }
+.picks-perf-row .val.pl-negative{ color:var(--red); }
 .picks-perf-grid{ display:flex; flex-wrap:wrap; gap:10px 16px; margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
 .picks-perf-grid div{ font-size:11.5px; color:var(--sub); }
 .picks-perf-grid b{ display:block; color:var(--text); font-size:14px; font-family:'Oswald',sans-serif; font-weight:600; }
+.picks-perf-grid b.pl-positive{ color:var(--green); }
+.picks-perf-grid b.pl-negative{ color:var(--red); }
+.picks-upsell{ margin:14px 20px 0; }
+.picks-bankroll{ margin:14px 20px 0; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:12px; }
+.picks-bankroll-row{ display:flex; justify-content:space-between; align-items:baseline; font-size:13px; }
+.picks-bankroll-row span:first-child{ color:var(--sub); }
+.picks-bankroll-sub{ font-size:11px; color:var(--sub); margin-top:4px; }
+.picks-bankroll-sub a{ color:var(--amber); }
+.picks-bankroll-empty{ font-size:12.5px; color:var(--sub); margin-bottom:8px; }
+.picks-insights{ margin:14px 20px 0; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:12px; }
+.picks-insights h4{ font-size:11px; text-transform:uppercase; letter-spacing:0.3px; color:var(--sub); margin-bottom:8px; font-weight:600; }
+.picks-insights-empty{ font-size:12.5px; color:var(--sub); margin-bottom:8px; }
+.picks-insights-body{ font-size:12.5px; color:var(--text); line-height:1.55; }
 .pick-card{ margin:0 20px 10px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:12px; }
 .pick-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13.5px; font-weight:600; }
 .pick-top .pick-event{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -471,7 +486,15 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
         <label class="modal-label">Event / game</label>
         <input class="modal-input" id="customBetEvent" type="text" placeholder="e.g. Chiefs @ Bills">
         <label class="modal-label">Bet type</label>
-        <input class="modal-input" id="customBetType" type="text" placeholder="e.g. Total, Spread, Player Prop">
+        <select class="modal-input" id="customBetType">
+          <option value="Moneyline">Moneyline</option>
+          <option value="Spread">Spread</option>
+          <option value="Total">Total</option>
+          <option value="Parlay">Parlay</option>
+          <option value="Prop">Prop</option>
+          <option value="Other">Other</option>
+        </select>
+        <input class="modal-input hidden" id="customBetTypeOther" type="text" placeholder="Describe the bet type" style="margin-top:8px;">
         <label class="modal-label">Line (optional)</label>
         <input class="modal-input" id="customBetLine" type="text" placeholder="e.g. Over 43.5, or Mahomes anytime TD">
         <label class="modal-label">American odds</label>
@@ -537,6 +560,19 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <label class="modal-label">Wager amount ($)</label>
       <input class="modal-input" id="addWagerAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100">
       <button class="modal-submit" id="addWagerSubmit">Save</button>
+    </div>
+  </div>
+
+  <!-- BANKROLL MODAL: Edge feature — sets the starting point bankroll tracking measures from -->
+  <div class="modal-overlay hidden" id="bankrollModal">
+    <div class="modal-card">
+      <button class="modal-close" id="bankrollModalClose">×</button>
+      <h2>Set your bankroll</h2>
+      <div class="trackbet-note">Your current bankroll is tracked automatically from here (starting amount + net P/L) — BetEdge AI never holds these funds.</div>
+      <div class="modal-error" id="bankrollError"></div>
+      <label class="modal-label">Starting bankroll ($)</label>
+      <input class="modal-input" id="bankrollAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="1000">
+      <button class="modal-submit" id="bankrollSubmit">Save</button>
     </div>
   </div>
 
@@ -712,6 +748,16 @@ function tierDisplayName(tierId){
   const t = (tiersCache || []).find(x => x.id === tierId);
   if(t) return t.name;
   return { trial: 'Trial', expired: 'Expired', none: 'Free' }[tierId] || tierId;
+}
+
+// Mirrors the server's TIER_RANK (tierService.js) — used for gating UI
+// (e.g. the My Picks Edge/Edge Pro analytics) against currentUser.tier.
+// The server is still the real gate on any actual data/route; this just
+// decides what to render without a round trip.
+const CLIENT_TIER_RANK = { none:0, expired:0, standard:1, edge:2, edge_pro:3, trial:3 };
+function meetsTierClient(minTierId){
+  const t = currentUser ? currentUser.tier : 'none';
+  return (CLIENT_TIER_RANK[t] ?? 0) >= (CLIENT_TIER_RANK[minTierId] ?? 0);
 }
 
 // "a Standard feature" vs "an Edge Pro feature" — picks the right article
@@ -1267,7 +1313,9 @@ document.getElementById('trackBetChooseCustom').addEventListener('click', ()=>{
   document.getElementById('customBetError').textContent = '';
   document.getElementById('customBetSport').value = currentSport || 'nfl';
   document.getElementById('customBetEvent').value = '';
-  document.getElementById('customBetType').value = '';
+  document.getElementById('customBetType').value = 'Moneyline';
+  document.getElementById('customBetTypeOther').value = '';
+  document.getElementById('customBetTypeOther').classList.add('hidden');
   document.getElementById('customBetLine').value = '';
   document.getElementById('customBetOdds').value = '';
   document.getElementById('customBetWager').value = '';
@@ -1277,6 +1325,9 @@ document.getElementById('trackBetChooseCustom').addEventListener('click', ()=>{
 document.getElementById('customBetBack').addEventListener('click', ()=>{
   document.getElementById('customBetForm').classList.add('hidden');
   document.getElementById('trackBetChooser').classList.remove('hidden');
+});
+document.getElementById('customBetType').addEventListener('change', (e)=>{
+  document.getElementById('customBetTypeOther').classList.toggle('hidden', e.target.value !== 'Other');
 });
 function updateCustomBetPotential(){
   const wager = Number(document.getElementById('customBetWager').value);
@@ -1298,7 +1349,8 @@ document.getElementById('customBetForm').addEventListener('submit', async (e)=>{
 
   const sport = document.getElementById('customBetSport').value;
   const event = document.getElementById('customBetEvent').value.trim();
-  const betType = document.getElementById('customBetType').value.trim();
+  const betTypeSelect = document.getElementById('customBetType').value;
+  const betType = betTypeSelect === 'Other' ? document.getElementById('customBetTypeOther').value.trim() : betTypeSelect;
   const line = document.getElementById('customBetLine').value.trim();
   const price = Number(document.getElementById('customBetOdds').value);
   const wagerAmount = Number(document.getElementById('customBetWager').value);
@@ -1423,6 +1475,45 @@ document.getElementById('addWagerSubmit').addEventListener('click', async ()=>{
   }
 });
 
+// ---------------------------------------------------------------------------
+// Bankroll modal (Edge): sets the starting point bankroll tracking measures
+// from. Current bankroll (starting + net P/L) is derived server-side, never
+// stored directly, so it can't drift out of sync with settled bets.
+// ---------------------------------------------------------------------------
+function openBankrollModal(){
+  document.getElementById('bankrollError').textContent = '';
+  document.getElementById('bankrollAmount').value = picksCache.bankroll?.startingBankroll ?? '';
+  document.getElementById('bankrollModal').classList.remove('hidden');
+}
+document.getElementById('bankrollModalClose').addEventListener('click', ()=>{
+  document.getElementById('bankrollModal').classList.add('hidden');
+});
+document.getElementById('bankrollSubmit').addEventListener('click', async ()=>{
+  const errEl = document.getElementById('bankrollError');
+  errEl.textContent = '';
+  const raw = document.getElementById('bankrollAmount').value.trim();
+  const amt = raw === '' ? null : Number(raw);
+  if(amt !== null && !(amt >= 0)){ errEl.textContent = 'Enter a starting bankroll of $0 or more.'; return; }
+  const btn = document.getElementById('bankrollSubmit');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try{
+    const res = await apiFetch('/api/bets/bankroll', {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ startingBankroll: amt })
+    });
+    if(!res.ok) throw new Error((await res.json()).error || 'Failed to save.');
+    document.getElementById('bankrollModal').classList.add('hidden');
+    loadPicks();
+  }catch(err){
+    errEl.textContent = err.message;
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
+});
+
 function renderTrackSection(g, lm){
   if(!g || g.status === 'final') return '';
   const rows = [];
@@ -1494,9 +1585,16 @@ function wireTrackButtons(){
 // screen goes through one delegated listener on #picksBody (data-action),
 // since the cards are re-rendered wholesale on every filter change.
 // ---------------------------------------------------------------------------
-let picksCache = { bets: [], record: null };
+// access: { tier, edge, edgePro } from the server (GET /api/bets), reflects
+// the account's real effective tier — Basic/free tracking always works;
+// Net P/L/ROI/units, filters, performance breakdowns and bankroll need
+// Edge; AI insights need Edge Pro. bankroll is only ever populated by the
+// server when access.edge is true.
+let picksCache = { bets: [], record: null, access: null, bankroll: null };
 let picksFilter = 'all';
 let picksBodyWired = false;
+let picksInsights = null;      // cached { insights, summary, reason } from GET /api/bets/insights
+let picksInsightsLoading = false;
 
 async function loadPicks(){
   const body = document.getElementById('picksBody');
@@ -1510,7 +1608,13 @@ async function loadPicks(){
     const res = await apiFetch('/api/bets');
     if(!res.ok) throw new Error('bad status ' + res.status);
     const data = await res.json();
-    picksCache = { bets: data.bets || [], record: data.record || {} };
+    picksCache = {
+      bets: data.bets || [],
+      record: data.record || {},
+      access: data.access || { tier:'none', edge:false, edgePro:false },
+      bankroll: data.bankroll || null,
+    };
+    picksInsights = null; // stale after a reload — re-fetch on demand if the section is opened again
     renderPicksScreen();
   }catch(e){
     body.innerHTML = `<div class="board-msg">Couldn't load your picks (${e.message}). Try again in a moment.</div>`;
@@ -1519,8 +1623,10 @@ async function loadPicks(){
 
 function renderPicksScreen(){
   const body = document.getElementById('picksBody');
-  const { bets, record } = picksCache;
+  const { bets, record, access, bankroll } = picksCache;
   const rec = record || {};
+  const acc = access || { tier:'none', edge:false, edgePro:false };
+  const stat = (num, label, extraClass='') => `<div class="picks-stat"><div class="num ${extraClass}">${num}</div><div class="label">${label}</div></div>`;
 
   const header = `
     <div class="picks-header">
@@ -1529,17 +1635,29 @@ function renderPicksScreen(){
     </div>
   `;
 
-  const netPL = rec.profit || 0;
-  const plClass = netPL > 0 ? 'pl-positive' : (netPL < 0 ? 'pl-negative' : '');
-  const stat = (num, label, extraClass='') => `<div class="picks-stat"><div class="num ${extraClass}">${num}</div><div class="label">${label}</div></div>`;
-  const summary = `
-    <div class="picks-summary">
-      ${stat(`${rec.wins||0}-${rec.losses||0}-${rec.pushes||0}`, 'Record')}
-      ${stat(fmtPL(netPL), 'Net P/L', plClass)}
-      ${stat(rec.roi === null || rec.roi === undefined ? '—' : `${rec.roi>0?'+':''}${rec.roi}%`, 'ROI')}
-    </div>
-    <div class="picks-risk-row">${fmtMoney(rec.atRisk||0)} currently at risk • ${fmtMoney(rec.potentialReturn||0)} potential return</div>
-  `;
+  // Basic/free: overall record only — the fundamentals (per-bet profit/loss
+  // on each card below, win/loss/push/pending record) stay free. Net P/L,
+  // ROI, at-risk/potential-return are aggregate analytics — Edge.
+  let summary;
+  if(acc.edge){
+    const netPL = rec.profit || 0;
+    const plClass = netPL > 0 ? 'pl-positive' : (netPL < 0 ? 'pl-negative' : '');
+    summary = `
+      <div class="picks-summary">
+        ${stat(`${rec.wins||0}-${rec.losses||0}-${rec.pushes||0}`, 'Record')}
+        ${stat(fmtPL(netPL), 'Net P/L', plClass)}
+        ${stat(rec.roi === null || rec.roi === undefined ? '—' : `${rec.roi>0?'+':''}${rec.roi}%`, 'ROI')}
+      </div>
+      <div class="picks-risk-row">${fmtMoney(rec.atRisk||0)} currently at risk • ${fmtMoney(rec.potentialReturn||0)} potential return</div>
+    `;
+  } else {
+    summary = `
+      <div class="picks-summary">
+        ${stat(`${rec.wins||0}-${rec.losses||0}-${rec.pushes||0}`, 'Record')}
+        ${stat(rec.pending||0, 'Pending')}
+      </div>
+    `;
+  }
 
   if(!bets.length){
     body.innerHTML = header + summary + '<div class="board-msg">No picks tracked yet — tap "+ Track Bet" above, or open a game\'s Breakdown and tap "Track" on a line.</div>';
@@ -1547,21 +1665,85 @@ function renderPicksScreen(){
     return;
   }
 
-  const filterLabels = { today:'Today', week:'Week', month:'Month', all:'All Time' };
-  const filters = `
-    <div class="picks-filters">
-      ${Object.keys(filterLabels).map(f=>`<button class="picks-filter ${picksFilter===f?'active':''}" data-action="set-filter" data-filter="${f}">${filterLabels[f]}</button>`).join('')}
-    </div>
-  `;
+  const filteredBets = acc.edge ? filterBetsByPeriod(bets, picksFilter) : bets;
 
-  const filteredBets = filterBetsByPeriod(bets, picksFilter);
-  const perf = renderPerformanceSection(filteredBets);
+  let analyticsBlock;
+  if(acc.edge){
+    const filterLabels = { today:'Today', week:'Week', month:'Month', all:'All Time' };
+    const filters = `
+      <div class="picks-filters">
+        ${Object.keys(filterLabels).map(f=>`<button class="picks-filter ${picksFilter===f?'active':''}" data-action="set-filter" data-filter="${f}">${filterLabels[f]}</button>`).join('')}
+      </div>
+    `;
+    analyticsBlock = filters + renderBankrollSection(bankroll) + renderPerformanceSection(filteredBets);
+  } else {
+    analyticsBlock = `<div class="picks-upsell">${upgradePromptHtml('edge', 'See your Net P/L, ROI, units won/lost, performance by sport & bet type, bankroll tracking, and history filters.')}</div>`;
+  }
+
+  const insightsBlock = renderInsightsSection(acc);
+
   const cards = filteredBets.length
     ? filteredBets.map(renderPickCard).join('')
     : '<div class="board-msg">No picks in this period.</div>';
 
-  body.innerHTML = header + summary + filters + perf + cards;
+  body.innerHTML = header + summary + analyticsBlock + insightsBlock + cards;
+  wireUpgradePrompts(body);
   wirePicksBody();
+}
+
+function renderBankrollSection(bankroll){
+  const br = bankroll || { startingBankroll: null, currentBankroll: null };
+  if(br.startingBankroll == null){
+    return `
+      <div class="picks-bankroll">
+        <div class="picks-bankroll-empty">Track your bankroll over time — set a starting amount.</div>
+        <button class="pick-action-btn" data-action="set-bankroll">Set bankroll</button>
+      </div>
+    `;
+  }
+  const diff = (br.currentBankroll ?? br.startingBankroll) - br.startingBankroll;
+  const changeClass = diff > 0 ? 'pl-positive' : diff < 0 ? 'pl-negative' : '';
+  return `
+    <div class="picks-bankroll">
+      <div class="picks-bankroll-row">
+        <span>Bankroll</span>
+        <span class="${changeClass}" style="font-weight:700;">${fmtMoney(br.currentBankroll)}</span>
+      </div>
+      <div class="picks-bankroll-sub">Started at ${fmtMoney(br.startingBankroll)} · <a data-action="set-bankroll" style="cursor:pointer; text-decoration:underline;">edit</a></div>
+    </div>
+  `;
+}
+
+// Edge Pro: AI analysis of the user's betting history. Fetched on demand
+// (not on every My Picks load — it's a real Anthropic call) and cached in
+// picksInsights until the next loadPicks().
+function renderInsightsSection(acc){
+  if(!acc.edgePro){
+    return `<div class="picks-upsell">${upgradePromptHtml('edge_pro', 'Get AI analysis of your betting history — your strongest and weakest sports and bet types, favorite vs. underdog, home vs. away, streaks, and personalized suggestions.')}</div>`;
+  }
+  if(picksInsightsLoading){
+    return `<div class="picks-insights"><h4>AI Insights</h4><div class="board-msg" style="padding:12px 0;"><div class="spin"></div><div>Analyzing your betting history…</div></div></div>`;
+  }
+  if(!picksInsights){
+    return `
+      <div class="picks-insights">
+        <h4>AI Insights</h4>
+        <div class="picks-insights-empty">Get a personalized read on where you're strongest and what to change.</div>
+        <button class="pick-action-btn" data-action="get-insights">Analyze my history</button>
+      </div>
+    `;
+  }
+  if(picksInsights.reason && !picksInsights.insights){
+    return `<div class="picks-insights"><h4>AI Insights</h4><div class="picks-insights-empty">${escapeHtml(picksInsights.reason)}</div></div>`;
+  }
+  const text = escapeHtml(picksInsights.insights || '').replace(/\n/g, '<br>');
+  return `
+    <div class="picks-insights">
+      <h4>AI Insights</h4>
+      <div class="picks-insights-body">${text}</div>
+      <button class="pick-action-btn" data-action="get-insights" style="margin-top:8px;">Refresh analysis</button>
+    </div>
+  `;
 }
 
 // today/week/month look at bet_date (custom bets) falling back to
@@ -1599,6 +1781,25 @@ function computeExtraStats(bets){
   return { totalWagered, winPct, avgWager, count: bets.length };
 }
 
+// Units won/lost — the classic dollar-independent tracking metric, using
+// each bet's `stake` (defaults to 1 unit) rather than wager_amount, so it
+// still works for legacy units-only picks that have no dollar figure at all.
+function computeUnits(bets){
+  let net = 0;
+  bets.forEach(b=>{
+    if(b.result === 'pending' || b.result === 'push') return;
+    const stake = Number(b.stake) || 0;
+    if(b.result === 'win') net += americanPayout(stake, b.price).toWin;
+    else if(b.result === 'loss') net -= stake;
+    else if(b.result === 'cashed_out' && b.cash_out_amount != null && b.wager_amount != null){
+      // proportional: cash-out units = (actual return / would-be return) scaled to stake
+      const wager = Number(b.wager_amount);
+      if(wager > 0) net += (Number(b.cash_out_amount) - wager) / wager * stake;
+    }
+  });
+  return Math.round(net * 100) / 100;
+}
+
 function computePerformanceBySport(bets){
   const bySport = {};
   bets.forEach(b=>{
@@ -1623,6 +1824,7 @@ function computePerformanceByType(bets){
 function renderPerformanceSection(bets){
   if(!bets.length) return '';
   const extra = computeExtraStats(bets);
+  const netUnits = computeUnits(bets);
   const bySport = computePerformanceBySport(bets);
   const byType = computePerformanceByType(bets);
   const plRow = (name, pl) => `<div class="picks-perf-row"><span class="name">${escapeHtml(name)}</span><span class="val ${pl>0?'pl-positive':pl<0?'pl-negative':''}">${fmtPL(pl)}</span></div>`;
@@ -1633,7 +1835,7 @@ function renderPerformanceSection(bets){
         <div>Total wagered<b>${fmtMoney(extra.totalWagered)}</b></div>
         <div>Win %<b>${extra.winPct === null ? '—' : extra.winPct + '%'}</b></div>
         <div>Avg wager<b>${fmtMoney(extra.avgWager)}</b></div>
-        <div>Picks<b>${extra.count}</b></div>
+        <div>Net units<b class="${netUnits>0?'pl-positive':netUnits<0?'pl-negative':''}">${netUnits>0?'+':''}${netUnits}u</b></div>
       </div>
       ${bySport.length ? `<div class="picks-perf-row" style="margin-top:10px;"><span class="name" style="font-weight:700;">By sport</span></div>${bySport.map(([n,pl])=>plRow(n,pl)).join('')}` : ''}
       ${byType.length ? `<div class="picks-perf-row" style="margin-top:10px;"><span class="name" style="font-weight:700;">By bet type</span></div>${byType.map(([n,pl])=>plRow(n,pl)).join('')}` : ''}
@@ -1700,6 +1902,22 @@ function wirePicksBody(){
     if(action === 'set-filter'){ picksFilter = el.dataset.filter; renderPicksScreen(); return; }
     if(action === 'settle'){ openSettleModal(el.dataset.id, el.dataset.label || ''); return; }
     if(action === 'add-wager'){ openAddWagerModal(el.dataset.id); return; }
+    if(action === 'set-bankroll'){ openBankrollModal(); return; }
+    if(action === 'get-insights'){
+      picksInsightsLoading = true;
+      renderPicksScreen();
+      try{
+        const res = await apiFetch('/api/bets/insights');
+        const data = await res.json();
+        if(!res.ok) throw new Error(data.error || 'Failed to analyze your history.');
+        picksInsights = data;
+      }catch(err){
+        picksInsights = { insights: null, summary: null, reason: err.message };
+      }
+      picksInsightsLoading = false;
+      renderPicksScreen();
+      return;
+    }
     if(action === 'delete'){
       if(!confirm('Remove this pick?')) return;
       await apiFetch(`/api/bets/${el.dataset.id}`, { method: 'DELETE' });
