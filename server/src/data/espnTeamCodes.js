@@ -1,6 +1,7 @@
-// ESPN's public API uses its own team abbreviations — identical to ours except
-// Washington ("WSH" vs our "WAS"). Kept separate so the two systems don't get
-// silently confused if either changes independently.
+// ESPN's public API uses its own team abbreviations, which sometimes differ
+// from SportsDataIO's (e.g. NFL Washington is "WSH" here vs "WAS" for
+// SportsDataIO). Kept as separate maps per sport so these systems don't get
+// silently confused if any of them change independently.
 export const ESPN_NFL_CODES = {
   "Arizona Cardinals": "ARI",
   "Atlanta Falcons": "ATL",
@@ -36,6 +37,82 @@ export const ESPN_NFL_CODES = {
   "Washington Commanders": "WSH",
 };
 
-export function toEspnCode(fullName) {
-  return ESPN_NFL_CODES[fullName] || null;
+export const ESPN_NBA_CODES = {
+  "Atlanta Hawks": "ATL",
+  "Boston Celtics": "BOS",
+  "Brooklyn Nets": "BKN",
+  "Charlotte Hornets": "CHA",
+  "Chicago Bulls": "CHI",
+  "Cleveland Cavaliers": "CLE",
+  "Dallas Mavericks": "DAL",
+  "Denver Nuggets": "DEN",
+  "Detroit Pistons": "DET",
+  "Golden State Warriors": "GS",
+  "Houston Rockets": "HOU",
+  "Indiana Pacers": "IND",
+  "LA Clippers": "LAC",
+  "Los Angeles Clippers": "LAC",
+  "Los Angeles Lakers": "LAL",
+  "Memphis Grizzlies": "MEM",
+  "Miami Heat": "MIA",
+  "Milwaukee Bucks": "MIL",
+  "Minnesota Timberwolves": "MIN",
+  "New Orleans Pelicans": "NO",
+  "New York Knicks": "NY",
+  "Oklahoma City Thunder": "OKC",
+  "Orlando Magic": "ORL",
+  "Philadelphia 76ers": "PHI",
+  "Phoenix Suns": "PHX",
+  "Portland Trail Blazers": "POR",
+  "Sacramento Kings": "SAC",
+  "San Antonio Spurs": "SA",
+  "Toronto Raptors": "TOR",
+  "Utah Jazz": "UTAH",
+  "Washington Wizards": "WSH",
+};
+
+export const ESPN_MLB_CODES = {
+  "Arizona Diamondbacks": "ARI",
+  "Atlanta Braves": "ATL",
+  "Baltimore Orioles": "BAL",
+  "Boston Red Sox": "BOS",
+  "Chicago Cubs": "CHC",
+  "Chicago White Sox": "CHW",
+  "Cincinnati Reds": "CIN",
+  "Cleveland Guardians": "CLE",
+  "Colorado Rockies": "COL",
+  "Detroit Tigers": "DET",
+  "Houston Astros": "HOU",
+  "Kansas City Royals": "KC",
+  "Los Angeles Angels": "LAA",
+  "Los Angeles Dodgers": "LAD",
+  "Miami Marlins": "MIA",
+  "Milwaukee Brewers": "MIL",
+  "Minnesota Twins": "MIN",
+  "New York Mets": "NYM",
+  "New York Yankees": "NYY",
+  "Athletics": "ATH",
+  "Oakland Athletics": "ATH", // odds feeds may still use the pre-relocation name
+  "Philadelphia Phillies": "PHI",
+  "Pittsburgh Pirates": "PIT",
+  "San Diego Padres": "SD",
+  "San Francisco Giants": "SF",
+  "Seattle Mariners": "SEA",
+  "St. Louis Cardinals": "STL",
+  "Tampa Bay Rays": "TB",
+  "Texas Rangers": "TEX",
+  "Toronto Blue Jays": "TOR",
+  "Washington Nationals": "WSH",
+};
+
+const CODES_BY_SPORT = {
+  nfl: ESPN_NFL_CODES,
+  nba: ESPN_NBA_CODES,
+  mlb: ESPN_MLB_CODES,
+};
+
+export function toEspnCode(sportSlug, fullName) {
+  const table = CODES_BY_SPORT[sportSlug];
+  if (!table) return null;
+  return table[fullName] || null;
 }
