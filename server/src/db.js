@@ -191,6 +191,66 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_bet_scan_usage_user_time ON bet_scan_usage (user_id, created_at);
 
+      -- Daily "Hot Picks": a purchasable bundle of AI-selected, high-conviction
+      -- picks for the day (Edge Pro add-on, sold separately from the
+      -- subscription itself). One row per calendar day, generated lazily on
+      -- the first request of the day rather than on a cron (this app has no
+      -- scheduler) -- see hotPicksService.js. max_purchasers caps how many
+      -- people can buy a given day's bundle: sell it to too many people and
+      -- the picks get bet down/the lines move before kickoff, which erodes
+      -- the exact edge being sold.
+      CREATE TABLE IF NOT EXISTS hot_pick_days (
+        id BIGSERIAL PRIMARY KEY,
+        bet_date DATE NOT NULL UNIQUE,
+        price_cents INTEGER NOT NULL DEFAULT 5000,
+        max_purchasers INTEGER NOT NULL DEFAULT 50,
+        status TEXT NOT NULL DEFAULT 'published', -- 'published' | 'locked'
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      -- Individual picks within a day's bundle. analysis is the actual
+      -- product -- hidden from anyone who hasn't purchased that day's bundle
+      -- (see routes/hotpicks.js's teaser vs. full view). commence_time drives
+      -- each pick's own 24-hour purchase window and lock -- picks only enter
+      -- a day's bundle when their game kicks off within 24 hours (see
+      -- hotPicksService.js), and a purchased pick shows as "locked" once its
+      -- game has started, same idea as everywhere else in the app.
+      CREATE TABLE IF NOT EXISTS hot_picks (
+        id BIGSERIAL PRIMARY KEY,
+        hot_pick_day_id BIGINT NOT NULL REFERENCES hot_pick_days(id) ON DELETE CASCADE,
+        sport TEXT NOT NULL,
+        game_id TEXT NOT NULL,
+        home_team TEXT,
+        away_team TEXT,
+        market TEXT NOT NULL,       -- 'moneyline' | 'spread' | 'total'
+        side TEXT NOT NULL,
+        point NUMERIC,
+        price INTEGER NOT NULL,     -- American odds at generation time
+        confidence TEXT NOT NULL DEFAULT 'medium', -- 'medium' | 'high' | 'very_high'
+        analysis TEXT NOT NULL,
+        commence_time TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_hot_picks_day ON hot_picks (hot_pick_day_id);
+
+      -- One row per successful one-time purchase of a day's bundle. This is a
+      -- separate one-time Stripe Checkout (mode 'payment'), not tied to the
+      -- recurring-subscription stripe_customer_id/stripe_subscription_id
+      -- columns on users above, so it gets its own id/record rather than
+      -- overloading those. UNIQUE(user_id, hot_pick_day_id) makes a repeat
+      -- webhook delivery for the same purchase a no-op instead of a double
+      -- charge record.
+      CREATE TABLE IF NOT EXISTS hot_pick_purchases (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        hot_pick_day_id BIGINT NOT NULL REFERENCES hot_pick_days(id) ON DELETE CASCADE,
+        stripe_payment_intent_id TEXT,
+        amount_cents INTEGER NOT NULL,
+        purchased_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (user_id, hot_pick_day_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_hot_pick_purchases_day ON hot_pick_purchases (hot_pick_day_id);
+
       CREATE TABLE IF NOT EXISTS odds_api_usage (
         id BIGSERIAL PRIMARY KEY,
         requests_used INTEGER,

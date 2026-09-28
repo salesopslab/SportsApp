@@ -407,6 +407,28 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .picks-bankroll{ margin:14px 20px 0; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:12px; }
 .picks-bankroll-row{ display:flex; justify-content:space-between; align-items:baseline; font-size:13px; }
 .picks-bankroll-row span:first-child{ color:var(--sub); }
+
+/* Hot Picks promo card (My Picks screen) + modal */
+.hotpicks-promo{ margin:14px 20px 0; padding:14px 16px; border-radius:14px; background:linear-gradient(135deg, rgba(199,127,29,0.14), rgba(199,127,29,0.04)); border:1px solid var(--amber); cursor:pointer; }
+.hotpicks-promo-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.hotpicks-promo-title{ font-family:'Oswald',sans-serif; font-size:15px; font-weight:600; display:flex; align-items:center; gap:6px; }
+.hotpicks-promo-price{ font-size:13px; font-weight:700; color:var(--amber); white-space:nowrap; }
+.hotpicks-promo-sub{ font-size:12px; color:var(--sub); margin-top:4px; line-height:1.4; }
+.hotpicks-owned-tag{ font-size:10.5px; color:var(--green); border:1px solid var(--green); border-radius:8px; padding:2px 7px; font-weight:600; white-space:nowrap; }
+.hotpicks-list{ display:flex; flex-direction:column; gap:12px; margin-top:10px; }
+.hotpick-card{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+.hotpick-card.locked{ opacity:0.55; }
+.hotpick-card-top{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.hotpick-card-game{ font-size:13px; font-weight:600; }
+.hotpick-card-conf{ font-size:10px; text-transform:uppercase; letter-spacing:0.3px; color:var(--amber); font-weight:700; white-space:nowrap; }
+.hotpick-card-pick{ font-family:'Oswald',sans-serif; font-size:16px; font-weight:600; margin-top:4px; }
+.hotpick-card-analysis{ font-size:12.5px; color:var(--sub); margin-top:6px; line-height:1.5; }
+.hotpick-card-locked-tag{ font-size:11px; color:var(--sub); margin-top:6px; }
+.hotpick-teaser-card{ background:var(--surface); border:1px dashed var(--line); border-radius:12px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.hotpick-teaser-card .blur{ filter:blur(4px); user-select:none; }
+.hotpicks-slots{ font-size:12px; color:var(--sub); text-align:center; margin-top:10px; }
+.hotpicks-buy-btn{ width:100%; margin-top:14px; padding:13px; border-radius:22px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:14.5px; cursor:pointer; font-family:inherit; }
+.hotpicks-buy-btn:disabled{ opacity:0.6; cursor:default; }
 .picks-bankroll-sub{ font-size:11px; color:var(--sub); margin-top:4px; }
 .picks-bankroll-sub a{ color:var(--amber); }
 .picks-bankroll-empty{ font-size:12.5px; color:var(--sub); margin-bottom:8px; }
@@ -716,6 +738,16 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <label class="modal-label">Starting bankroll ($)</label>
       <input class="modal-input" id="bankrollAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="1000">
       <button class="modal-submit" id="bankrollSubmit">Save</button>
+    </div>
+  </div>
+
+  <!-- HOT PICKS MODAL: Edge Pro daily purchasable bundle -->
+  <div class="modal-overlay hidden" id="hotPicksModal">
+    <div class="modal-card">
+      <button class="modal-close" id="hotPicksModalClose">×</button>
+      <h2>🔥 Today's Hot Picks</h2>
+      <div class="modal-error" id="hotPicksError"></div>
+      <div id="hotPicksBody"><div class="board-msg"><div class="spin"></div><div>Loading…</div></div></div>
     </div>
   </div>
 
@@ -2473,6 +2505,7 @@ let picksFilter = 'all';
 let picksBodyWired = false;
 let picksInsights = null;      // cached { insights, summary, reason } from GET /api/bets/insights
 let picksInsightsLoading = false;
+let hotPicksTeaser = null;     // cached GET /api/hot-picks/today response, loaded alongside picks
 
 async function loadPicks(){
   const body = document.getElementById('picksBody');
@@ -2494,9 +2527,23 @@ async function loadPicks(){
     };
     picksInsights = null; // stale after a reload — re-fetch on demand if the section is opened again
     renderPicksScreen();
+    loadHotPicksTeaser(); // fire-and-forget — re-renders the screen once it lands
   }catch(e){
     body.innerHTML = `<div class="board-msg">Couldn't load your picks (${e.message}). Try again in a moment.</div>`;
   }
+}
+
+async function loadHotPicksTeaser(){
+  try{
+    const res = await apiFetch('/api/hot-picks/today');
+    hotPicksTeaser = await res.json();
+  }catch(e){
+    hotPicksTeaser = null;
+  }
+  renderPicksScreen();
+  // If the modal happens to already be open (e.g. this refresh followed a
+  // purchase redirect), refresh its contents too instead of leaving it stale.
+  if(!document.getElementById('hotPicksModal').classList.contains('hidden')) renderHotPicksModalBody();
 }
 
 function renderPicksScreen(){
@@ -2512,6 +2559,8 @@ function renderPicksScreen(){
       <button class="track-bet-btn" data-action="open-track-bet">+ Track Bet</button>
     </div>
   `;
+
+  const hotPicksPromo = renderHotPicksPromo();
 
   // Basic/free: overall record only — the fundamentals (per-bet profit/loss
   // on each card below, win/loss/push/pending record) stay free. Net P/L,
@@ -2538,7 +2587,7 @@ function renderPicksScreen(){
   }
 
   if(!bets.length){
-    body.innerHTML = header + summary + '<div class="board-msg">No picks tracked yet — tap "+ Track Bet" above, or open a game\'s Breakdown and tap "Track" on a line.</div>';
+    body.innerHTML = header + hotPicksPromo + summary + '<div class="board-msg">No picks tracked yet — tap "+ Track Bet" above, or open a game\'s Breakdown and tap "Track" on a line.</div>';
     wirePicksBody();
     return;
   }
@@ -2564,9 +2613,145 @@ function renderPicksScreen(){
     ? filteredBets.map(renderPickCard).join('')
     : '<div class="board-msg">No picks in this period.</div>';
 
-  body.innerHTML = header + summary + analyticsBlock + insightsBlock + cards;
+  body.innerHTML = header + hotPicksPromo + summary + analyticsBlock + insightsBlock + cards;
   wireUpgradePrompts(body);
   wirePicksBody();
+}
+
+function renderHotPicksPromo(){
+  const t = hotPicksTeaser;
+  if(!t || !t.available) return '';
+  const price = `$${(t.priceCents/100).toFixed(0)}`;
+
+  if(t.owned){
+    return `
+      <div class="hotpicks-promo" data-action="open-hot-picks">
+        <div class="hotpicks-promo-top">
+          <div class="hotpicks-promo-title">🔥 Today's Hot Picks</div>
+          <span class="hotpicks-owned-tag">✓ Unlocked</span>
+        </div>
+        <div class="hotpicks-promo-sub">${t.pickCount} pick${t.pickCount===1?'':'s'} ready — tap to view.</div>
+      </div>
+    `;
+  }
+  if(t.soldOut){
+    return `
+      <div class="hotpicks-promo" data-action="open-hot-picks">
+        <div class="hotpicks-promo-top">
+          <div class="hotpicks-promo-title">🔥 Today's Hot Picks</div>
+          <span class="hotpicks-promo-price">Sold out</span>
+        </div>
+        <div class="hotpicks-promo-sub">Today's bundle sold out — check back tomorrow.</div>
+      </div>
+    `;
+  }
+  if(!t.pickCount) return ''; // nothing kicking off in the next 24h — nothing to sell right now
+
+  return `
+    <div class="hotpicks-promo" data-action="open-hot-picks">
+      <div class="hotpicks-promo-top">
+        <div class="hotpicks-promo-title">🔥 Today's Hot Picks</div>
+        <span class="hotpicks-promo-price">${price}</span>
+      </div>
+      <div class="hotpicks-promo-sub">${t.pickCount} AI-selected pick${t.pickCount===1?'':'s'} kicking off in the next 24 hours${t.eligible ? ` — ${t.slotsLeft} of ${t.maxPurchasers} slots left today` : ' — Edge Pro exclusive'}.</div>
+    </div>
+  `;
+}
+
+function renderHotPicksModalBody(){
+  const errEl = document.getElementById('hotPicksError');
+  if(errEl) errEl.textContent = '';
+  const body = document.getElementById('hotPicksBody');
+  const t = hotPicksTeaser;
+
+  if(!t || !t.available){
+    body.innerHTML = '<div class="board-msg">Hot Picks aren\'t available right now — check back soon.</div>';
+    return;
+  }
+  const price = `$${(t.priceCents/100).toFixed(0)}`;
+
+  if(!t.eligible){
+    body.innerHTML = `<div class="hotpicks-promo-sub" style="margin-bottom:10px;">${t.pickCount} AI-selected pick${t.pickCount===1?'':'s'} today, each kicking off within 24 hours of game time.</div>` +
+      upgradePromptHtml('edge_pro', 'Hot Picks is an Edge Pro add-on — upgrade to unlock purchasing.');
+    wireUpgradePrompts(body);
+    return;
+  }
+
+  if(t.owned){
+    const cards = (t.picks || []).map(p => `
+      <div class="hotpick-card ${p.locked ? 'locked' : ''}">
+        <div class="hotpick-card-top">
+          <div class="hotpick-card-game">${p.awayTeam || ''} @ ${p.homeTeam || ''}</div>
+          <div class="hotpick-card-conf">${(p.confidence || '').replace('_',' ')}</div>
+        </div>
+        <div class="hotpick-card-pick">${p.side}${p.point != null ? ' ' + (p.point > 0 ? '+' : '') + p.point : ''} (${fmtOdds(p.price)})</div>
+        <div class="hotpick-card-analysis">${p.analysis || ''}</div>
+        ${p.locked ? '<div class="hotpick-card-locked-tag">Game has started</div>' : ''}
+      </div>
+    `).join('');
+    body.innerHTML = `<div class="hotpicks-list">${cards || '<div class="board-msg">No picks left today.</div>'}</div>`;
+    return;
+  }
+
+  if(t.soldOut){
+    body.innerHTML = '<div class="board-msg">Today\'s Hot Picks sold out — check back tomorrow.</div>';
+    return;
+  }
+  if(!t.pickCount){
+    body.innerHTML = '<div class="board-msg">Nothing kicking off in the next 24 hours yet — check back later today.</div>';
+    return;
+  }
+
+  const teasers = (t.picks || []).map(p => `
+    <div class="hotpick-teaser-card">
+      <div>
+        <div class="hotpick-card-game">${(p.sport || '').toUpperCase()} matchup</div>
+        <div class="hotpick-card-conf">${(p.confidence || '').replace('_',' ')}</div>
+      </div>
+      <div class="blur">Hidden</div>
+    </div>
+  `).join('');
+
+  body.innerHTML = `
+    <div class="hotpicks-promo-sub">${t.pickCount} AI-selected pick${t.pickCount===1?'':'s'} for today, each kicking off within 24 hours. Unlock all of them for ${price}.</div>
+    <div class="hotpicks-list">${teasers}</div>
+    <div class="hotpicks-slots">${t.slotsLeft} of ${t.maxPurchasers} slots left today</div>
+    <button class="hotpicks-buy-btn" id="hotPicksBuyBtn">Unlock Today's Hot Picks — ${price}</button>
+  `;
+  document.getElementById('hotPicksBuyBtn').addEventListener('click', buyHotPicks);
+}
+
+function openHotPicksModal(){
+  document.getElementById('hotPicksModal').classList.remove('hidden');
+  renderHotPicksModalBody();
+}
+document.getElementById('hotPicksModalClose').addEventListener('click', ()=>{
+  document.getElementById('hotPicksModal').classList.add('hidden');
+});
+
+async function buyHotPicks(){
+  const errEl = document.getElementById('hotPicksError');
+  errEl.textContent = '';
+  const btn = document.getElementById('hotPicksBuyBtn');
+  btn.disabled = true;
+  btn.textContent = 'Redirecting…';
+  try{
+    const res = await apiFetch('/api/hot-picks/purchase', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        successUrl: window.location.href.split('?')[0] + '?hotpicks=purchased',
+        cancelUrl: window.location.href.split('?')[0]
+      })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Failed to start checkout.');
+    window.location.href = data.url;
+  }catch(e){
+    errEl.textContent = e.message;
+    btn.disabled = false;
+    btn.textContent = `Unlock Today's Hot Picks`;
+  }
 }
 
 function renderBankrollSection(bankroll){
@@ -2868,6 +3053,7 @@ function wirePicksBody(){
     if(action === 'settle'){ openSettleModal(el.dataset.id, el.dataset.label || ''); return; }
     if(action === 'add-wager'){ openAddWagerModal(el.dataset.id); return; }
     if(action === 'set-bankroll'){ openBankrollModal(); return; }
+    if(action === 'open-hot-picks'){ openHotPicksModal(); return; }
     if(action === 'toggle-legs'){
       const id = String(el.dataset.id);
       if(picksExpandedLegs.has(id)) picksExpandedLegs.delete(id); else picksExpandedLegs.add(id);
@@ -3727,6 +3913,13 @@ async function refreshBigLines(){
 if(new URLSearchParams(window.location.search).get('upgraded') === '1'){
   window.history.replaceState({}, '', window.location.pathname);
   refreshAccount().then(()=>setTimeout(refreshAccount, 4000));
+}
+
+// Returning from a Hot Picks purchase — same idea: the webhook usually beats
+// the redirect back here, but re-checking a moment later covers the race.
+if(new URLSearchParams(window.location.search).get('hotpicks') === 'purchased'){
+  window.history.replaceState({}, '', window.location.pathname);
+  if(currentUser){ loadHotPicksTeaser(); setTimeout(loadHotPicksTeaser, 4000); }
 }
 
 checkHealth().then(()=>loadBoard('nfl'));

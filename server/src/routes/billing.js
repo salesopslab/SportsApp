@@ -132,6 +132,24 @@ export async function handleStripeWebhook(req, res) {
       // away so they get access without waiting on the subscription event.
       case "checkout.session.completed": {
         const session = event.data.object;
+
+        // One-time Hot Picks purchase — separate from the recurring
+        // subscription flow below. ON CONFLICT DO NOTHING makes a retried
+        // webhook delivery a no-op instead of a duplicate purchase record.
+        if (session.mode === "payment") {
+          const userId = session.metadata?.betedgeUserId;
+          const hotPickDayId = session.metadata?.hotPickDayId;
+          if (userId && hotPickDayId) {
+            await pool.query(
+              `INSERT INTO hot_pick_purchases (user_id, hot_pick_day_id, stripe_payment_intent_id, amount_cents)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (user_id, hot_pick_day_id) DO NOTHING`,
+              [userId, hotPickDayId, session.payment_intent, session.amount_total]
+            );
+          }
+          break;
+        }
+
         if (session.mode !== "subscription") break;
         const userId = session.metadata?.betedgeUserId;
         const tier = session.metadata?.tier;
