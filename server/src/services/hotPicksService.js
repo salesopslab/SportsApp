@@ -161,12 +161,33 @@ Return ONLY valid JSON, no prose, no markdown fences, matching exactly:
 // hot_picks rows) on the first call of the day. Cached in the DB after that
 // -- this app has no cron/scheduler, so "lazy generate on first request,
 // then reuse" is the same pattern db.js's own ensureSchema() uses.
-export async function getOrCreateTodaysHotPickDay({ priceCents = 5000, maxPurchasers = 50 } = {}) {
+export async function getOrCreateTodaysHotPickDay({ priceCents = 2500, maxPurchasers = 30 } = {}) {
   if (!pool) return null;
   const today = new Date().toISOString().slice(0, 10);
 
   const existing = await pool.query("SELECT * FROM hot_pick_days WHERE bet_date = $1", [today]);
-  if (existing.rows.length) return existing.rows[0];
+  if (existing.rows.length) {
+    const day = existing.rows[0];
+    // A code-level price/cap change (an admin dialing the day's numbers in
+    // or out) should take effect immediately even for a day that's already
+    // been generated -- but never once someone's actually paid the old
+    // price, which would be unfair to them and inconsistent with what they
+    // bought. Once a purchase exists the day's numbers are locked in.
+    if (Number(day.price_cents) !== priceCents || Number(day.max_purchasers) !== maxPurchasers) {
+      const purchaseCount = await pool.query(
+        "SELECT COUNT(*)::int AS n FROM hot_pick_purchases WHERE hot_pick_day_id = $1",
+        [day.id]
+      );
+      if (purchaseCount.rows[0].n === 0) {
+        const updated = await pool.query(
+          "UPDATE hot_pick_days SET price_cents = $1, max_purchasers = $2 WHERE id = $3 RETURNING *",
+          [priceCents, maxPurchasers, day.id]
+        );
+        return updated.rows[0];
+      }
+    }
+    return day;
+  }
 
   const { picks } = await generateHotPicksForToday();
 

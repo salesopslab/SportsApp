@@ -202,8 +202,8 @@ export function ensureSchema() {
       CREATE TABLE IF NOT EXISTS hot_pick_days (
         id BIGSERIAL PRIMARY KEY,
         bet_date DATE NOT NULL UNIQUE,
-        price_cents INTEGER NOT NULL DEFAULT 5000,
-        max_purchasers INTEGER NOT NULL DEFAULT 50,
+        price_cents INTEGER NOT NULL DEFAULT 2500,
+        max_purchasers INTEGER NOT NULL DEFAULT 30,
         status TEXT NOT NULL DEFAULT 'published', -- 'published' | 'locked'
         generated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
