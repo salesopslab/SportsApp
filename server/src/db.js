@@ -110,6 +110,26 @@ export function ensureSchema() {
       CREATE INDEX IF NOT EXISTS idx_bets_user ON bets (user_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_bets_grading ON bets (result, game_id);
 
+      -- "My Picks" -> full personal bet tracker/ledger. BetEdge AI never
+      -- accepts or holds a wager itself — these columns just let a user
+      -- record a real-dollar bet they placed elsewhere (or a BetEdge pick
+      -- with a dollar amount attached) instead of the original units-only
+      -- tracking. wager_amount is nullable on purpose: an existing/legacy
+      -- pick with no dollar amount keeps working as a units-only pick
+      -- (stake column, as before) rather than being forced to carry a $0
+      -- wager, and a user can attach a real wager to it later.
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS wager_amount NUMERIC;
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS cash_out_amount NUMERIC;
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS bet_source TEXT NOT NULL DEFAULT 'betedge_pick'; -- 'betedge_pick' | 'custom'
+      -- Freeform overrides used by custom (off-platform) bets, whose
+      -- game/market/line don't fit our own structured odds data — left null
+      -- for ordinary BetEdge picks, which keep using home_team/away_team/
+      -- market/side/point exactly as before.
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS event_label TEXT;
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS bet_type_label TEXT;
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS line_label TEXT;
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS bet_date DATE;
+
       CREATE TABLE IF NOT EXISTS odds_api_usage (
         id BIGSERIAL PRIMARY KEY,
         requests_used INTEGER,

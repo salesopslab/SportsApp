@@ -1,4 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BetEdge AI</title>
+<meta name="description" content="Live odds, line movement tracking &amp; AI-powered picks for NFL, NBA, MLB, CFB and CBB.">
+<!-- Light/dark pair so the browser chrome (address bar, etc.) always matches
+     the page's actual background instead of always showing the dark value. -->
+<meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10151C" media="(prefers-color-scheme: dark)">
+
+<!-- Webfonts the CSS below declares (Inter body copy, Oswald headings/numbers) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+
+<!-- Favicon / app icons -->
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512x512.png">
+
+<!-- Link preview when the URL is texted / shared (iMessage, WhatsApp, Slack, etc.) -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="BetEdge AI">
+<meta property="og:description" content="Live odds, line movement tracking &amp; AI-powered picks.">
+<meta property="og:image" content="https://sportsapp-qkgc.onrender.com/og-image.png">
+<meta property="og:url" content="https://sportsapp-qkgc.onrender.com">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="BetEdge AI">
+<meta name="twitter:description" content="Live odds, line movement tracking &amp; AI-powered picks.">
+<meta name="twitter:image" content="https://sportsapp-qkgc.onrender.com/og-image.png">
 <style>
 :root{
   --bg:#F4F1EA; --surface:#FFFFFF; --surface2:#EDE9DF; --line:#DDD6C6;
@@ -63,7 +97,6 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 }
 .game-row:hover{ background:var(--surface); }
 .mover-card:hover{ background:var(--surface2); border-color:var(--amber); }
-.game-row:focus-visible, .mover-card:focus-visible{ outline:2px solid var(--amber); outline-offset:-2px; }
 
 /* Outline-style buttons (transparent/no background) barely show the generic
    brightness-filter hover above since there's no fill to darken — give them
@@ -76,6 +109,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 }
 .modal-tab:hover:not(.active){ background:var(--line); color:var(--text); }
 .manage-billing-link:hover{ color:var(--text); }
+.game-row:focus-visible, .mover-card:focus-visible{ outline:2px solid var(--amber); outline-offset:-2px; }
 
 .topbar{
   padding:18px 20px 14px; display:flex; align-items:center; justify-content:space-between;
@@ -232,6 +266,22 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .modal-input{ width:100%; box-sizing:border-box; padding:11px 12px; margin-bottom:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:16px; font-family:inherit; }
 .modal-submit{ width:100%; padding:12px; border-radius:10px; border:none; background:var(--amber); color:var(--bg); font-weight:700; cursor:pointer; font-size:14px; }
 .modal-error{ color:var(--red); font-size:12.5px; margin-bottom:8px; min-height:0; }
+.modal-label{ display:block; font-size:11.5px; color:var(--sub); margin:0 0 5px 2px; }
+.modal-card h2{ margin-bottom:6px; }
+.trackbet-note{ font-size:12px; color:var(--sub); line-height:1.5; margin-bottom:16px; }
+.trackbet-option{ display:block; width:100%; text-align:left; background:var(--surface2); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:10px; cursor:pointer; font-family:inherit; }
+.trackbet-option:hover{ border-color:var(--amber); }
+.trackbet-option-title{ font-weight:700; font-size:14px; margin-bottom:3px; }
+.trackbet-option-sub{ font-size:12px; color:var(--sub); line-height:1.4; }
+.trackbet-potential{ font-size:12.5px; color:var(--sub); margin:2px 0 14px; min-height:16px; }
+.trackbet-potential b{ color:var(--text); }
+.wager-confirm-game{ font-size:13px; font-weight:600; margin-bottom:14px; }
+.settle-options{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:6px; }
+.settle-option-btn{ padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--surface2); color:var(--text); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; }
+.settle-option-btn.won:hover{ border-color:var(--green); color:var(--green); }
+.settle-option-btn.lost:hover{ border-color:var(--red); color:var(--red); }
+.settle-option-btn.push:hover{ border-color:var(--sub); }
+.settle-option-btn.cashed:hover{ border-color:var(--teal); color:var(--teal); }
 .account-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
 .account-row:last-of-type{ border-bottom:none; }
 .account-label{ color:var(--sub); }
@@ -281,19 +331,48 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .open-tag{ font-size:9.5px; color:var(--amber); border:1px solid var(--amber); border-radius:8px; padding:1px 6px; margin-left:5px; font-weight:600; white-space:nowrap; }
 
 /* My Picks screen */
-.picks-summary{ display:flex; gap:8px; padding:14px 20px; flex-wrap:wrap; }
+.picks-header{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 20px 0; }
+.picks-header h2{ font-family:'Oswald',sans-serif; font-size:18px; font-weight:600; }
+.track-bet-btn{ flex-shrink:0; padding:9px 16px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.picks-summary{ display:flex; gap:8px; padding:14px 20px 0; flex-wrap:wrap; }
 .picks-stat{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 8px; flex:1; min-width:70px; text-align:center; }
 .picks-stat .num{ font-family:'Oswald',sans-serif; font-size:19px; font-weight:600; }
+.picks-stat .num.pl-positive{ color:var(--green); }
+.picks-stat .num.pl-negative{ color:var(--red); }
 .picks-stat .label{ font-size:10.5px; color:var(--sub); text-transform:uppercase; letter-spacing:0.3px; }
+.picks-risk-row{ margin:8px 20px 0; padding:9px 12px; background:var(--surface2); border-radius:10px; font-size:12px; color:var(--sub); text-align:center; }
+.picks-risk-row b{ color:var(--text); font-weight:600; }
+.picks-filters{ display:flex; gap:8px; padding:14px 20px 0; overflow-x:auto; }
+.picks-filter{ font-size:12.5px; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:6px 13px; border-radius:16px; cursor:pointer; font-family:inherit; white-space:nowrap; flex-shrink:0; }
+.picks-filter.active{ color:var(--bg); background:var(--amber); border-color:var(--amber); font-weight:600; }
+.picks-performance{ margin:14px 20px 0; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:12px; }
+.picks-performance h4{ font-size:11px; text-transform:uppercase; letter-spacing:0.3px; color:var(--sub); margin-bottom:8px; font-weight:600; }
+.picks-perf-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:12.5px; padding:4px 0; }
+.picks-perf-row .name{ color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.picks-perf-row .val{ flex-shrink:0; font-weight:600; }
+.picks-perf-grid{ display:flex; flex-wrap:wrap; gap:10px 16px; margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+.picks-perf-grid div{ font-size:11.5px; color:var(--sub); }
+.picks-perf-grid b{ display:block; color:var(--text); font-size:14px; font-family:'Oswald',sans-serif; font-weight:600; }
 .pick-card{ margin:0 20px 10px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:12px; }
 .pick-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13.5px; font-weight:600; }
+.pick-top .pick-event{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pick-sub{ font-size:11.5px; color:var(--sub); margin-top:3px; }
-.pick-result{ font-size:10.5px; padding:3px 9px; border-radius:10px; font-weight:700; text-transform:uppercase; white-space:nowrap; }
+.pick-pl{ font-size:11.5px; font-weight:700; margin-top:2px; }
+.pick-pl.pl-positive{ color:var(--green); }
+.pick-pl.pl-negative{ color:var(--red); }
+.pick-result{ font-size:10.5px; padding:3px 9px; border-radius:10px; font-weight:700; text-transform:uppercase; white-space:nowrap; flex-shrink:0; }
 .pick-result.pending{ background:var(--surface2); color:var(--sub); }
 .pick-result.win{ background:var(--green); color:#fff; }
 .pick-result.loss{ background:var(--red); color:#fff; }
 .pick-result.push{ background:var(--surface2); color:var(--text); }
+.pick-result.cashed_out{ background:var(--teal); color:#fff; }
+.pick-actions{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.pick-action-btn{ font-size:11.5px; padding:5px 11px; border-radius:14px; border:1px solid var(--line); color:var(--sub); background:none; cursor:pointer; font-family:inherit; }
+.pick-action-btn:hover{ border-color:var(--amber); color:var(--text); }
+.pick-action-btn.danger:hover{ border-color:var(--red); color:var(--red); }
 </style>
+<body>
+
 
 <div class="app">
 
@@ -357,6 +436,107 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       </div>
       <button class="modal-submit" id="accountUpgradeBtn">See plans</button>
       <button class="manage-billing-link" id="accountLogoutBtn">Log out</button>
+    </div>
+  </div>
+
+  <!-- TRACK BET MODAL: chooser (BetEdge pick vs custom) + custom-bet form -->
+  <div class="modal-overlay hidden" id="trackBetModal">
+    <div class="modal-card">
+      <button class="modal-close" id="trackBetModalClose">×</button>
+      <h2>Track a bet</h2>
+      <div class="trackbet-note">BetEdge AI doesn't place or hold wagers — this just tracks bets you made yourself, elsewhere.</div>
+
+      <div id="trackBetChooser">
+        <button class="trackbet-option" id="trackBetChoosePick">
+          <div class="trackbet-option-title">Track a BetEdge Pick</div>
+          <div class="trackbet-option-sub">Use a line already shown in the app — odds and teams fill in for you.</div>
+        </button>
+        <button class="trackbet-option" id="trackBetChooseCustom">
+          <div class="trackbet-option-title">Custom Bet</div>
+          <div class="trackbet-option-sub">Log a bet you placed anywhere else — any sport, any book.</div>
+        </button>
+      </div>
+
+      <form id="customBetForm" class="hidden">
+        <div class="modal-error" id="customBetError"></div>
+        <label class="modal-label">Sport</label>
+        <select class="modal-input" id="customBetSport">
+          <option value="nfl">NFL</option>
+          <option value="nba">NBA</option>
+          <option value="mlb">MLB</option>
+          <option value="ncaafb">CFB</option>
+          <option value="ncaamb">CBB</option>
+          <option value="other">Other</option>
+        </select>
+        <label class="modal-label">Event / game</label>
+        <input class="modal-input" id="customBetEvent" type="text" placeholder="e.g. Chiefs @ Bills">
+        <label class="modal-label">Bet type</label>
+        <input class="modal-input" id="customBetType" type="text" placeholder="e.g. Total, Spread, Player Prop">
+        <label class="modal-label">Line (optional)</label>
+        <input class="modal-input" id="customBetLine" type="text" placeholder="e.g. Over 43.5, or Mahomes anytime TD">
+        <label class="modal-label">American odds</label>
+        <input class="modal-input" id="customBetOdds" type="text" inputmode="numeric" placeholder="e.g. -110 or +150">
+        <label class="modal-label">Wager amount ($)</label>
+        <input class="modal-input" id="customBetWager" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100">
+        <label class="modal-label">Date</label>
+        <input class="modal-input" id="customBetDate" type="date">
+        <div class="trackbet-potential" id="customBetPotential"></div>
+        <button type="submit" class="modal-submit" id="customBetSubmit">Track bet</button>
+        <button type="button" class="manage-billing-link" id="customBetBack">‹ Back</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- WAGER CONFIRM MODAL: shown when tapping "Track" on a line in a Game Breakdown -->
+  <div class="modal-overlay hidden" id="wagerConfirmModal">
+    <div class="modal-card">
+      <button class="modal-close" id="wagerConfirmModalClose">×</button>
+      <h2>Track this pick</h2>
+      <div class="wager-confirm-game" id="wagerConfirmGame"></div>
+      <form id="wagerConfirmForm">
+        <div class="modal-error" id="wagerConfirmError"></div>
+        <label class="modal-label">Line</label>
+        <input class="modal-input" id="wagerConfirmLine" type="text" placeholder="e.g. -3.5">
+        <label class="modal-label">American odds</label>
+        <input class="modal-input" id="wagerConfirmOdds" type="text" inputmode="numeric" placeholder="e.g. -110">
+        <label class="modal-label">Wager amount ($, optional — leave blank to track as 1 unit)</label>
+        <input class="modal-input" id="wagerConfirmWager" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100">
+        <div class="trackbet-potential" id="wagerConfirmPotential"></div>
+        <button type="submit" class="modal-submit" id="wagerConfirmSubmit">Track bet</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- SETTLE MODAL: mark a pending pick Won / Lost / Push / Cashed Out -->
+  <div class="modal-overlay hidden" id="settleModal">
+    <div class="modal-card">
+      <button class="modal-close" id="settleModalClose">×</button>
+      <h2>Settle this pick</h2>
+      <div class="wager-confirm-game" id="settleGame"></div>
+      <div class="modal-error" id="settleError"></div>
+      <div class="settle-options" id="settleOptions">
+        <button class="settle-option-btn won" data-result="win">Won</button>
+        <button class="settle-option-btn lost" data-result="loss">Lost</button>
+        <button class="settle-option-btn push" data-result="push">Push</button>
+        <button class="settle-option-btn cashed" data-result="cashed_out">Cashed Out</button>
+      </div>
+      <div id="settleCashOutRow" class="hidden">
+        <label class="modal-label">Amount actually returned ($)</label>
+        <input class="modal-input" id="settleCashOutAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0">
+        <button class="modal-submit" id="settleCashOutSubmit">Confirm cash out</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD WAGER MODAL: attach a $ wager to an old units-only pick -->
+  <div class="modal-overlay hidden" id="addWagerModal">
+    <div class="modal-card">
+      <button class="modal-close" id="addWagerModalClose">×</button>
+      <h2>Add a wager amount</h2>
+      <div class="modal-error" id="addWagerError"></div>
+      <label class="modal-label">Wager amount ($)</label>
+      <input class="modal-input" id="addWagerAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100">
+      <button class="modal-submit" id="addWagerSubmit">Save</button>
     </div>
   </div>
 
@@ -876,39 +1056,377 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
 });
 
 // "Track this pick" — called from buttons rendered in the game breakdown's odds section.
-async function trackPick(market, side, point, price, btnEl){
+// ---------------------------------------------------------------------------
+// Bet-tracking shared helpers — used by both the "track a BetEdge pick" flow
+// (game breakdown -> wager confirm modal) and the custom-bet / settlement /
+// stats flows below. Mirrors the same American-odds payout math the backend
+// uses in server/src/routes/bets.js, so a potential-return preview shown
+// before saving always matches what's stored and displayed afterward.
+// ---------------------------------------------------------------------------
+function americanPayout(wagerAmount, price){
+  const wager = Number(wagerAmount);
+  const p = Number(price);
+  if(!(wager > 0) || !p) return { toWin: 0, totalReturn: 0 };
+  const toWin = p > 0 ? wager * (p / 100) : wager * (100 / Math.abs(p));
+  return { toWin: Math.round(toWin * 100) / 100, totalReturn: Math.round((wager + toWin) * 100) / 100 };
+}
+function isValidOdds(price){
+  const p = Number(price);
+  return Number.isFinite(p) && Number.isInteger(p) && Math.abs(p) >= 100;
+}
+function oddsPriceLabel(p){
+  return (p === null || p === undefined) ? '—' : (p > 0 ? '+'+p : String(p));
+}
+function fmtMoney(n){
+  const abs = Math.abs(Number(n) || 0);
+  const str = Number.isInteger(abs) ? abs.toFixed(0) : abs.toFixed(2);
+  return `$${str}`;
+}
+function fmtPL(n){
+  const v = Number(n) || 0;
+  if(v > 0) return `+${fmtMoney(v)}`;
+  if(v < 0) return `-${fmtMoney(Math.abs(v))}`;
+  return fmtMoney(0);
+}
+// Custom bets carry free-text the user typed (event/bet type/line) — the
+// only user-authored strings this app renders back as HTML anywhere, so
+// every one of them goes through this before hitting a template string.
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// A small non-blocking toast, reusing the same look/positioning as the
+// "Big line move" alerts — used here to point the user at the existing
+// per-line "Track" buttons after they choose "Track a BetEdge Pick".
+function showHintToast(title, detail){
+  positionMoverAlerts();
+  const container = document.getElementById('moverAlerts');
+  if(!container) return;
+  const el = document.createElement('div');
+  el.className = 'mover-alert';
+  el.innerHTML = `
+    <div class="mover-alert-body">
+      <div class="mover-alert-title">${escapeHtml(title)}</div>
+      <div class="mover-alert-detail">${escapeHtml(detail)}</div>
+    </div>
+    <button class="mover-alert-close" aria-label="Dismiss">×</button>
+  `;
+  el.querySelector('.mover-alert-close').addEventListener('click', ()=>{
+    el.classList.add('hide');
+    setTimeout(()=>el.remove(), 300);
+  });
+  container.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{
+    el.classList.add('hide');
+    setTimeout(()=>el.remove(), 300);
+  }, 6000);
+}
+
+// ---------------------------------------------------------------------------
+// Track a BetEdge pick: tapping "Track" on a line in a Game Breakdown opens
+// a small wager-confirm modal (prefilled, line/odds still editable in case
+// the user's own book shows a different number) rather than saving instantly
+// — this is where the wager amount actually gets entered.
+// ---------------------------------------------------------------------------
+let pendingTrackContext = null;
+let pendingTrackBtn = null;
+
+function trackPick(r, btnEl){
   if(!currentUser){ openAuthModal(); return; }
   if(!currentGame) return;
-  btnEl.disabled = true;
-  btnEl.textContent = 'Saving…';
+  pendingTrackContext = {
+    sport: currentSport,
+    gameId: currentGame.id,
+    homeTeam: currentGame.homeTeam,
+    awayTeam: currentGame.awayTeam,
+    commenceTime: currentGame.commenceTime,
+    market: r.market,
+    side: r.side,
+  };
+  pendingTrackBtn = btnEl;
+  openWagerConfirmModal({
+    gameLabel: `${currentGame.awayTeam} @ ${currentGame.homeTeam} — ${r.label}`,
+    lineLabel: (r.point === null || r.point === undefined) ? '' : String(r.point),
+    price: r.price,
+  });
+}
+
+function openWagerConfirmModal(ctx){
+  document.getElementById('wagerConfirmGame').textContent = ctx.gameLabel;
+  document.getElementById('wagerConfirmLine').value = ctx.lineLabel || '';
+  document.getElementById('wagerConfirmOdds').value = ctx.price;
+  document.getElementById('wagerConfirmWager').value = '';
+  document.getElementById('wagerConfirmError').textContent = '';
+  updateWagerConfirmPotential();
+  document.getElementById('wagerConfirmModal').classList.remove('hidden');
+}
+function closeWagerConfirmModal(){
+  document.getElementById('wagerConfirmModal').classList.add('hidden');
+  pendingTrackContext = null;
+  pendingTrackBtn = null;
+}
+function updateWagerConfirmPotential(){
+  const wager = Number(document.getElementById('wagerConfirmWager').value);
+  const price = Number(document.getElementById('wagerConfirmOdds').value);
+  const el = document.getElementById('wagerConfirmPotential');
+  if(wager > 0 && isValidOdds(price)){
+    const { toWin, totalReturn } = americanPayout(wager, price);
+    el.innerHTML = `To win <b>${fmtMoney(toWin)}</b> · Potential return <b>${fmtMoney(totalReturn)}</b>`;
+  } else {
+    el.textContent = 'Leave the wager blank to track this as 1 unit instead of a dollar amount.';
+  }
+}
+document.getElementById('wagerConfirmWager').addEventListener('input', updateWagerConfirmPotential);
+document.getElementById('wagerConfirmOdds').addEventListener('input', updateWagerConfirmPotential);
+document.getElementById('wagerConfirmModalClose').addEventListener('click', closeWagerConfirmModal);
+document.getElementById('wagerConfirmForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if(!pendingTrackContext) return;
+  const errEl = document.getElementById('wagerConfirmError');
+  errEl.textContent = '';
+
+  const lineRaw = document.getElementById('wagerConfirmLine').value.trim();
+  const point = lineRaw === '' ? null : Number(lineRaw);
+  if(lineRaw !== '' && Number.isNaN(point)){
+    errEl.textContent = 'Enter a valid number for the line, or leave it blank.';
+    return;
+  }
+  const price = Number(document.getElementById('wagerConfirmOdds').value);
+  if(!isValidOdds(price)){
+    errEl.textContent = 'Enter valid American odds (e.g. -110 or +150).';
+    return;
+  }
+  const wagerRaw = document.getElementById('wagerConfirmWager').value.trim();
+  const wagerAmount = wagerRaw === '' ? null : Number(wagerRaw);
+  if(wagerAmount !== null && !(wagerAmount > 0)){
+    errEl.textContent = 'Wager amount must be greater than $0.';
+    return;
+  }
+
+  const submitBtn = document.getElementById('wagerConfirmSubmit');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Saving…';
   try{
     const res = await apiFetch('/api/bets', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
-        sport: currentSport,
-        gameId: currentGame.id,
-        homeTeam: currentGame.homeTeam,
-        awayTeam: currentGame.awayTeam,
-        market, side, point, price,
+        betSource: 'betedge_pick',
+        sport: pendingTrackContext.sport,
+        gameId: pendingTrackContext.gameId,
+        homeTeam: pendingTrackContext.homeTeam,
+        awayTeam: pendingTrackContext.awayTeam,
+        market: pendingTrackContext.market,
+        side: pendingTrackContext.side,
+        point, price, wagerAmount,
         stake: 1,
-        commenceTime: currentGame.commenceTime
+        commenceTime: pendingTrackContext.commenceTime,
       })
     });
     if(!res.ok) throw new Error((await res.json()).error || 'Failed to save.');
-    btnEl.textContent = '✓ Tracked';
-    btnEl.classList.add('tracked');
-  }catch(e){
-    btnEl.disabled = false;
-    btnEl.textContent = 'Track';
-    alert(e.message);
+    if(pendingTrackBtn){
+      pendingTrackBtn.textContent = '✓ Tracked';
+      pendingTrackBtn.classList.add('tracked');
+      pendingTrackBtn.disabled = true;
+    }
+    closeWagerConfirmModal();
+    if(document.getElementById('picks').classList.contains('active')) loadPicks();
+  }catch(err){
+    errEl.textContent = err.message;
+  }finally{
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Track bet';
+  }
+});
+
+// ---------------------------------------------------------------------------
+// "+ Track Bet" modal: chooser (BetEdge pick vs custom), plus the custom-bet
+// form itself. BetEdge AI never accepts or holds the wager — this only ever
+// records a bet the person says they placed somewhere else.
+// ---------------------------------------------------------------------------
+function openTrackBetModal(){
+  document.getElementById('trackBetChooser').classList.remove('hidden');
+  document.getElementById('customBetForm').classList.add('hidden');
+  document.getElementById('trackBetModal').classList.remove('hidden');
+}
+function closeTrackBetModal(){
+  document.getElementById('trackBetModal').classList.add('hidden');
+}
+document.getElementById('trackBetModalClose').addEventListener('click', closeTrackBetModal);
+document.getElementById('trackBetChoosePick').addEventListener('click', ()=>{
+  if(!currentUser){ closeTrackBetModal(); openAuthModal(); return; }
+  closeTrackBetModal();
+  showScreen('board', { resetHistory: true });
+  showHintToast('Track a BetEdge pick', 'Tap a game, open its Breakdown, then tap "Track" next to any line.');
+});
+document.getElementById('trackBetChooseCustom').addEventListener('click', ()=>{
+  if(!currentUser){ closeTrackBetModal(); openAuthModal(); return; }
+  document.getElementById('trackBetChooser').classList.add('hidden');
+  document.getElementById('customBetForm').classList.remove('hidden');
+  document.getElementById('customBetError').textContent = '';
+  document.getElementById('customBetSport').value = currentSport || 'nfl';
+  document.getElementById('customBetEvent').value = '';
+  document.getElementById('customBetType').value = '';
+  document.getElementById('customBetLine').value = '';
+  document.getElementById('customBetOdds').value = '';
+  document.getElementById('customBetWager').value = '';
+  document.getElementById('customBetDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('customBetPotential').textContent = '';
+});
+document.getElementById('customBetBack').addEventListener('click', ()=>{
+  document.getElementById('customBetForm').classList.add('hidden');
+  document.getElementById('trackBetChooser').classList.remove('hidden');
+});
+function updateCustomBetPotential(){
+  const wager = Number(document.getElementById('customBetWager').value);
+  const price = Number(document.getElementById('customBetOdds').value);
+  const el = document.getElementById('customBetPotential');
+  if(wager > 0 && isValidOdds(price)){
+    const { toWin, totalReturn } = americanPayout(wager, price);
+    el.innerHTML = `To win <b>${fmtMoney(toWin)}</b> · Potential return <b>${fmtMoney(totalReturn)}</b>`;
+  } else {
+    el.textContent = '';
   }
 }
+document.getElementById('customBetWager').addEventListener('input', updateCustomBetPotential);
+document.getElementById('customBetOdds').addEventListener('input', updateCustomBetPotential);
+document.getElementById('customBetForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const errEl = document.getElementById('customBetError');
+  errEl.textContent = '';
+
+  const sport = document.getElementById('customBetSport').value;
+  const event = document.getElementById('customBetEvent').value.trim();
+  const betType = document.getElementById('customBetType').value.trim();
+  const line = document.getElementById('customBetLine').value.trim();
+  const price = Number(document.getElementById('customBetOdds').value);
+  const wagerAmount = Number(document.getElementById('customBetWager').value);
+  const betDate = document.getElementById('customBetDate').value || null;
+
+  if(!event){ errEl.textContent = 'Enter the event/game.'; return; }
+  if(!betType){ errEl.textContent = 'Enter what you bet on.'; return; }
+  if(!isValidOdds(price)){ errEl.textContent = 'Enter valid American odds (e.g. -110 or +150).'; return; }
+  if(!(wagerAmount > 0)){ errEl.textContent = 'Enter a wager amount.'; return; }
+
+  const btn = document.getElementById('customBetSubmit');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try{
+    const res = await apiFetch('/api/bets', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        betSource: 'custom',
+        sport, eventLabel: event, betTypeLabel: betType, lineLabel: line || null,
+        price, wagerAmount, betDate,
+      })
+    });
+    if(!res.ok) throw new Error((await res.json()).error || 'Failed to save.');
+    closeTrackBetModal();
+    if(document.getElementById('picks').classList.contains('active')) loadPicks();
+  }catch(err){
+    errEl.textContent = err.message;
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Track bet';
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Settle modal: Won / Lost / Push / Cashed Out. BetEdge picks tied to a real
+// game are usually auto-graded once it finishes (see the server's
+// autoGradePending) — this covers custom bets (nothing to auto-grade
+// against), cash-outs (always manual, we have no way to know what a
+// sportsbook actually paid early), and correcting an auto-grade.
+// ---------------------------------------------------------------------------
+let pendingSettleId = null;
+function openSettleModal(id, gameLabel){
+  pendingSettleId = id;
+  document.getElementById('settleGame').textContent = gameLabel;
+  document.getElementById('settleError').textContent = '';
+  document.getElementById('settleCashOutRow').classList.add('hidden');
+  document.getElementById('settleCashOutAmount').value = '';
+  document.getElementById('settleModal').classList.remove('hidden');
+}
+function closeSettleModal(){
+  document.getElementById('settleModal').classList.add('hidden');
+  pendingSettleId = null;
+}
+document.getElementById('settleModalClose').addEventListener('click', closeSettleModal);
+document.getElementById('settleOptions').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.settle-option-btn');
+  if(!btn || !pendingSettleId) return;
+  if(btn.dataset.result === 'cashed_out'){
+    document.getElementById('settleCashOutRow').classList.remove('hidden');
+    return;
+  }
+  submitSettle(btn.dataset.result, null);
+});
+document.getElementById('settleCashOutSubmit').addEventListener('click', ()=>{
+  const amt = Number(document.getElementById('settleCashOutAmount').value);
+  if(!(amt >= 0)){
+    document.getElementById('settleError').textContent = 'Enter the amount you actually got back.';
+    return;
+  }
+  submitSettle('cashed_out', amt);
+});
+async function submitSettle(result, cashOutAmount){
+  const errEl = document.getElementById('settleError');
+  errEl.textContent = '';
+  try{
+    const res = await apiFetch(`/api/bets/${pendingSettleId}/settle`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ result, cashOutAmount })
+    });
+    if(!res.ok) throw new Error((await res.json()).error || 'Failed to settle.');
+    closeSettleModal();
+    loadPicks();
+  }catch(err){
+    errEl.textContent = err.message;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Add-wager modal: attaches a real dollar amount to an old units-only
+// pending pick, so it starts counting toward Net P/L, ROI, at-risk, etc.
+// ---------------------------------------------------------------------------
+let pendingAddWagerId = null;
+function openAddWagerModal(id){
+  pendingAddWagerId = id;
+  document.getElementById('addWagerError').textContent = '';
+  document.getElementById('addWagerAmount').value = '';
+  document.getElementById('addWagerModal').classList.remove('hidden');
+}
+document.getElementById('addWagerModalClose').addEventListener('click', ()=>{
+  document.getElementById('addWagerModal').classList.add('hidden');
+  pendingAddWagerId = null;
+});
+document.getElementById('addWagerSubmit').addEventListener('click', async ()=>{
+  const errEl = document.getElementById('addWagerError');
+  errEl.textContent = '';
+  const amt = Number(document.getElementById('addWagerAmount').value);
+  if(!(amt > 0)){ errEl.textContent = 'Wager amount must be greater than $0.'; return; }
+  try{
+    const res = await apiFetch(`/api/bets/${pendingAddWagerId}`, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ wagerAmount: amt })
+    });
+    if(!res.ok) throw new Error((await res.json()).error || 'Failed to save.');
+    document.getElementById('addWagerModal').classList.add('hidden');
+    pendingAddWagerId = null;
+    loadPicks();
+  }catch(err){
+    errEl.textContent = err.message;
+  }
+});
 
 function renderTrackSection(g, lm){
   if(!g || g.status === 'final') return '';
   const rows = [];
-  const priceLabel = (p) => p === null || p === undefined ? '—' : (p > 0 ? '+'+p : String(p));
+  const priceLabel = oddsPriceLabel;
 
   (g.moneyline || []).forEach(o=>{
     rows.push({ market:'moneyline', side:o.name, point:null, price:o.price,
@@ -964,16 +1482,27 @@ function wireTrackButtons(){
   document.querySelectorAll('.track-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const r = rows[Number(btn.dataset.idx)];
-      if(r) trackPick(r.market, r.side, r.point, r.price, btn);
+      if(r) trackPick(r, btn);
     });
   });
 }
 
+// ---------------------------------------------------------------------------
+// My Picks screen: personal bet ledger. picksCache holds the last-loaded
+// bets/record so switching the Today/Week/Month/All-Time filter re-renders
+// instantly from memory instead of re-fetching. All click handling on this
+// screen goes through one delegated listener on #picksBody (data-action),
+// since the cards are re-rendered wholesale on every filter change.
+// ---------------------------------------------------------------------------
+let picksCache = { bets: [], record: null };
+let picksFilter = 'all';
+let picksBodyWired = false;
+
 async function loadPicks(){
   const body = document.getElementById('picksBody');
   if(!currentUser){
-    body.innerHTML = '<div class="board-msg">Log in to start tracking your picks and see your record.<br><button class="picks-login-cta" id="picksLoginCta">Log in / Sign up</button></div>';
-    document.getElementById('picksLoginCta').addEventListener('click', ()=>openAuthModal('login'));
+    body.innerHTML = '<div class="board-msg">Log in to start tracking your picks and see your record.<br><button class="picks-login-cta" data-action="login">Log in / Sign up</button></div>';
+    wirePicksBody();
     return;
   }
   body.innerHTML = '<div class="board-msg"><div class="spin"></div><div>Loading your picks…</div></div>';
@@ -981,45 +1510,203 @@ async function loadPicks(){
     const res = await apiFetch('/api/bets');
     if(!res.ok) throw new Error('bad status ' + res.status);
     const data = await res.json();
-    body.innerHTML = renderPicks(data.bets || [], data.record || {});
-    document.querySelectorAll('.pick-delete').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        if(!confirm('Remove this pick?')) return;
-        await apiFetch(`/api/bets/${btn.dataset.id}`, { method: 'DELETE' });
-        loadPicks();
-      });
-    });
+    picksCache = { bets: data.bets || [], record: data.record || {} };
+    renderPicksScreen();
   }catch(e){
     body.innerHTML = `<div class="board-msg">Couldn't load your picks (${e.message}). Try again in a moment.</div>`;
   }
 }
 
-function renderPicks(bets, record){
-  const stat = (num, label) => `<div class="picks-stat"><div class="num">${num}</div><div class="label">${label}</div></div>`;
-  const summary = `
-    <div class="picks-summary">
-      ${stat(`${record.wins||0}-${record.losses||0}-${record.pushes||0}`, 'Record')}
-      ${stat(record.pending||0, 'Pending')}
-      ${stat(record.roi === null || record.roi === undefined ? '—' : `${record.roi>0?'+':''}${record.roi}%`, 'ROI')}
+function renderPicksScreen(){
+  const body = document.getElementById('picksBody');
+  const { bets, record } = picksCache;
+  const rec = record || {};
+
+  const header = `
+    <div class="picks-header">
+      <h2>My Picks</h2>
+      <button class="track-bet-btn" data-action="open-track-bet">+ Track Bet</button>
     </div>
   `;
+
+  const netPL = rec.profit || 0;
+  const plClass = netPL > 0 ? 'pl-positive' : (netPL < 0 ? 'pl-negative' : '');
+  const stat = (num, label, extraClass='') => `<div class="picks-stat"><div class="num ${extraClass}">${num}</div><div class="label">${label}</div></div>`;
+  const summary = `
+    <div class="picks-summary">
+      ${stat(`${rec.wins||0}-${rec.losses||0}-${rec.pushes||0}`, 'Record')}
+      ${stat(fmtPL(netPL), 'Net P/L', plClass)}
+      ${stat(rec.roi === null || rec.roi === undefined ? '—' : `${rec.roi>0?'+':''}${rec.roi}%`, 'ROI')}
+    </div>
+    <div class="picks-risk-row">${fmtMoney(rec.atRisk||0)} currently at risk • ${fmtMoney(rec.potentialReturn||0)} potential return</div>
+  `;
+
   if(!bets.length){
-    return summary + '<div class="board-msg">No picks tracked yet — open a game\'s Breakdown and tap "Track" on a line to log one.</div>';
+    body.innerHTML = header + summary + '<div class="board-msg">No picks tracked yet — tap "+ Track Bet" above, or open a game\'s Breakdown and tap "Track" on a line.</div>';
+    wirePicksBody();
+    return;
   }
-  const cards = bets.map(b=>{
-    const label = b.market === 'total' ? `${b.side} ${b.point ?? ''}` : b.market === 'spread' ? `${b.side} ${Number(b.point) > 0 ? '+'+b.point : b.point}` : `${b.side} ML`;
-    const priceLabel = b.price > 0 ? '+'+b.price : b.price;
-    return `
-      <div class="pick-card">
-        <div class="pick-top">
-          <span>${b.away_team && b.home_team ? `${b.away_team} @ ${b.home_team}` : b.sport.toUpperCase()}</span>
-          <span class="pick-result ${b.result}">${b.result}</span>
-        </div>
-        <div class="pick-sub">${label} (${priceLabel}) · ${b.stake} unit${Number(b.stake)===1?'':'s'} ${b.result==='pending' ? '<a class="pick-delete" data-id="'+b.id+'" style="color:var(--sub); text-decoration:underline; cursor:pointer; margin-left:6px;">remove</a>' : ''}</div>
+
+  const filterLabels = { today:'Today', week:'Week', month:'Month', all:'All Time' };
+  const filters = `
+    <div class="picks-filters">
+      ${Object.keys(filterLabels).map(f=>`<button class="picks-filter ${picksFilter===f?'active':''}" data-action="set-filter" data-filter="${f}">${filterLabels[f]}</button>`).join('')}
+    </div>
+  `;
+
+  const filteredBets = filterBetsByPeriod(bets, picksFilter);
+  const perf = renderPerformanceSection(filteredBets);
+  const cards = filteredBets.length
+    ? filteredBets.map(renderPickCard).join('')
+    : '<div class="board-msg">No picks in this period.</div>';
+
+  body.innerHTML = header + summary + filters + perf + cards;
+  wirePicksBody();
+}
+
+// today/week/month look at bet_date (custom bets) falling back to
+// created_at (BetEdge picks, which have no separate bet_date).
+function filterBetsByPeriod(bets, filter){
+  if(filter === 'all') return bets;
+  const days = { today: 1, week: 7, month: 30 }[filter];
+  if(!days) return bets;
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return bets.filter(b=>{
+    const ts = new Date(b.bet_date || b.created_at).getTime();
+    return !Number.isNaN(ts) && ts >= cutoff;
+  });
+}
+
+// Realized profit/loss for one settled bet — the same math the server uses
+// in computeRecord, applied per-bet so the performance breakdowns below can
+// group it by sport/type client-side without another round trip.
+function betProfit(b){
+  const wager = b.wager_amount != null ? Number(b.wager_amount) : null;
+  if(!wager) return 0;
+  if(b.result === 'win') return americanPayout(wager, b.price).toWin;
+  if(b.result === 'loss') return -wager;
+  if(b.result === 'push') return 0;
+  if(b.result === 'cashed_out' && b.cash_out_amount != null) return Number(b.cash_out_amount) - wager;
+  return 0;
+}
+
+function computeExtraStats(bets){
+  const withWager = bets.filter(b=>b.wager_amount != null);
+  const totalWagered = withWager.reduce((s,b)=>s+Number(b.wager_amount||0), 0);
+  const decided = bets.filter(b=>b.result==='win' || b.result==='loss');
+  const winPct = decided.length ? Math.round((decided.filter(b=>b.result==='win').length / decided.length) * 1000)/10 : null;
+  const avgWager = withWager.length ? totalWagered / withWager.length : 0;
+  return { totalWagered, winPct, avgWager, count: bets.length };
+}
+
+function computePerformanceBySport(bets){
+  const bySport = {};
+  bets.forEach(b=>{
+    if(b.wager_amount == null || b.result === 'pending') return;
+    const key = (b.sport || '').toUpperCase();
+    bySport[key] = (bySport[key] || 0) + betProfit(b);
+  });
+  return Object.entries(bySport).sort((a,b)=>b[1]-a[1]);
+}
+
+function computePerformanceByType(bets){
+  const labels = { moneyline:'Moneyline', spread:'Spread', total:'Total', custom:'Custom' };
+  const byType = {};
+  bets.forEach(b=>{
+    if(b.wager_amount == null || b.result === 'pending') return;
+    const key = labels[b.market] || b.market;
+    byType[key] = (byType[key] || 0) + betProfit(b);
+  });
+  return Object.entries(byType).sort((a,b)=>b[1]-a[1]);
+}
+
+function renderPerformanceSection(bets){
+  if(!bets.length) return '';
+  const extra = computeExtraStats(bets);
+  const bySport = computePerformanceBySport(bets);
+  const byType = computePerformanceByType(bets);
+  const plRow = (name, pl) => `<div class="picks-perf-row"><span class="name">${escapeHtml(name)}</span><span class="val ${pl>0?'pl-positive':pl<0?'pl-negative':''}">${fmtPL(pl)}</span></div>`;
+  return `
+    <div class="picks-performance">
+      <h4>Performance</h4>
+      <div class="picks-perf-grid">
+        <div>Total wagered<b>${fmtMoney(extra.totalWagered)}</b></div>
+        <div>Win %<b>${extra.winPct === null ? '—' : extra.winPct + '%'}</b></div>
+        <div>Avg wager<b>${fmtMoney(extra.avgWager)}</b></div>
+        <div>Picks<b>${extra.count}</b></div>
       </div>
-    `;
-  }).join('');
-  return summary + cards;
+      ${bySport.length ? `<div class="picks-perf-row" style="margin-top:10px;"><span class="name" style="font-weight:700;">By sport</span></div>${bySport.map(([n,pl])=>plRow(n,pl)).join('')}` : ''}
+      ${byType.length ? `<div class="picks-perf-row" style="margin-top:10px;"><span class="name" style="font-weight:700;">By bet type</span></div>${byType.map(([n,pl])=>plRow(n,pl)).join('')}` : ''}
+    </div>
+  `;
+}
+
+function renderPickCard(b){
+  const isCustom = b.bet_source === 'custom';
+  const eventLabel = isCustom
+    ? escapeHtml(b.event_label || (b.sport||'').toUpperCase())
+    : (b.away_team && b.home_team ? escapeHtml(`${b.away_team} @ ${b.home_team}`) : escapeHtml((b.sport||'').toUpperCase()));
+  const typeLabel = isCustom
+    ? escapeHtml(b.bet_type_label || '')
+    : (b.market === 'total' ? `${escapeHtml(b.side)} ${b.point ?? ''}` : b.market === 'spread' ? `${escapeHtml(b.side)} ${Number(b.point) > 0 ? '+'+b.point : b.point}` : `${escapeHtml(b.side)} ML`);
+  const lineLabel = isCustom && b.line_label ? ` ${escapeHtml(b.line_label)}` : '';
+  const priceLabel = oddsPriceLabel(b.price);
+  const wager = b.wager_amount != null ? Number(b.wager_amount) : null;
+  const hasWager = wager != null;
+
+  let detailBlock;
+  if(b.result === 'pending'){
+    detailBlock = hasWager
+      ? (()=>{ const { toWin, totalReturn } = americanPayout(wager, b.price); return `<div class="pick-sub">${fmtMoney(wager)} to win ${fmtMoney(toWin)} · return ${fmtMoney(totalReturn)}</div>`; })()
+      : `<div class="pick-sub">${b.stake} unit${Number(b.stake)===1?'':'s'} (no wager amount set)</div>`;
+  } else if(hasWager){
+    const pl = betProfit(b);
+    detailBlock = `<div class="pick-pl ${pl>0?'pl-positive':pl<0?'pl-negative':''}">${fmtPL(pl)}${b.result==='cashed_out' && b.cash_out_amount!=null ? ` · cashed out ${fmtMoney(Number(b.cash_out_amount))}` : ''}</div>`;
+  } else {
+    detailBlock = `<div class="pick-sub">${b.stake} unit${Number(b.stake)===1?'':'s'}</div>`;
+  }
+
+  const actions = [];
+  if(b.result === 'pending'){
+    actions.push(`<button class="pick-action-btn" data-action="settle" data-id="${b.id}" data-label="${eventLabel.replace(/"/g,'&quot;')}">Settle</button>`);
+    if(!hasWager && !isCustom){
+      actions.push(`<button class="pick-action-btn" data-action="add-wager" data-id="${b.id}">Add wager</button>`);
+    }
+    actions.push(`<button class="pick-action-btn danger" data-action="delete" data-id="${b.id}">Remove</button>`);
+  }
+
+  return `
+    <div class="pick-card">
+      <div class="pick-top">
+        <span class="pick-event">${eventLabel}</span>
+        <span class="pick-result ${b.result}">${b.result === 'cashed_out' ? 'CASHED OUT' : b.result}</span>
+      </div>
+      <div class="pick-sub">${typeLabel}${lineLabel} (${priceLabel})</div>
+      ${detailBlock}
+      ${actions.length ? `<div class="pick-actions">${actions.join('')}</div>` : ''}
+    </div>
+  `;
+}
+
+function wirePicksBody(){
+  if(picksBodyWired) return;
+  picksBodyWired = true;
+  document.getElementById('picksBody').addEventListener('click', async (e)=>{
+    const el = e.target.closest('[data-action]');
+    if(!el) return;
+    const action = el.dataset.action;
+    if(action === 'login'){ openAuthModal('login'); return; }
+    if(action === 'open-track-bet'){ openTrackBetModal(); return; }
+    if(action === 'set-filter'){ picksFilter = el.dataset.filter; renderPicksScreen(); return; }
+    if(action === 'settle'){ openSettleModal(el.dataset.id, el.dataset.label || ''); return; }
+    if(action === 'add-wager'){ openAddWagerModal(el.dataset.id); return; }
+    if(action === 'delete'){
+      if(!confirm('Remove this pick?')) return;
+      await apiFetch(`/api/bets/${el.dataset.id}`, { method: 'DELETE' });
+      loadPicks();
+      return;
+    }
+  });
 }
 
 // Tracks screens as a stack so a "Back" tap returns to wherever the person
@@ -1777,3 +2464,6 @@ refreshBigLines();
 setInterval(checkMovers, 3 * 60 * 1000); // re-check every 3 minutes
 setInterval(refreshBigLines, 3 * 60 * 1000);
 </script>
+
+</body>
+</html>
