@@ -192,6 +192,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .back-btn:active{ background:var(--surface2); }
 
 .chat-wrap{ display:flex; flex-direction:column; height:100%; padding:0 20px; }
+.chat-header{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 0 0; flex-shrink:0; }
+.chat-header-game{ font-size:12.5px; color:var(--sub); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.clear-chat-btn{ font-size:12px; color:var(--sub); background:none; border:1px solid var(--line); padding:5px 12px; border-radius:20px; cursor:pointer; font-family:inherit; flex-shrink:0; white-space:nowrap; }
+.clear-chat-btn:hover{ border-color:var(--amber); color:var(--text); }
 .chat-log{ flex:1; padding:16px 0; display:flex; flex-direction:column; gap:14px; overflow-y:auto; }
 .msg{ max-width:82%; padding:12px 14px; border-radius:14px; font-size:14px; line-height:1.55; white-space:pre-wrap; }
 .msg.ai{ background:var(--surface); align-self:flex-start; border-bottom-left-radius:4px; }
@@ -207,9 +211,9 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .send-btn{ background:var(--amber); }
 @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.55; } }
 
-.dossier-hero{ padding:20px; border-bottom:1px solid var(--line); }
-.dossier-title{ font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:4px; }
-.dossier-sub{ font-size:12px; color:var(--sub); }
+.game-breakdown-hero{ padding:20px; border-bottom:1px solid var(--line); }
+.game-breakdown-title{ font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:4px; }
+.game-breakdown-sub{ font-size:12px; color:var(--sub); }
 .section{ padding:16px 20px; border-bottom:1px solid var(--line); }
 .section h3{ font-size:12px; text-transform:uppercase; letter-spacing:0.6px; color:var(--sub); font-weight:600; margin-bottom:10px; }
 .fact-row{ display:flex; justify-content:space-between; gap:10px; font-size:13.5px; padding:6px 0; border-bottom:1px dashed var(--line); }
@@ -406,6 +410,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
   <!-- CHAT -->
   <div class="screen" id="chat">
     <div class="chat-wrap">
+      <div class="chat-header">
+        <span class="chat-header-game" id="chatHeaderGame"></span>
+        <button class="clear-chat-btn" id="clearChatBtn" title="Clear this conversation">Clear chat</button>
+      </div>
       <div class="chat-log" id="chatLog">
         <div class="msg hint">Tap a game on the Board, then ask about it here — the AI answers using that game's real odds, weather, injuries and history.</div>
       </div>
@@ -417,10 +425,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
     </div>
   </div>
 
-  <!-- DOSSIER -->
-  <div class="screen" id="dossier">
-    <button class="back-btn" id="dossierBackBtn">‹ Back</button>
-    <div id="dossierBody">
+  <!-- GAME BREAKDOWN -->
+  <div class="screen" id="gameBreakdown">
+    <button class="back-btn" id="gameBreakdownBackBtn">‹ Back</button>
+    <div id="gameBreakdownBody">
       <div class="board-msg">Pick a game from the Board tab to see its full breakdown.</div>
     </div>
   </div>
@@ -447,7 +455,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4V4z"/></svg></span>
       AI Chat
     </button>
-    <button class="nav-btn" data-screen="dossier">
+    <button class="nav-btn" data-screen="gameBreakdown">
       <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></span>
       Breakdown
     </button>
@@ -507,7 +515,7 @@ function venueLabel(homeTeamFullName){
 }
 let currentSport = "nfl";
 let currentGame = null;
-let currentDossier = null;
+let currentGameBreakdown = null;
 // Tracks which game's conversation is currently in the chat log, so we only
 // reset it when the user actually switches matchups (not on every re-open of
 // the same game).
@@ -886,7 +894,7 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
   }
 });
 
-// "Track this pick" — called from buttons rendered in the dossier's odds section.
+// "Track this pick" — called from buttons rendered in the game breakdown's odds section.
 async function trackPick(market, side, point, price, btnEl){
   if(!currentUser){ openAuthModal(); return; }
   if(!currentGame) return;
@@ -1055,7 +1063,13 @@ function goBack(){
   const prev = screenHistory[screenHistory.length-1] || 'board';
   showScreen(prev);
 }
-document.getElementById('dossierBackBtn').addEventListener('click', goBack);
+document.getElementById('gameBreakdownBackBtn').addEventListener('click', goBack);
+document.getElementById('clearChatBtn').addEventListener('click', ()=>{
+  const chatLog = document.getElementById('chatLog');
+  if(chatLog){
+    chatLog.innerHTML = '<div class="msg hint">Tap a game on the Board, then ask about it here — the AI answers using that game\'s real odds, weather, injuries and history.</div>';
+  }
+});
 document.querySelectorAll('.nav-btn').forEach(b=>{
   // Tapping a bottom-nav tab is a fresh jump, not a "back" step — reset the stack.
   b.addEventListener('click', ()=>{
@@ -1186,7 +1200,7 @@ function renderBoardList(){
     const open = ()=>{
       const id = row.dataset.id;
       const game = games.find(x=>x.id===id);
-      openDossier(currentSport, game);
+      openGameBreakdown(currentSport, game);
     };
     row.addEventListener('click', open);
     // These rows are keyboard-focusable (tabindex="0"/role="button" in the
@@ -1319,8 +1333,8 @@ function renderGameRow(g){
   </div>`;
 }
 
-async function openDossier(sport, game){
-  // The AI chat is grounded in exactly one game's dossier at a time, so a
+async function openGameBreakdown(sport, game){
+  // The AI chat is grounded in exactly one game's breakdown at a time, so a
   // conversation about the last matchup left sitting in the log would be
   // stale and confusing once we switch to a different one (e.g. tapping a
   // line-movement alert for a different game). Reset it here — but only on
@@ -1333,17 +1347,21 @@ async function openDossier(sport, game){
     }
     chatLogGameId = game.id;
   }
+  const chatHeaderGame = document.getElementById('chatHeaderGame');
+  if(chatHeaderGame) chatHeaderGame.textContent = `${game.awayTeam} @ ${game.homeTeam}`;
   currentGame = game;
-  currentDossier = null;
-  showScreen('dossier');
-  const body = document.getElementById('dossierBody');
+  currentGameBreakdown = null;
+  showScreen('gameBreakdown');
+  const body = document.getElementById('gameBreakdownBody');
   body.innerHTML = '<div class="board-msg"><div class="spin"></div><div>Pulling weather, injuries and head-to-head history…</div></div>';
   try{
+    // Backend route stays /api/dossier — an internal API path, not user-facing,
+    // so it wasn't part of this rename.
     const res = await apiFetch(`/api/dossier/${sport}/${game.id}`);
     if(!res.ok) throw new Error('bad status ' + res.status);
-    const dossier = await res.json();
-    currentDossier = dossier;
-    body.innerHTML = renderDossier(dossier);
+    const gameBreakdown = await res.json();
+    currentGameBreakdown = gameBreakdown;
+    body.innerHTML = renderGameBreakdown(gameBreakdown);
     wireTrackButtons();
     wireUpgradePrompts(body);
     const btn = document.getElementById('askAiBtn');
@@ -1384,21 +1402,21 @@ function originalLineRow(m){
   return `<div class="fact-row"><span>${label}</span><span class="v">${fmt(m.openPoint, m.openPrice)}</span></div>`;
 }
 
-function renderDossier(d){
+function renderGameBreakdown(d){
   const g = d.game;
   const w = d.weather;
   const inj = d.injuries || [];
   const h2h = d.headToHead || [];
   const h2hResults = d.headToHeadResults || [];
   const lm = d.lineMovement || {};
-  // The dossier's own odds fetch doesn't carry the Board's live/final status —
+  // The breakdown's own odds fetch doesn't carry the Board's live/final status —
   // borrow it from the game object the person actually tapped, if we have it.
   const trackGame = Object.assign({}, g, { status: currentGame ? currentGame.status : g.status });
   let html = `
-    <div class="dossier-hero">
-      <div class="dossier-title">${g.awayTeam} @ ${g.homeTeam}</div>
-      <div class="dossier-sub">${timeLabel(g.commenceTime)}</div>
-      <div class="dossier-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
+    <div class="game-breakdown-hero">
+      <div class="game-breakdown-title">${g.awayTeam} @ ${g.homeTeam}</div>
+      <div class="game-breakdown-sub">${timeLabel(g.commenceTime)}</div>
+      <div class="game-breakdown-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
     </div>
     ${renderTrackSection(trackGame, lm)}
     ${lm.locked ? `
@@ -1464,7 +1482,7 @@ async function sendChat(){
   const input = document.getElementById('chatInput');
   const message = input.value.trim();
   if(!message) return;
-  if(!currentDossier){
+  if(!currentGameBreakdown){
     addMsg(message, 'user');
     addMsg('Pick a game from the Board tab first so I have real data to work from — odds, weather, injuries and history for that specific matchup.', 'ai');
     input.value = '';
@@ -1481,7 +1499,7 @@ async function sendChat(){
       const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ message, context: currentDossier }),
+        body: JSON.stringify({ message, context: currentGameBreakdown }),
         signal: controller.signal
       });
       if(res.status === 402){
@@ -1614,7 +1632,7 @@ async function openMoverGame(m){
     const res = await apiFetch(`/api/games/${m.sport}`);
     const data = await res.json();
     const game = (data.games || []).find(g=>g.id===m.gameId);
-    if(game) openDossier(m.sport, game);
+    if(game) openGameBreakdown(m.sport, game);
   }catch(e){}
 }
 
