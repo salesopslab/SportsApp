@@ -472,6 +472,10 @@ function venueLabel(homeTeamFullName){
 let currentSport = "nfl";
 let currentGame = null;
 let currentDossier = null;
+// Tracks which game's conversation is currently in the chat log, so we only
+// reset it when the user actually switches matchups (not on every re-open of
+// the same game).
+let chatLogGameId = null;
 
 // ---------------------------------------------------------------------------
 // Accounts + bet tracking
@@ -1280,6 +1284,19 @@ function renderGameRow(g){
 }
 
 async function openDossier(sport, game){
+  // The AI chat is grounded in exactly one game's dossier at a time, so a
+  // conversation about the last matchup left sitting in the log would be
+  // stale and confusing once we switch to a different one (e.g. tapping a
+  // line-movement alert for a different game). Reset it here — but only on
+  // an actual game change, so re-opening the same game (Back, another
+  // alert for it, etc.) keeps the conversation the user was having.
+  if(game.id !== chatLogGameId){
+    const chatLog = document.getElementById('chatLog');
+    if(chatLog){
+      chatLog.innerHTML = '<div class="msg hint">Tap a game on the Board, then ask about it here — the AI answers using that game\'s real odds, weather, injuries and history.</div>';
+    }
+    chatLogGameId = game.id;
+  }
   currentGame = game;
   currentDossier = null;
   showScreen('dossier');
