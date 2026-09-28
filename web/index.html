@@ -215,7 +215,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .msg.ai .src{ display:block; margin-top:8px; font-size:11px; color:var(--teal); }
 .msg.hint{ background:none; border:1px dashed var(--line); color:var(--sub); font-size:12.5px; align-self:center; max-width:100%; text-align:center; }
 .chat-input-row{ display:flex; gap:10px; align-items:center; padding:14px 0 20px; border-top:1px solid var(--line); flex-shrink:0; }
-.chat-input{ flex:1; background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:11px 16px; color:var(--text); font-size:14px; font-family:inherit; }
+/* font-size must be >=16px on any typeable input — below that, iOS Safari
+   (and iOS Chrome, which also runs on WebKit) auto-zooms the whole page in
+   when the field is focused, and often doesn't zoom back out. That's what
+   was making the app look "cut off"/"not fitting" specifically when tapping
+   into the AI chat bar. */
+.chat-input{ flex:1; background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:11px 16px; color:var(--text); font-size:16px; font-family:inherit; }
 .chat-input:focus{ outline:2px solid var(--teal); outline-offset:1px; }
 .mic-btn,.send-btn{ width:42px; height:42px; border-radius:50%; border:none; color:var(--bg); font-size:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
 .mic-btn{ background:var(--teal); }
@@ -258,7 +263,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .modal-tabs{ display:flex; gap:8px; margin-bottom:16px; }
 .modal-tab{ flex:1; text-align:center; padding:8px; border-radius:10px; background:var(--surface2); font-size:13px; cursor:pointer; color:var(--sub); border:none; font-family:inherit; }
 .modal-tab.active{ background:var(--amber); color:var(--bg); font-weight:700; }
-.modal-input{ width:100%; box-sizing:border-box; padding:11px 12px; margin-bottom:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:14px; font-family:inherit; }
+.modal-input{ width:100%; box-sizing:border-box; padding:11px 12px; margin-bottom:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:16px; font-family:inherit; }
 .modal-submit{ width:100%; padding:12px; border-radius:10px; border:none; background:var(--amber); color:var(--bg); font-weight:700; cursor:pointer; font-size:14px; }
 .modal-error{ color:var(--red); font-size:12.5px; margin-bottom:8px; min-height:0; }
 .account-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
@@ -268,7 +273,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .referral-title{ font-size:13.5px; font-weight:700; margin-bottom:4px; }
 .referral-sub{ font-size:12px; color:var(--sub); line-height:1.5; margin-bottom:10px; }
 .referral-link-row{ display:flex; gap:8px; align-items:center; }
-.referral-link-input{ margin-bottom:0; font-size:12.5px; }
+.referral-link-input{ margin-bottom:0; font-size:16px; }
 .referral-copy-btn{ flex-shrink:0; padding:11px 14px; border-radius:10px; border:1px solid var(--amber); color:var(--amber); background:none; font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; }
 .referral-copy-btn.copied{ border-color:var(--green); color:var(--green); }
 
