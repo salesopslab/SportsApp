@@ -316,9 +316,11 @@ ${JSON.stringify(summary, null, 2)}`;
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
+        // No `temperature` -- this model rejects it as a deprecated param
+        // (400 invalid_request_error), so grounding relies entirely on the
+        // system prompt's "never invent a number" instructions instead.
         model: "claude-sonnet-5",
         max_tokens: 700,
-        temperature: 0.3,
         system: systemPrompt,
         messages: [{ role: "user", content: "Analyze my betting history." }],
       }),
@@ -411,9 +413,9 @@ Rules:
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
+        // No `temperature` -- this model rejects it as a deprecated param.
         model: "claude-sonnet-5",
         max_tokens: 2000,
-        temperature: 0.2,
         system: systemPrompt,
         messages: [
           {
