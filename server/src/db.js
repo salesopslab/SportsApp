@@ -125,6 +125,20 @@ export function ensureSchema() {
       -- (stake column, as before) rather than being forced to carry a $0
       -- wager, and a user can attach a real wager to it later.
       ALTER TABLE bets ADD COLUMN IF NOT EXISTS wager_amount NUMERIC;
+      -- Risk/win/payout stored explicitly rather than only ever recomputed
+      -- from wager_amount + price -- a real sportsbook's displayed "to win"
+      -- can differ slightly from the pure American-odds formula (rounding,
+      -- boosts), and storing it means the ledger shows and settles against
+      -- the actual number the person confirmed, not a recalculated one.
+      -- to_win/potential_payout are set at track time (manual entry or
+      -- screenshot import) and on any later wager/odds edit; profit_loss is
+      -- set once at settlement (win: to_win, loss: -wager_amount, push: 0,
+      -- cashed_out: cash_out_amount - wager_amount) and is the realized P&L
+      -- of record from then on. All three are null for a units-only pick
+      -- (no wager_amount) or a bet that predates this column.
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS to_win NUMERIC;
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS potential_payout NUMERIC;
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS profit_loss NUMERIC;
       ALTER TABLE bets ADD COLUMN IF NOT EXISTS cash_out_amount NUMERIC;
       ALTER TABLE bets ADD COLUMN IF NOT EXISTS bet_source TEXT NOT NULL DEFAULT 'betedge_pick'; -- 'betedge_pick' | 'custom'
       -- Freeform overrides used by custom (off-platform) bets, whose

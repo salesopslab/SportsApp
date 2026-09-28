@@ -55,6 +55,83 @@ function isValidAmericanOdds(price) {
   return Number.isFinite(p) && Number.isInteger(p) && Math.abs(p) >= 100;
 }
 
+// Inverse of americanPayout: given a desired profit (toWin) and American
+// odds, back out the wager/risk that would produce it. Used when a bet slip
+// only shows "to win $X" with no risk amount visible.
+function wagerFromToWin(toWin, price) {
+  const win = Number(toWin);
+  const p = Number(price);
+  if (!(win > 0) || !p) return null;
+  const wager = p > 0 ? win * (100 / p) : win * (Math.abs(p) / 100);
+  return round2(wager);
+}
+
+// Fills in whichever of {wagerAmount, toWin} is missing, given the other
+// plus the odds, and always derives potentialPayout = wagerAmount + toWin
+// fresh from whatever the two end up being. Never overwrites a value that
+// was actually supplied -- a real sportsbook's shown numbers (subject to
+// rounding, boosts, promos) always win over the pure formula; the formula
+// only ever fills a genuine gap.
+function derivePayoutFields({ wagerAmount, toWin, price }) {
+  let wager = wagerAmount != null && Number(wagerAmount) > 0 ? round2(Number(wagerAmount)) : null;
+  let win = toWin != null && Number(toWin) > 0 ? round2(Number(toWin)) : null;
+  const oddsOk = isValidAmericanOdds(price);
+
+  if (wager != null && win == null && oddsOk) {
+    win = americanPayout(wager, price).toWin;
+  } else if (win != null && wager == null && oddsOk) {
+    wager = wagerFromToWin(win, price);
+  }
+
+  const potentialPayout = wager != null && win != null ? round2(wager + win) : null;
+  return { wagerAmount: wager, toWin: win, potentialPayout };
+}
+
+// The wager/toWin/potentialPayout a bet should be shown with: the stored
+// columns when present, falling back to the formula for a bet that predates
+// this column (or otherwise never got one written). Every read path (the
+// ledger list, performance breakdowns, AI insights) goes through this so
+// there's one definition of "what this bet's numbers are."
+function payoutFor(b) {
+  const wager = b.wager_amount != null ? Number(b.wager_amount) : null;
+  if (!wager) return { wager: null, toWin: null, potentialPayout: null };
+  const toWin = b.to_win != null ? Number(b.to_win) : americanPayout(wager, b.price).toWin;
+  const potentialPayout = b.potential_payout != null ? Number(b.potential_payout) : round2(wager + toWin);
+  return { wager, toWin, potentialPayout };
+}
+
+// Realized P&L for one settled bet: the stored profit_loss (set once at
+// settlement time, see computeProfitLoss) when present, else the same
+// formula computeProfitLoss itself uses -- a fallback for a bet settled
+// before this column existed. Never counts the returned stake as profit.
+function realizedProfitFor(b) {
+  if (b.profit_loss != null) return Number(b.profit_loss);
+  const { wager, toWin } = payoutFor(b);
+  if (!wager) return 0;
+  if (b.result === "win") return toWin;
+  if (b.result === "loss") return -wager;
+  if (b.result === "push") return 0;
+  if (b.result === "cashed_out" && b.cash_out_amount != null) return round2(Number(b.cash_out_amount) - wager);
+  return 0;
+}
+
+// The realized P&L to store at the moment a bet is settled. win credits
+// exactly the stored/derived to_win (never recomputed from a possibly-since
+// -edited price), loss debits the wager, push is a wash, and a cash-out is
+// whatever actually came back minus the wager -- in every case the returned
+// stake itself is never counted as profit.
+function computeProfitLoss(bet, result, cashOutAmount) {
+  const { wager, toWin } = payoutFor(bet);
+  if (!wager) return null; // units-only pick -- no dollar P&L to store
+  if (result === "win") return round2(toWin);
+  if (result === "loss") return round2(-wager);
+  if (result === "push") return 0;
+  if (result === "cashed_out") {
+    return cashOutAmount != null ? round2(Number(cashOutAmount) - wager) : null;
+  }
+  return null;
+}
+
 // A leg needs enough to describe itself: either structured fields (sport +
 // market + side) or a freeform label — never nothing. Individual odds and a
 // line are both optional (not every book shows per-leg odds on a parlay
@@ -73,7 +150,7 @@ function isValidLeg(leg) {
 // bet elsewhere.
 //
 // Body: { betSource, sport, gameId, homeTeam, awayTeam, market, side, point,
-//         price, wagerAmount, stake, commenceTime,
+//         price, wagerAmount, toWin, stake, commenceTime,
 //         eventLabel, betTypeLabel, lineLabel, betDate,
 //         legs, teaserPoints }  // parlay/teaser only
 router.post("/", async (req, res) => {
@@ -85,7 +162,7 @@ router.post("/", async (req, res) => {
     const {
       betSource = "betedge_pick",
       sport, gameId, homeTeam, awayTeam, market, side,
-      point = null, price, stake = 1, wagerAmount = null,
+      point = null, price, stake = 1, wagerAmount = null, toWin = null,
       commenceTime = null,
       eventLabel = null, betTypeLabel = null, lineLabel = null, betDate = null,
       legs = null, teaserPoints = null,
@@ -97,6 +174,13 @@ router.post("/", async (req, res) => {
     if (wagerAmount !== null && wagerAmount !== undefined && !(Number(wagerAmount) > 0)) {
       return res.status(400).json({ error: "Wager amount must be greater than $0." });
     }
+
+    // Risk/win/payout stored explicitly alongside wager_amount -- see the
+    // to_win column comment in db.js for why. wagerAmount stays whatever was
+    // validated above (or null for a units-only pick); toWin is either the
+    // real figure the person confirmed (a scanned or hand-entered "to win")
+    // or, if omitted, computed here from the standard formula.
+    const payout = derivePayoutFields({ wagerAmount, toWin, price });
 
     if (betSource === "parlay") {
       if (market !== "parlay" && market !== "teaser") {
@@ -123,14 +207,16 @@ router.post("/", async (req, res) => {
       const { rows } = await client.query(
         `INSERT INTO bets (
            user_id, sport, game_id, market, side, price, stake,
-           commence_time, bet_source, wager_amount, event_label, bet_type_label, bet_date, teaser_points
+           commence_time, bet_source, wager_amount, event_label, bet_type_label, bet_date, teaser_points,
+           to_win, potential_payout
          )
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          RETURNING *`,
         [
           req.user.id, sport || legs[0]?.sport || "other", finalGameId, market, `${legs.length} legs`,
           price, stake, commenceTime, betSource, wagerAmount, finalEventLabel,
           betTypeLabel || finalEventLabel, betDate || null, market === "teaser" ? teaserPoints : null,
+          payout.toWin, payout.potentialPayout,
         ]
       );
       const bet = rows[0];
@@ -184,15 +270,16 @@ router.post("/", async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO bets (
          user_id, sport, game_id, home_team, away_team, market, side, point, price, stake,
-         commence_time, bet_source, wager_amount, event_label, bet_type_label, line_label, bet_date
+         commence_time, bet_source, wager_amount, event_label, bet_type_label, line_label, bet_date,
+         to_win, potential_payout
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        RETURNING *`,
       [
         req.user.id, sport, finalGameId, homeTeam || null, awayTeam || null,
         finalMarket, finalSide, point, price, stake,
         commenceTime, betSource, wagerAmount, eventLabel, betTypeLabel, lineLabel,
-        betDate || null,
+        betDate || null, payout.toWin, payout.potentialPayout,
       ]
     );
     res.json({ bet: rows[0] });
@@ -234,7 +321,16 @@ router.get("/", async (req, res) => {
 
     const graded = await autoGradePending(rows);
     const withLegs = await attachLegs(graded);
-    const record = computeRecord(withLegs);
+    // Backfills to_win/potential_payout for any bet that predates those
+    // columns (or otherwise has them null) so the frontend can always just
+    // read bet.to_win / bet.potential_payout directly, same as any newly
+    // tracked bet, instead of re-deriving them itself.
+    const enriched = withLegs.map((b) => {
+      if (b.wager_amount == null || (b.to_win != null && b.potential_payout != null)) return b;
+      const { toWin, potentialPayout } = payoutFor(b);
+      return { ...b, to_win: toWin, potential_payout: potentialPayout };
+    });
+    const record = computeRecord(enriched);
 
     let bankroll = null;
     if (access.edge) {
@@ -261,7 +357,7 @@ router.get("/", async (req, res) => {
       access.scansRemaining = Math.max(0, scanLimit - scansUsed);
     }
 
-    res.json({ bets: withLegs, record, access, bankroll });
+    res.json({ bets: enriched, record, access, bankroll });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load your picks." });
@@ -434,7 +530,8 @@ Output ONLY a single JSON object, no markdown fences, no commentary, in exactly 
       "betTypeLabel": string,                    // straight only, e.g. "Chiefs ML", "Over 47.5", "Mahomes 250+ Pass Yards"
       "lineLabel": string | null,                // straight only, the line if separate from betTypeLabel
       "price": number | null,                    // American odds, integer (e.g. -150, +525). The combined/parlay odds for a parlay.
-      "wagerAmount": number | null,
+      "wagerAmount": number | null,               // the RISK amount -- what they staked, not the payout
+      "toWin": number | null,                     // the WIN/PROFIT if the bet hits -- NOT the total payout (payout = wagerAmount + toWin, calculated separately, never shown on the slip as its own field)
       "teaserPoints": number | null,             // teaser kind only
       "betDate": "YYYY-MM-DD" | null,            // only if a date is actually visible on the slip
       "sportsbook": string | null,               // e.g. "DraftKings", only if the logo/name is visible
@@ -449,6 +546,8 @@ Rules:
 - If the image contains multiple separate bet slips or bets, return one object per bet in "bets", in the order they appear.
 - If you cannot make out a real bet slip at all, return { "bets": [] } -- never invent a plausible-looking bet.
 - Never guess a number you can't actually read. If odds, wager, or payout are illegible or not shown, use null and add that field's name to "uncertainFields" -- do not fill in a "typical" value.
+- Many slips show the risk and the win as two numbers together, like "$60/50", "Risk $60 to win $50", or a wager amount right next to a separate "to win" figure. The FIRST/larger number is always wagerAmount (what they risked); the SECOND is toWin (the profit if it hits) -- never report it as a second wager or add it to wagerAmount. If the slip instead shows a single combined "total payout" or "potential return" number (wager + profit together), that is neither wagerAmount nor toWin on its own -- read the actual risk and win amounts separately if both are shown, or leave the field you can't independently verify as null rather than guessing from the payout.
+- If only one of wagerAmount/toWin is visible next to the odds, leave the other null -- it will be calculated from the odds, not guessed by you.
 - "confidence" reflects your overall read of that one bet: "low" if more than one field is uncertain or the image is blurry/cropped, "high" only if every important field (event, selection, odds, wager) is clearly legible.
 - Round dollar amounts to the cent if shown with cents, otherwise a whole number.
 - For a parlay/teaser, each leg's "label" should read like a person would say it out loud (e.g. "Chiefs -2.5", "Eagles ML", "Over 47.5"), not a raw field dump.`;
@@ -503,7 +602,27 @@ Rules:
     }
 
     const bets = Array.isArray(parsedOut && parsedOut.bets) ? parsedOut.bets : [];
-    res.json({ bets, scansUsed: scansUsed + 1, scansLimit: scanLimit, scansRemaining: Math.max(0, scanLimit - scansUsed - 1) });
+    // Fill in whichever of {wagerAmount, toWin} the model couldn't read from
+    // the other plus the odds (never trusting the model's own arithmetic),
+    // and always recompute potentialPayout = wagerAmount + toWin fresh --
+    // this is the same math POST / uses at save time, run here too so the
+    // review screen shows real numbers before the person ever saves.
+    const enrichedBets = bets.map((bet) => {
+      const payout = derivePayoutFields({ wagerAmount: bet.wagerAmount, toWin: bet.toWin, price: bet.price });
+      const uncertainFields = Array.isArray(bet.uncertainFields) ? [...bet.uncertainFields] : [];
+      // The model read BOTH a risk and a win amount -- if they don't roughly
+      // match what the odds imply, trust the numbers actually on the slip
+      // (books round differently, apply boosts/promos) but flag it so the
+      // person double-checks it rather than silently importing a mismatch.
+      if (bet.wagerAmount != null && bet.toWin != null && isValidAmericanOdds(bet.price)) {
+        const expected = americanPayout(bet.wagerAmount, bet.price).toWin;
+        if (Math.abs(expected - Number(bet.toWin)) > Math.max(1, expected * 0.05) && !uncertainFields.includes("toWin")) {
+          uncertainFields.push("toWin");
+        }
+      }
+      return { ...bet, wagerAmount: payout.wagerAmount, toWin: payout.toWin, potentialPayout: payout.potentialPayout, uncertainFields };
+    });
+    res.json({ bets: enrichedBets, scansUsed: scansUsed + 1, scansLimit: scanLimit, scansRemaining: Math.max(0, scanLimit - scansUsed - 1) });
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "Failed to read that screenshot", detail: err.message });
@@ -514,11 +633,20 @@ Rules:
 // correct the line/odds to match what the person actually got at their own
 // sportsbook (the board's number can move after they tracked it). Also how
 // an old units-only pick gets a real dollar wager attached later.
-// Body: { wagerAmount, price, point }
+// Body: { wagerAmount, price, point, toWin }
 router.patch("/:id", async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: "Bet tracking isn't available yet." });
-    const { wagerAmount, price, point } = req.body || {};
+    const { wagerAmount, price, point, toWin } = req.body || {};
+
+    const { rows: existingRows } = await pool.query(
+      "SELECT * FROM bets WHERE id = $1 AND user_id = $2 AND result = 'pending'",
+      [req.params.id, req.user.id]
+    );
+    if (!existingRows.length) {
+      return res.status(404).json({ error: "Pick not found, or it's already settled." });
+    }
+    const existing = existingRows[0];
 
     const sets = [];
     const values = [];
@@ -542,6 +670,32 @@ router.patch("/:id", async (req, res) => {
       sets.push(`point = $${i++}`);
       values.push(point);
     }
+    if (toWin !== undefined && toWin !== null && !(Number(toWin) > 0)) {
+      return res.status(400).json({ error: "To Win amount must be greater than $0." });
+    }
+
+    // Wager, odds, and To Win all stay in sync with each other -- editing
+    // any one of the three recomputes to_win/potential_payout (and, for a
+    // toWin-only correction with no wager on file, backs the wager into
+    // wager_amount too) the same way the confirmation screen does live.
+    if (wagerAmount !== undefined || price !== undefined || toWin !== undefined) {
+      const nextWager = wagerAmount !== undefined ? wagerAmount : existing.wager_amount;
+      const nextPrice = price !== undefined ? price : existing.price;
+      const payout = derivePayoutFields({ wagerAmount: nextWager, toWin: toWin ?? null, price: nextPrice });
+      sets.push(`to_win = $${i++}`);
+      values.push(payout.toWin);
+      sets.push(`potential_payout = $${i++}`);
+      values.push(payout.potentialPayout);
+      if (
+        wagerAmount === undefined &&
+        payout.wagerAmount != null &&
+        Number(payout.wagerAmount) !== Number(existing.wager_amount)
+      ) {
+        sets.push(`wager_amount = $${i++}`);
+        values.push(payout.wagerAmount);
+      }
+    }
+
     if (!sets.length) return res.status(400).json({ error: "Nothing to update." });
 
     values.push(req.params.id, req.user.id);
@@ -577,12 +731,19 @@ router.post("/:id/settle", async (req, res) => {
       return res.status(400).json({ error: "Enter the amount you actually got back." });
     }
 
+    const { rows: existingRows } = await pool.query(
+      "SELECT * FROM bets WHERE id = $1 AND user_id = $2",
+      [req.params.id, req.user.id]
+    );
+    if (!existingRows.length) return res.status(404).json({ error: "Pick not found." });
+    const profitLoss = computeProfitLoss(existingRows[0], result, cashOutAmount);
+
     const { rows } = await pool.query(
       `UPDATE bets
-         SET result = $1, settled_at = now(), cash_out_amount = $2
-       WHERE id = $3 AND user_id = $4
+         SET result = $1, settled_at = now(), cash_out_amount = $2, profit_loss = $3
+       WHERE id = $4 AND user_id = $5
        RETURNING *`,
-      [result, result === "cashed_out" ? cashOutAmount : null, req.params.id, req.user.id]
+      [result, result === "cashed_out" ? cashOutAmount : null, profitLoss, req.params.id, req.user.id]
     );
     if (!rows.length) return res.status(404).json({ error: "Pick not found." });
     res.json({ bet: rows[0] });
@@ -642,9 +803,10 @@ router.post("/:id/legs/:legId/settle", async (req, res) => {
 
     let updatedBet = bet;
     if (overall && bet.result === "pending") {
+      const profitLoss = computeProfitLoss(bet, overall, null);
       const { rows } = await pool.query(
-        "UPDATE bets SET result = $1, settled_at = now() WHERE id = $2 RETURNING *",
-        [overall, bet.id]
+        "UPDATE bets SET result = $1, settled_at = now(), profit_loss = $2 WHERE id = $3 RETURNING *",
+        [overall, profitLoss, bet.id]
       );
       updatedBet = rows[0];
     }
@@ -786,13 +948,13 @@ function gradeBet(bet, score) {
 function computeRecord(bets) {
   const rec = emptyRecord();
   for (const b of bets) {
-    const wager = b.wager_amount != null ? Number(b.wager_amount) : null;
+    const { wager, potentialPayout } = payoutFor(b);
 
     if (b.result === "pending") {
       rec.pending++;
       if (wager) {
         rec.atRisk += wager;
-        rec.potentialReturn += americanPayout(wager, b.price).totalReturn;
+        rec.potentialReturn += potentialPayout || 0;
       }
       continue;
     }
@@ -801,10 +963,10 @@ function computeRecord(bets) {
 
     if (b.result === "win") {
       rec.wins++;
-      if (wager) rec.profit += americanPayout(wager, b.price).toWin;
+      if (wager) rec.profit += realizedProfitFor(b);
     } else if (b.result === "loss") {
       rec.losses++;
-      if (wager) rec.profit -= wager;
+      if (wager) rec.profit += realizedProfitFor(b);
     } else if (b.result === "push") {
       rec.pushes++;
       // no P/L change — the wager isn't at risk or profit, it just doesn't
@@ -812,9 +974,7 @@ function computeRecord(bets) {
       if (wager) rec.staked -= wager;
     } else if (b.result === "cashed_out") {
       rec.cashedOut++;
-      if (wager && b.cash_out_amount != null) {
-        rec.profit += Number(b.cash_out_amount) - wager;
-      }
+      if (wager) rec.profit += realizedProfitFor(b);
     }
   }
   rec.profit = round2(rec.profit);
@@ -839,17 +999,17 @@ function bucketStats(bets) {
     else if (b.result === "push") pushes++;
     else if (b.result === "cashed_out") cashedOut++;
 
-    const wager = b.wager_amount != null ? Number(b.wager_amount) : null;
+    const { wager } = payoutFor(b);
     if (!wager) continue;
     if (b.result === "win") {
       staked += wager;
-      profit += americanPayout(wager, b.price).toWin;
+      profit += realizedProfitFor(b);
     } else if (b.result === "loss") {
       staked += wager;
-      profit -= wager;
+      profit += realizedProfitFor(b);
     } else if (b.result === "cashed_out" && b.cash_out_amount != null) {
       staked += wager;
-      profit += Number(b.cash_out_amount) - wager;
+      profit += realizedProfitFor(b);
     }
   }
   return {

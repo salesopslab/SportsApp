@@ -277,6 +277,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .trackbet-option-sub{ font-size:12px; color:var(--sub); line-height:1.4; }
 .trackbet-potential{ font-size:12.5px; color:var(--sub); margin:2px 0 14px; min-height:16px; }
 .trackbet-potential b{ color:var(--text); }
+.payout-preview-row{ display:flex; justify-content:space-between; font-size:12.5px; color:var(--sub); padding:1px 0; }
+.payout-preview-row .v{ color:var(--text); font-weight:600; }
+.scan-payout-preview{ font-size:12px; color:var(--sub); margin:2px 0 10px; }
+.scan-payout-preview b{ color:var(--text); }
+.pick-risk-win{ font-weight:600; }
+.pick-payout-note{ font-weight:400; color:var(--sub); }
 .wager-confirm-game{ font-size:13px; font-weight:600; margin-bottom:14px; }
 .settle-options{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:6px; }
 .settle-option-btn{ padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--surface2); color:var(--text); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; }
@@ -592,7 +598,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
         <input class="modal-input" id="customBetLine" type="text" placeholder="e.g. Over 43.5, or Mahomes anytime TD">
         <label class="modal-label">American odds</label>
         <input class="modal-input" id="customBetOdds" type="text" inputmode="numeric" placeholder="e.g. -110 or +150">
-        <label class="modal-label">Wager amount ($)</label>
+        <label class="modal-label">Wager / Risk ($)</label>
         <input class="modal-input" id="customBetWager" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100">
         <label class="modal-label">Date</label>
         <input class="modal-input" id="customBetDate" type="date">
@@ -635,7 +641,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
         <input class="modal-input" id="parlayOdds" type="text" inputmode="numeric" placeholder="e.g. +600">
         <div class="parlay-odds-suggest hidden" id="parlayOddsSuggest"></div>
 
-        <label class="modal-label">Wager amount ($)</label>
+        <label class="modal-label">Wager / Risk ($)</label>
         <input class="modal-input" id="parlayWager" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100">
         <label class="modal-label">Date</label>
         <input class="modal-input" id="parlayDate" type="date">
@@ -658,7 +664,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
         <input class="modal-input" id="wagerConfirmLine" type="text" placeholder="e.g. -3.5">
         <label class="modal-label">American odds</label>
         <input class="modal-input" id="wagerConfirmOdds" type="text" inputmode="numeric" placeholder="e.g. -110">
-        <label class="modal-label">Wager amount ($, optional — leave blank to track as 1 unit)</label>
+        <label class="modal-label">Wager / Risk ($, optional — leave blank to track as 1 unit)</label>
         <input class="modal-input" id="wagerConfirmWager" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100">
         <div class="trackbet-potential" id="wagerConfirmPotential"></div>
         <button type="submit" class="modal-submit" id="wagerConfirmSubmit">Track bet</button>
@@ -693,8 +699,9 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <button class="modal-close" id="addWagerModalClose">×</button>
       <h2>Add a wager amount</h2>
       <div class="modal-error" id="addWagerError"></div>
-      <label class="modal-label">Wager amount ($)</label>
+      <label class="modal-label">Wager / Risk ($)</label>
       <input class="modal-input" id="addWagerAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100">
+      <div class="trackbet-potential" id="addWagerPotential"></div>
       <button class="modal-submit" id="addWagerSubmit">Save</button>
     </div>
   </div>
@@ -1256,6 +1263,26 @@ function isValidOdds(price){
   const p = Number(price);
   return Number.isFinite(p) && Number.isInteger(p) && Math.abs(p) >= 100;
 }
+// The Wager/Risk -> To Win -> Potential Payout preview shown under every
+// bet-entry field as the person types, recalculated live from whatever the
+// wager and odds currently say (same formula the server uses at save time).
+function payoutPreviewHtml(wager, price){
+  if(!(wager > 0) || !isValidOdds(price)) return '';
+  const { toWin, totalReturn } = americanPayout(wager, price);
+  return `<div class="payout-preview-row"><span>To Win</span><span class="v">${fmtMoney(toWin)}</span></div>`
+       + `<div class="payout-preview-row"><span>Potential Payout</span><span class="v">${fmtMoney(totalReturn)}</span></div>`;
+}
+// A bet's wager/toWin/potentialPayout for display -- prefers the server-
+// stored figures (which may reflect a real sportsbook number rather than
+// pure formula math) and only falls back to the formula if a bet somehow
+// arrives without them.
+function payoutFor(b){
+  const wager = b.wager_amount != null ? Number(b.wager_amount) : null;
+  if(!wager) return { wager: null, toWin: null, potentialPayout: null };
+  const toWin = b.to_win != null ? Number(b.to_win) : americanPayout(wager, b.price).toWin;
+  const potentialPayout = b.potential_payout != null ? Number(b.potential_payout) : Math.round((wager + toWin) * 100) / 100;
+  return { wager, toWin, potentialPayout };
+}
 function oddsPriceLabel(p){
   return (p === null || p === undefined) ? '—' : (p > 0 ? '+'+p : String(p));
 }
@@ -1352,9 +1379,9 @@ function updateWagerConfirmPotential(){
   const wager = Number(document.getElementById('wagerConfirmWager').value);
   const price = Number(document.getElementById('wagerConfirmOdds').value);
   const el = document.getElementById('wagerConfirmPotential');
-  if(wager > 0 && isValidOdds(price)){
-    const { toWin, totalReturn } = americanPayout(wager, price);
-    el.innerHTML = `To win <b>${fmtMoney(toWin)}</b> · Potential return <b>${fmtMoney(totalReturn)}</b>`;
+  const preview = payoutPreviewHtml(wager, price);
+  if(preview){
+    el.innerHTML = preview;
   } else {
     el.textContent = 'Leave the wager blank to track this as 1 unit instead of a dollar amount.';
   }
@@ -1475,12 +1502,7 @@ function updateCustomBetPotential(){
   const wager = Number(document.getElementById('customBetWager').value);
   const price = Number(document.getElementById('customBetOdds').value);
   const el = document.getElementById('customBetPotential');
-  if(wager > 0 && isValidOdds(price)){
-    const { toWin, totalReturn } = americanPayout(wager, price);
-    el.innerHTML = `To win <b>${fmtMoney(toWin)}</b> · Potential return <b>${fmtMoney(totalReturn)}</b>`;
-  } else {
-    el.textContent = '';
-  }
+  el.innerHTML = payoutPreviewHtml(wager, price);
 }
 document.getElementById('customBetWager').addEventListener('input', updateCustomBetPotential);
 document.getElementById('customBetOdds').addEventListener('input', updateCustomBetPotential);
@@ -1685,12 +1707,7 @@ function updateParlayPotential(){
   const wager = Number(document.getElementById('parlayWager').value);
   const price = Number(document.getElementById('parlayOdds').value);
   const el = document.getElementById('parlayPotential');
-  if(wager > 0 && isValidOdds(price)){
-    const { toWin, totalReturn } = americanPayout(wager, price);
-    el.innerHTML = `To win <b>${fmtMoney(toWin)}</b> · Potential return <b>${fmtMoney(totalReturn)}</b>`;
-  } else {
-    el.textContent = '';
-  }
+  el.innerHTML = payoutPreviewHtml(wager, price);
 }
 document.getElementById('parlayWager').addEventListener('input', updateParlayPotential);
 document.getElementById('parlayOdds').addEventListener('input', updateParlayPotential);
@@ -2012,6 +2029,7 @@ async function runScan(dataUrl){
       lineLabel: b.lineLabel || '',
       price: b.price ?? null,
       wagerAmount: b.wagerAmount ?? null,
+      toWin: b.toWin ?? null,
       teaserPoints: b.teaserPoints ?? null,
       betDate: b.betDate || '',
       sportsbook: b.sportsbook || null,
@@ -2028,6 +2046,13 @@ async function runScan(dataUrl){
     document.getElementById('scanUpload').classList.remove('hidden');
     document.getElementById('scanError').textContent = err.message;
   }
+}
+
+function scanPayoutPreviewHtml(bet){
+  const wager = Number(bet.wagerAmount);
+  const toWin = Number(bet.toWin);
+  if(!(wager > 0) || !(toWin > 0)) return '';
+  return `Potential payout: <b>${fmtMoney(wager + toWin)}</b>`;
 }
 
 function renderScanBetCard(bet, idx){
@@ -2069,8 +2094,11 @@ function renderScanBetCard(bet, idx){
       ${straightFieldsHtml}
       <div class="scan-field-label ${isUncertain(bet,'price')?'uncertain':''}">${bet.kind==='parlay' ? 'Combined odds' : 'American odds'}</div>
       <input class="modal-input ${isUncertain(bet,'price')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="price" value="${bet.price ?? ''}" placeholder="e.g. -110 or +150">
-      <div class="scan-field-label ${isUncertain(bet,'wagerAmount')?'uncertain':''}">Wager amount ($)</div>
+      <div class="scan-field-label ${isUncertain(bet,'wagerAmount')?'uncertain':''}">Wager / Risk ($)</div>
       <input class="modal-input ${isUncertain(bet,'wagerAmount')?'uncertain':''}" type="number" data-scan-idx="${idx}" data-scan-field="wagerAmount" value="${bet.wagerAmount ?? ''}" placeholder="100">
+      <div class="scan-field-label ${isUncertain(bet,'toWin')?'uncertain':''}">To Win ($)</div>
+      <input class="modal-input ${isUncertain(bet,'toWin')?'uncertain':''}" type="number" data-scan-idx="${idx}" data-scan-field="toWin" value="${bet.toWin ?? ''}" placeholder="auto-calculated">
+      <div class="scan-payout-preview" id="scan-payout-${idx}">${scanPayoutPreviewHtml(bet)}</div>
       <div class="scan-field-label">Date</div>
       <input class="modal-input" type="date" data-scan-idx="${idx}" data-scan-field="betDate" value="${bet.betDate || ''}">
       ${bet.sportsbook ? `<div class="pick-sub">Detected sportsbook: ${escapeHtml(bet.sportsbook)}</div>` : ''}
@@ -2108,8 +2136,21 @@ document.getElementById('scanReviewList').addEventListener('input', (e)=>{
   if(legMatch){
     const [, li, sub] = legMatch;
     bet.legs[Number(li)][sub] = sub === 'price' ? (el.value.trim() === '' ? null : Number(el.value)) : el.value;
-  } else if(field === 'wagerAmount' || field === 'price'){
+    return;
+  }
+  if(field === 'wagerAmount' || field === 'price' || field === 'toWin'){
     bet[field] = el.value.trim() === '' ? null : Number(el.value);
+    // Editing the wager or the odds re-derives To Win from the standard
+    // payout formula, same as the manual-entry forms; editing To Win
+    // directly leaves it exactly as entered (or as OCR'd from the slip).
+    // Either way the payout preview below always reflects both fields.
+    if((field === 'wagerAmount' || field === 'price') && bet.wagerAmount > 0 && isValidOdds(Number(bet.price))){
+      bet.toWin = americanPayout(bet.wagerAmount, bet.price).toWin;
+      const toWinInput = document.querySelector(`[data-scan-idx="${idx}"][data-scan-field="toWin"]`);
+      if(toWinInput) toWinInput.value = bet.toWin;
+    }
+    const previewEl = document.getElementById(`scan-payout-${idx}`);
+    if(previewEl) previewEl.innerHTML = scanPayoutPreviewHtml(bet);
   } else {
     bet[field] = el.value;
   }
@@ -2122,6 +2163,11 @@ async function saveScannedBet(idx){
   if(!isValidOdds(price)){ throw new Error('Enter valid American odds for one of your bets (e.g. -110 or +150).'); }
   const wagerAmount = Number(bet.wagerAmount);
   if(!(wagerAmount > 0)){ throw new Error('Enter a wager amount for one of your bets.'); }
+  // Send whatever To Win value is currently shown (OCR'd, hand-corrected, or
+  // auto-calculated) -- the server still recomputes/validates it, this just
+  // preserves the real number the person confirmed rather than only ever
+  // re-deriving it from the odds.
+  const toWin = bet.toWin != null && Number(bet.toWin) > 0 ? Number(bet.toWin) : null;
 
   let body;
   if(bet.kind === 'parlay'){
@@ -2135,7 +2181,7 @@ async function saveScannedBet(idx){
       betSource: 'parlay',
       market: bet.market,
       sport: bet.sport,
-      price, wagerAmount, betDate: bet.betDate || null,
+      price, wagerAmount, toWin, betDate: bet.betDate || null,
       teaserPoints: bet.market === 'teaser' ? Number(bet.teaserPoints) : null,
       legs: bet.legs.map(l=>({ label: l.label.trim(), price: l.price != null && isValidOdds(Number(l.price)) ? Number(l.price) : null })),
     };
@@ -2148,7 +2194,7 @@ async function saveScannedBet(idx){
       eventLabel: bet.eventLabel.trim(),
       betTypeLabel: bet.betTypeLabel.trim(),
       lineLabel: bet.lineLabel && bet.lineLabel.trim() ? bet.lineLabel.trim() : null,
-      price, wagerAmount, betDate: bet.betDate || null,
+      price, wagerAmount, toWin, betDate: bet.betDate || null,
     };
   }
 
@@ -2268,12 +2314,21 @@ async function submitSettle(result, cashOutAmount){
 // pending pick, so it starts counting toward Net P/L, ROI, at-risk, etc.
 // ---------------------------------------------------------------------------
 let pendingAddWagerId = null;
+let pendingAddWagerPrice = null;
 function openAddWagerModal(id){
   pendingAddWagerId = id;
+  const bet = (picksCache.bets || []).find(b=>String(b.id) === String(id));
+  pendingAddWagerPrice = bet ? Number(bet.price) : null;
   document.getElementById('addWagerError').textContent = '';
   document.getElementById('addWagerAmount').value = '';
+  document.getElementById('addWagerPotential').innerHTML = '';
   document.getElementById('addWagerModal').classList.remove('hidden');
 }
+function updateAddWagerPotential(){
+  const wager = Number(document.getElementById('addWagerAmount').value);
+  document.getElementById('addWagerPotential').innerHTML = payoutPreviewHtml(wager, pendingAddWagerPrice);
+}
+document.getElementById('addWagerAmount').addEventListener('input', updateAddWagerPotential);
 document.getElementById('addWagerModalClose').addEventListener('click', ()=>{
   document.getElementById('addWagerModal').classList.add('hidden');
   pendingAddWagerId = null;
@@ -2586,6 +2641,10 @@ function filterBetsByPeriod(bets, filter){
 // in computeRecord, applied per-bet so the performance breakdowns below can
 // group it by sport/type client-side without another round trip.
 function betProfit(b){
+  // Prefer the server-stored realized P&L (set once at settlement, from the
+  // to_win that was actually confirmed at track time) -- only fall back to
+  // the formula for a bet that somehow predates that column.
+  if(b.profit_loss != null) return Number(b.profit_loss);
   const wager = b.wager_amount != null ? Number(b.wager_amount) : null;
   if(!wager) return 0;
   if(b.result === 'win') return americanPayout(wager, b.price).toWin;
@@ -2716,8 +2775,8 @@ function renderParlayCard(b){
   let detailBlock = '';
   if(b.result === 'pending'){
     if(wager != null){
-      const { toWin, totalReturn } = americanPayout(wager, b.price);
-      detailBlock = `<div class="pick-sub">${fmtMoney(wager)} to win ${fmtMoney(toWin)} · return ${fmtMoney(totalReturn)}</div>`;
+      const { toWin, potentialPayout } = payoutFor(b);
+      detailBlock = `<div class="pick-sub pick-risk-win">Risk ${fmtMoney(wager)} → Win ${fmtMoney(toWin)} <span class="pick-payout-note">(payout ${fmtMoney(potentialPayout)})</span></div>`;
     }
   } else {
     const pl = betProfit(b);
@@ -2765,7 +2824,7 @@ function renderPickCard(b){
   let detailBlock;
   if(b.result === 'pending'){
     detailBlock = hasWager
-      ? (()=>{ const { toWin, totalReturn } = americanPayout(wager, b.price); return `<div class="pick-sub">${fmtMoney(wager)} to win ${fmtMoney(toWin)} · return ${fmtMoney(totalReturn)}</div>`; })()
+      ? (()=>{ const { toWin, potentialPayout } = payoutFor(b); return `<div class="pick-sub pick-risk-win">Risk ${fmtMoney(wager)} → Win ${fmtMoney(toWin)} <span class="pick-payout-note">(payout ${fmtMoney(potentialPayout)})</span></div>`; })()
       : `<div class="pick-sub">${b.stake} unit${Number(b.stake)===1?'':'s'} (no wager amount set)</div>`;
   } else if(hasWager){
     const pl = betProfit(b);
