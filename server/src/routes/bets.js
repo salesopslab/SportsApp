@@ -145,7 +145,15 @@ router.get("/", async (req, res) => {
 
     let bankroll = null;
     if (access.edge) {
-      const startingBankroll = req.userRow?.starting_bankroll != null ? Number(req.userRow.starting_bankroll) : null;
+      // withTier's own user-row query doesn't select starting_bankroll (it's
+      // shared by every tier-gated route, not just this one), so it's looked
+      // up directly here rather than off req.userRow.
+      const { rows: userRows } = await pool.query(
+        "SELECT starting_bankroll FROM users WHERE id = $1",
+        [req.user.id]
+      );
+      const raw = userRows[0]?.starting_bankroll;
+      const startingBankroll = raw != null ? Number(raw) : null;
       bankroll = {
         startingBankroll,
         currentBankroll: startingBankroll != null ? round2(startingBankroll + record.profit) : null,
