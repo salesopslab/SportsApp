@@ -257,9 +257,14 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 
 /* Account / auth */
 .profile-btn{ font-size:11px; color:var(--sub); border:1px solid var(--line); padding:5px 12px; border-radius:20px; background:none; cursor:pointer; font-family:inherit; white-space:nowrap; }
-.modal-overlay{ position:fixed; inset:0; background:rgba(10,13,18,0.6); display:flex; align-items:center; justify-content:center; z-index:60; padding:20px; }
+.modal-overlay{ position:fixed; inset:0; background:rgba(10,13,18,0.6); display:flex; align-items:center; justify-content:center; z-index:60; padding:20px; overflow-y:auto; }
 .modal-overlay.hidden{ display:none; }
-.modal-card{ position:relative; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:22px 20px; width:100%; max-width:360px; }
+/* max-height + its own scroll is a safety net for every modal (not just the
+   scan-review one below): content taller than the viewport used to overflow
+   the fixed, centered overlay with no way to reach the clipped part. Written
+   as vh then dvh so mobile browsers with a collapsing address bar (iOS
+   Safari) size against the real visible height, same pattern as html/body. */
+.modal-card{ position:relative; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:22px 20px; width:100%; max-width:360px; max-height:calc(100vh - 40px); max-height:calc(100dvh - 40px); overflow-y:auto; }
 .modal-card h2{ font-family:'Oswald',sans-serif; font-size:19px; margin-bottom:14px; }
 .modal-close{ position:absolute; top:12px; right:14px; background:none; border:none; font-size:20px; color:var(--sub); cursor:pointer; line-height:1; }
 .modal-tabs{ display:flex; gap:8px; margin-bottom:16px; }
@@ -279,8 +284,9 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .trackbet-potential b{ color:var(--text); }
 .payout-preview-row{ display:flex; justify-content:space-between; font-size:12.5px; color:var(--sub); padding:1px 0; }
 .payout-preview-row .v{ color:var(--text); font-weight:600; }
-.scan-payout-preview{ font-size:12px; color:var(--sub); margin:2px 0 10px; }
-.scan-payout-preview b{ color:var(--text); }
+.scan-payout-summary{ display:flex; flex-wrap:wrap; align-items:center; gap:5px; font-size:12.5px; font-weight:600; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:6px 0 4px; }
+.scan-payout-summary .sep{ color:var(--sub); font-weight:400; }
+.scan-payout-summary.muted{ color:var(--sub); font-weight:400; }
 .pick-risk-win{ font-weight:600; }
 .pick-payout-note{ font-weight:400; color:var(--sub); }
 .wager-confirm-game{ font-size:13px; font-weight:600; margin-bottom:14px; }
@@ -327,7 +333,39 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .scan-leg-row{ display:flex; gap:6px; margin-bottom:6px; }
 .scan-leg-row input:first-child{ flex:1; min-width:0; }
 .scan-leg-row input:last-child{ width:84px; flex-shrink:0; }
-.scan-bet-actions{ display:flex; gap:8px; margin-top:10px; }
+/* Sticky within .modal-card's own scroll container (set above) -- as the
+   card's fields scroll past, Add to Ledger / Discard stay reachable at the
+   bottom instead of scrolling away with everything else. */
+.scan-bet-actions{ display:flex; gap:8px; margin-top:10px; position:sticky; bottom:-1px; background:var(--surface2); padding:6px 0 2px; }
+#scanAddAll{ position:sticky; bottom:-1px; }
+
+/* Modal / bet-tracking screens on phones -- the scan-review confirmation
+   card was running much taller than the viewport with no way to reach the
+   clipped top/bottom (fixed, no scroll). .modal-card now scrolls itself
+   (see the base rule above); everything here just tightens the vertical
+   rhythm ~35-40% so a normal straight-bet review fits with minimal
+   scrolling, and keeps the modal snug against phone widths down to 320px
+   with no horizontal overflow. Input font-size stays 16px even here --
+   smaller triggers iOS Safari's auto-zoom-on-focus, which fights the user
+   more than a slightly taller field would. */
+@media (max-width:768px){
+  .modal-overlay{ padding:10px; align-items:flex-start; }
+  .modal-card{ max-width:100%; max-height:calc(100vh - 20px); max-height:calc(100dvh - 20px); padding:16px 14px; border-radius:14px; }
+  .modal-card h2{ font-size:17px; margin-bottom:4px; }
+  .trackbet-note{ font-size:11px; margin-bottom:10px; }
+  .modal-input{ padding:8px 10px; margin-bottom:6px; font-size:16px; border-radius:9px; }
+  .modal-label{ margin:0 0 3px 2px; }
+  .modal-submit{ padding:11px; }
+  .trackbet-option{ padding:11px; margin-bottom:7px; }
+  .scan-dropzone{ padding:20px 14px; }
+  .scan-review-header{ margin-bottom:6px; }
+  .scan-bet-card{ padding:9px 10px; margin-bottom:8px; }
+  .scan-confidence{ margin-bottom:5px; }
+  .scan-field-label{ font-size:9.5px; margin:4px 0 2px; }
+  .scan-payout-summary{ padding:6px 8px; margin:4px 0 2px; font-size:11.5px; gap:4px; }
+  .scan-leg-row{ margin-bottom:4px; }
+  .scan-bet-actions{ margin-top:6px; gap:6px; padding:5px 0 1px; }
+}
 .account-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
 .account-row:last-of-type{ border-bottom:none; }
 .account-label{ color:var(--sub); }
@@ -2080,11 +2118,23 @@ async function runScan(dataUrl){
   }
 }
 
+// Compact, non-editable Risk/To Win/Payout summary shown under the Wager
+// field -- these are always calculated live from wagerAmount + price (the
+// combined/final odds for a parlay or teaser ticket, same field), never a
+// separately-entered value, so they can't drift from what's actually on the
+// slip. Recalculates immediately on every wager or odds edit (see the
+// scanReviewList input listener below). Also keeps bet.toWin in sync as a
+// side effect so saveScannedBet always sends the current calculated figure.
 function scanPayoutPreviewHtml(bet){
   const wager = Number(bet.wagerAmount);
-  const toWin = Number(bet.toWin);
-  if(!(wager > 0) || !(toWin > 0)) return '';
-  return `Potential payout: <b>${fmtMoney(wager + toWin)}</b>`;
+  const price = Number(bet.price);
+  if(!(wager > 0) || !isValidOdds(price)){
+    bet.toWin = null;
+    return `<div class="scan-payout-summary muted">Enter a wager and odds to see To Win / Payout</div>`;
+  }
+  const { toWin, totalReturn } = americanPayout(wager, price);
+  bet.toWin = toWin;
+  return `<div class="scan-payout-summary">Risk ${fmtMoney(wager)}<span class="sep">•</span>To Win ${fmtMoney(toWin)}<span class="sep">•</span>Payout ${fmtMoney(totalReturn)}</div>`;
 }
 
 function renderScanBetCard(bet, idx){
@@ -2128,9 +2178,7 @@ function renderScanBetCard(bet, idx){
       <input class="modal-input ${isUncertain(bet,'price')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="price" value="${bet.price ?? ''}" placeholder="e.g. -110 or +150">
       <div class="scan-field-label ${isUncertain(bet,'wagerAmount')?'uncertain':''}">Wager / Risk ($)</div>
       <input class="modal-input ${isUncertain(bet,'wagerAmount')?'uncertain':''}" type="number" data-scan-idx="${idx}" data-scan-field="wagerAmount" value="${bet.wagerAmount ?? ''}" placeholder="100">
-      <div class="scan-field-label ${isUncertain(bet,'toWin')?'uncertain':''}">To Win ($)</div>
-      <input class="modal-input ${isUncertain(bet,'toWin')?'uncertain':''}" type="number" data-scan-idx="${idx}" data-scan-field="toWin" value="${bet.toWin ?? ''}" placeholder="auto-calculated">
-      <div class="scan-payout-preview" id="scan-payout-${idx}">${scanPayoutPreviewHtml(bet)}</div>
+      <div id="scan-payout-${idx}">${scanPayoutPreviewHtml(bet)}</div>
       <div class="scan-field-label">Date</div>
       <input class="modal-input" type="date" data-scan-idx="${idx}" data-scan-field="betDate" value="${bet.betDate || ''}">
       ${bet.sportsbook ? `<div class="pick-sub">Detected sportsbook: ${escapeHtml(bet.sportsbook)}</div>` : ''}
@@ -2170,17 +2218,11 @@ document.getElementById('scanReviewList').addEventListener('input', (e)=>{
     bet.legs[Number(li)][sub] = sub === 'price' ? (el.value.trim() === '' ? null : Number(el.value)) : el.value;
     return;
   }
-  if(field === 'wagerAmount' || field === 'price' || field === 'toWin'){
+  if(field === 'wagerAmount' || field === 'price'){
     bet[field] = el.value.trim() === '' ? null : Number(el.value);
-    // Editing the wager or the odds re-derives To Win from the standard
-    // payout formula, same as the manual-entry forms; editing To Win
-    // directly leaves it exactly as entered (or as OCR'd from the slip).
-    // Either way the payout preview below always reflects both fields.
-    if((field === 'wagerAmount' || field === 'price') && bet.wagerAmount > 0 && isValidOdds(Number(bet.price))){
-      bet.toWin = americanPayout(bet.wagerAmount, bet.price).toWin;
-      const toWinInput = document.querySelector(`[data-scan-idx="${idx}"][data-scan-field="toWin"]`);
-      if(toWinInput) toWinInput.value = bet.toWin;
-    }
+    // Risk / To Win / Payout are always calculated live from wagerAmount +
+    // price (the combined odds, for a parlay/teaser ticket) -- no separate
+    // editable To Win field to keep in sync, just re-render the summary.
     const previewEl = document.getElementById(`scan-payout-${idx}`);
     if(previewEl) previewEl.innerHTML = scanPayoutPreviewHtml(bet);
   } else {
