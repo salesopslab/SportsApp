@@ -240,6 +240,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .tag.ok{ background:rgba(63,166,107,0.15); color:var(--green); }
 .empty-note{ font-size:13px; color:var(--sub); }
 .ask-ai-btn{ margin:16px 20px 0; padding:11px; border-radius:10px; background:var(--teal); color:var(--bg); border:none; font-size:13.5px; font-weight:600; width:calc(100% - 40px); cursor:pointer; }
+.scan-shortcut-btn{ margin:14px 20px 0; padding:10px; border-radius:10px; background:none; border:1px solid var(--amber); color:var(--amber); font-size:13px; font-weight:600; width:calc(100% - 40px); cursor:pointer; font-family:inherit; }
+.scan-shortcut-btn:hover{ background:color-mix(in srgb, currentColor 10%, transparent); }
 
 .navbar{
   position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:460px;
@@ -1898,6 +1900,17 @@ async function openScanScreen(){
   }
 }
 document.getElementById('trackBetChooseScan').addEventListener('click', openScanScreen);
+
+// Shortcut from a game's Breakdown card straight to the scan screen,
+// skipping the "Track a BetEdge Pick / Custom / Scan" chooser -- opens the
+// same modal/flow as "+ Track Bet" -> "Scan Bet Screenshot" (openScanScreen
+// itself still checks sign-in and the Edge/quota gate).
+function openScanFromCard(){
+  document.getElementById('trackBetModal').classList.remove('hidden');
+  document.getElementById('customBetForm').classList.add('hidden');
+  document.getElementById('parlayForm').classList.add('hidden');
+  openScanScreen();
+}
 document.getElementById('scanBack').addEventListener('click', ()=>{
   document.getElementById('scanScreen').classList.add('hidden');
   document.getElementById('trackBetChooser').classList.remove('hidden');
@@ -3170,6 +3183,8 @@ async function openGameBreakdown(sport, game){
       showScreen('chat');
       document.getElementById('chatInput').focus();
     });
+    const scanBtn = document.getElementById('scanFromCardBtn');
+    if(scanBtn) scanBtn.addEventListener('click', openScanFromCard);
   }catch(e){
     body.innerHTML = `<div class="board-msg">Couldn't load the breakdown (${e.message}). Try again in a moment.</div>`;
   }
@@ -3219,6 +3234,7 @@ function renderGameBreakdown(d){
       <div class="game-breakdown-sub">${timeLabel(g.commenceTime)}</div>
       <div class="game-breakdown-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
     </div>
+    <button class="scan-shortcut-btn" id="scanFromCardBtn" type="button">📸 Scan or upload a bet slip screenshot</button>
     ${renderTrackSection(trackGame, lm)}
     ${lm.locked ? `
     <div class="section">
