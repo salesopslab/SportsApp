@@ -172,6 +172,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .game-row{ padding:16px 20px; border-bottom:1px solid var(--line); cursor:pointer; }
 .game-row.division-game{ border-left:3px solid var(--teal); background:color-mix(in srgb, var(--teal) 6%, transparent); }
 .division-badge{ font-size:9.5px; font-weight:700; color:var(--teal); border:1px solid var(--teal); border-radius:8px; padding:1px 6px; letter-spacing:0.3px; }
+/* Shown per-row only on the "All Games" tab, where rows are mixed across
+   sports -- a single-sport tab never needs it since the tab itself already
+   says which sport you're looking at. */
+.sport-badge{ font-size:9.5px; font-weight:700; color:var(--sub); border:1px solid var(--line); border-radius:8px; padding:1px 6px; letter-spacing:0.3px; }
 .game-row:active{ background:var(--surface); }
 .game-meta{ display:flex; justify-content:space-between; font-size:12px; color:var(--sub); margin-bottom:10px; gap:10px; }
 .game-meta span:last-child{ text-align:right; }
@@ -805,6 +809,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       </div>
     </div>
     <div class="sport-tabs" id="sportTabs">
+      <button type="button" class="sport-tab" data-sport="all">All Games</button>
       <button type="button" class="sport-tab active" data-sport="nfl">NFL</button>
       <button type="button" class="sport-tab" data-sport="nba">NBA</button>
       <button type="button" class="sport-tab" data-sport="mlb">MLB</button>
@@ -932,6 +937,11 @@ function venueLabel(homeTeamFullName){
 let currentSport = "nfl";
 let currentGame = null;
 let currentGameBreakdown = null;
+// The real sport of whatever game is currently open on the Breakdown screen
+// -- separate from currentSport (the Board's selected tab, which can be
+// "all") because trackPick and the custom/parlay bet forms need an actual
+// sport to save a bet under, never the "All Games" tab itself.
+let currentGameSport = null;
 // Tracks which game's conversation is currently in the chat log, so we only
 // reset it when the user actually switches matchups (not on every re-open of
 // the same game).
@@ -1421,7 +1431,7 @@ function trackPick(r, btnEl){
   if(!currentUser){ openAuthModal(); return; }
   if(!currentGame) return;
   pendingTrackContext = {
-    sport: currentSport,
+    sport: currentGameSport || currentSport,
     gameId: currentGame.id,
     homeTeam: currentGame.homeTeam,
     awayTeam: currentGame.awayTeam,
@@ -1552,7 +1562,7 @@ document.getElementById('trackBetChooseCustom').addEventListener('click', ()=>{
   document.getElementById('trackBetChooser').classList.add('hidden');
   document.getElementById('customBetForm').classList.remove('hidden');
   document.getElementById('customBetError').textContent = '';
-  document.getElementById('customBetSport').value = currentSport || 'nfl';
+  document.getElementById('customBetSport').value = defaultTrackSport();
   document.getElementById('customBetEvent').value = '';
   document.getElementById('customBetType').value = 'Moneyline';
   document.getElementById('customBetTypeOther').value = '';
@@ -1674,7 +1684,7 @@ function addParlayLeg(){
   const id = parlayLegSeq;
   document.getElementById('parlayLegsList').insertAdjacentHTML('beforeend', renderParlayLegHtml(id));
   const legEl = document.querySelector(`.parlay-leg[data-leg-id="${id}"]`);
-  legEl.querySelector('.leg-sport').value = currentSport || 'nfl';
+  legEl.querySelector('.leg-sport').value = defaultTrackSport();
   legEl.querySelectorAll('.leg-type, .leg-line, .leg-selection, .leg-odds').forEach(el=>{
     el.addEventListener('input', ()=>{ updateLegTeasedPreview(legEl); updateParlayOddsSuggestion(); });
     el.addEventListener('change', ()=>{ updateLegTeasedPreview(legEl); updateParlayOddsSuggestion(); });
@@ -3300,7 +3310,9 @@ function renderBoardList(){
     const msg = statusFilter === 'upcoming' ? 'No upcoming games in the next 7 days.'
       : statusFilter === 'live' ? 'No live games right now.'
       : statusFilter === 'final' ? 'No finished games yet.'
-      : 'No games with posted odds for this sport right now — check back closer to game day.';
+      : (currentSport === 'all'
+          ? 'No games with posted odds right now — check back closer to game day.'
+          : 'No games with posted odds for this sport right now — check back closer to game day.');
     list.innerHTML = `<div class="board-msg">${msg}</div>`;
     return;
   }
@@ -3309,7 +3321,10 @@ function renderBoardList(){
     const open = ()=>{
       const id = row.dataset.id;
       const game = games.find(x=>x.id===id);
-      openGameBreakdown(currentSport, game);
+      // On "All Games" a row can belong to any of the merged sports, so the
+      // breakdown/chat/dossier calls need that game's own tagged sport, not
+      // the "all" tab itself.
+      openGameBreakdown(game.sport || currentSport, game);
     };
     row.addEventListener('click', open);
     // These rows are keyboard-focusable (tabindex="0"/role="button" in the
@@ -3338,16 +3353,58 @@ document.querySelectorAll('#statusFilters .status-filter').forEach(btn=>{
   });
 });
 
+// Every sport tab besides "All Games" itself -- what gets fetched in
+// parallel when that tab is selected. Kept in one place so it can't drift
+// from the tabs actually rendered in #sportTabs.
+const ALL_BOARD_SPORTS = ['nfl','nba','mlb','ncaaf','ncaab'];
+
 async function loadBoard(sport){
   currentSport = sport;
   const list = document.getElementById('boardList');
   list.innerHTML = '<div class="board-msg"><div class="spin"></div><div>Loading live odds — first request can take up to a minute while the server wakes up…</div></div>';
+
+  if(sport === 'all'){
+    try{
+      const results = await Promise.allSettled(
+        ALL_BOARD_SPORTS.map(s => apiFetch(`/api/games/${s}`).then(async r=>{
+          if(!r.ok) throw new Error('bad status ' + r.status);
+          return { sport: s, data: await r.json() };
+        }))
+      );
+      // A single sport's odds provider hiccupping shouldn't blank out the
+      // whole combined board -- merge whichever sports actually came back
+      // and only fail outright if every one of them did.
+      let merged = [];
+      for(const r of results){
+        if(r.status === 'fulfilled'){
+          const games = (r.value.data.games || []).map(g => ({ ...g, sport: r.value.sport }));
+          merged = merged.concat(games);
+        }
+      }
+      if(!merged.length && results.every(r=>r.status==='rejected')){
+        throw new Error(results[0].reason?.message || 'failed to load');
+      }
+      setStatus('', 'Live');
+      lastGames = merged;
+      renderBoardList();
+    }catch(e){
+      setStatus('down','Unreachable');
+      list.innerHTML = `<div class="board-msg">Couldn't load live odds (${e.message}). The free-tier server may still be waking up — pull down or reselect a tab to retry in a moment.</div>`;
+    }
+    return;
+  }
+
   try{
     const res = await apiFetch(`/api/games/${sport}`);
     if(!res.ok) throw new Error('bad status ' + res.status);
     const data = await res.json();
     setStatus('', 'Live');
-    lastGames = data.games || [];
+    // Tag every game with the short sport slug it was fetched under -- the
+    // API's own per-game "sport" field (when present) is the odds
+    // provider's long-form key (e.g. "americanfootball_nfl"), not the short
+    // slug the rest of the app (tabs, /api/dossier, mover keys) uses, so
+    // this is overwritten client-side rather than trusted from the response.
+    lastGames = (data.games || []).map(g => ({ ...g, sport }));
     renderBoardList();
   }catch(e){
     setStatus('down','Unreachable');
@@ -3372,11 +3429,29 @@ function teamInfoBlock(name, rank, isHome, pitcher){
 }
 const homeTag = '<span class="home-tag">HOME</span>';
 
+// Short display label for a sport slug, read straight off that tab's own
+// button text (NFL/NBA/MLB/CFB/CBB) so the per-row badge on "All Games"
+// can never drift out of sync with the tabs themselves.
+function sportTabLabel(sport){
+  const tab = document.querySelector(`.sport-tab[data-sport="${sport}"]`);
+  return tab ? tab.textContent : (sport || '').toUpperCase();
+}
+// The sport a manually-tracked bet's form should default to -- the Board
+// tab you're on, unless that's "All Games" (not a real sport a bet can be
+// filed under), in which case fall back to NFL same as always.
+function defaultTrackSport(){
+  return (currentSport && currentSport !== 'all') ? currentSport : 'nfl';
+}
+
 function renderGameRow(g){
-  const bigMove = bigMoverKeys.has(moverKey(currentSport, g.id));
+  const gameSport = g.sport || currentSport;
+  const bigMove = bigMoverKeys.has(moverKey(gameSport, g.id));
   const bigMoveBadge = bigMove ? '<span class="big-move-badge">🔥 Big move</span>' : '';
   const divisionClass = g.divisionGame ? ' division-game' : '';
   const divisionBadge = g.divisionGame ? '<span class="division-badge">DIVISION</span>' : '';
+  // Only on the merged "All Games" tab -- a single-sport tab already says
+  // which sport every row is via the tab itself.
+  const sportBadge = currentSport === 'all' ? `<span class="sport-badge">${sportTabLabel(gameSport)}</span>` : '';
   if(g.status === 'final' || g.status === 'live'){
     const score = g.status === 'final' ? g.finalScore : g.liveScore;
     // g.liveState (quarter/inning + clock, down-distance or balls-strikes-outs)
@@ -3388,7 +3463,7 @@ function renderGameRow(g){
       : (g.liveState?.detail || 'Game in progress — score may be a few minutes behind');
     return `
     <div class="game-row ${g.status}${divisionClass}" data-id="${g.id}" tabindex="0" role="button" aria-label="${g.awayTeam} at ${g.homeTeam}, view breakdown">
-      <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${divisionBadge}${bigMoveBadge}</div>
+      <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${sportBadge}${divisionBadge}${bigMoveBadge}</div>
       <div class="matchup">
         <div class="team-line">
           ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher)}
@@ -3419,7 +3494,7 @@ function renderGameRow(g){
   const openHomeLabel = openHome !== null ? `<div class="open">open ${fmtOdds(openHome)}</div>` : '';
   return `
   <div class="game-row${divisionClass}" data-id="${g.id}" tabindex="0" role="button" aria-label="${g.awayTeam} at ${g.homeTeam}, view breakdown">
-    <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || 'BetEdge AI Market Odds'}</span>${divisionBadge}${bigMoveBadge}</div>
+    <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || 'BetEdge AI Market Odds'}</span>${sportBadge}${divisionBadge}${bigMoveBadge}</div>
     <div class="matchup">
       <div class="team-line">
         ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher)}
@@ -3459,6 +3534,7 @@ async function openGameBreakdown(sport, game){
   const chatHeaderGame = document.getElementById('chatHeaderGame');
   if(chatHeaderGame) chatHeaderGame.textContent = `${game.awayTeam} @ ${game.homeTeam}`;
   currentGame = game;
+  currentGameSport = sport;
   currentGameBreakdown = null;
   showScreen('gameBreakdown');
   const body = document.getElementById('gameBreakdownBody');
