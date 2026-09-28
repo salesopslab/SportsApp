@@ -319,8 +319,15 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .scan-loading-text{ font-size:13px; color:var(--sub); text-align:center; }
 .scan-review-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
 .scan-review-count{ font-size:12.5px; color:var(--sub); font-weight:600; }
-.scan-bet-card{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; background:var(--surface2); }
+/* Each card caps its own height and scrolls its fields internally, with the
+   action row as a real flex sibling *outside* that scroll -- not
+   position:sticky, which only holds an element in place once you've
+   already scrolled to it and can't be used to make something at the end of
+   a long list visible without scrolling there first. This way Add to
+   Ledger / Discard are on-screen immediately, for a single bet or several. */
+.scan-bet-card{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; background:var(--surface2); display:flex; flex-direction:column; max-height:min(56vh, 480px); }
 .scan-bet-card.discarded{ opacity:0.4; }
+.scan-bet-fields{ overflow-y:auto; flex:1; min-height:0; }
 .scan-confidence{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; padding:2px 8px; border-radius:10px; display:inline-block; margin-bottom:8px; }
 .scan-confidence.high{ background:var(--green); color:#fff; }
 .scan-confidence.medium{ background:var(--amber); color:#fff; }
@@ -333,11 +340,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .scan-leg-row{ display:flex; gap:6px; margin-bottom:6px; }
 .scan-leg-row input:first-child{ flex:1; min-width:0; }
 .scan-leg-row input:last-child{ width:84px; flex-shrink:0; }
-/* Sticky within .modal-card's own scroll container (set above) -- as the
-   card's fields scroll past, Add to Ledger / Discard stay reachable at the
-   bottom instead of scrolling away with everything else. */
-.scan-bet-actions{ display:flex; gap:8px; margin-top:10px; position:sticky; bottom:-1px; background:var(--surface2); padding:6px 0 2px; }
-#scanAddAll{ position:sticky; bottom:-1px; }
+/* Flex-shrink:0 keeps this row a fixed-size sibling of the scrollable
+   .scan-bet-fields above (see .scan-bet-card) -- always visible without
+   scrolling, never itself part of the scrolled content. */
+.scan-bet-actions{ display:flex; gap:8px; flex-shrink:0; margin-top:10px; padding-top:8px; border-top:1px solid var(--line); }
 
 /* Modal / bet-tracking screens on phones -- the scan-review confirmation
    card was running much taller than the viewport with no way to reach the
@@ -2167,21 +2173,23 @@ function renderScanBetCard(bet, idx){
 
   return `
     <div class="scan-bet-card ${bet.discarded?'discarded':''}" data-scan-card="${idx}">
-      <span class="scan-confidence ${bet.confidence}">${bet.confidence} confidence</span>
-      ${dupWarning}
-      <div class="scan-field-label">Sport</div>
-      <select class="modal-input" data-scan-idx="${idx}" data-scan-field="sport">${sportOptionsHtml(bet.sport)}</select>
-      <div class="scan-field-label ${isUncertain(bet,'eventLabel')?'uncertain':''}">Event / game</div>
-      <input class="modal-input ${isUncertain(bet,'eventLabel')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="eventLabel" value="${escapeHtml(bet.eventLabel)}" placeholder="e.g. Chiefs @ Bills">
-      ${straightFieldsHtml}
-      <div class="scan-field-label ${isUncertain(bet,'price')?'uncertain':''}">${bet.kind==='parlay' ? 'Combined odds' : 'American odds'}</div>
-      <input class="modal-input ${isUncertain(bet,'price')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="price" value="${bet.price ?? ''}" placeholder="e.g. -110 or +150">
-      <div class="scan-field-label ${isUncertain(bet,'wagerAmount')?'uncertain':''}">Wager / Risk ($)</div>
-      <input class="modal-input ${isUncertain(bet,'wagerAmount')?'uncertain':''}" type="number" data-scan-idx="${idx}" data-scan-field="wagerAmount" value="${bet.wagerAmount ?? ''}" placeholder="100">
-      <div id="scan-payout-${idx}">${scanPayoutPreviewHtml(bet)}</div>
-      <div class="scan-field-label">Date</div>
-      <input class="modal-input" type="date" data-scan-idx="${idx}" data-scan-field="betDate" value="${bet.betDate || ''}">
-      ${bet.sportsbook ? `<div class="pick-sub">Detected sportsbook: ${escapeHtml(bet.sportsbook)}</div>` : ''}
+      <div class="scan-bet-fields">
+        <span class="scan-confidence ${bet.confidence}">${bet.confidence} confidence</span>
+        ${dupWarning}
+        <div class="scan-field-label">Sport</div>
+        <select class="modal-input" data-scan-idx="${idx}" data-scan-field="sport">${sportOptionsHtml(bet.sport)}</select>
+        <div class="scan-field-label ${isUncertain(bet,'eventLabel')?'uncertain':''}">Event / game</div>
+        <input class="modal-input ${isUncertain(bet,'eventLabel')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="eventLabel" value="${escapeHtml(bet.eventLabel)}" placeholder="e.g. Chiefs @ Bills">
+        ${straightFieldsHtml}
+        <div class="scan-field-label ${isUncertain(bet,'price')?'uncertain':''}">${bet.kind==='parlay' ? 'Combined odds' : 'American odds'}</div>
+        <input class="modal-input ${isUncertain(bet,'price')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="price" value="${bet.price ?? ''}" placeholder="e.g. -110 or +150">
+        <div class="scan-field-label ${isUncertain(bet,'wagerAmount')?'uncertain':''}">Wager / Risk ($)</div>
+        <input class="modal-input ${isUncertain(bet,'wagerAmount')?'uncertain':''}" type="number" data-scan-idx="${idx}" data-scan-field="wagerAmount" value="${bet.wagerAmount ?? ''}" placeholder="100">
+        <div id="scan-payout-${idx}">${scanPayoutPreviewHtml(bet)}</div>
+        <div class="scan-field-label">Date</div>
+        <input class="modal-input" type="date" data-scan-idx="${idx}" data-scan-field="betDate" value="${bet.betDate || ''}">
+        ${bet.sportsbook ? `<div class="pick-sub">Detected sportsbook: ${escapeHtml(bet.sportsbook)}</div>` : ''}
+      </div>
       <div class="scan-bet-actions">
         ${bet.added
           ? `<span class="pick-result win">Added</span>`
