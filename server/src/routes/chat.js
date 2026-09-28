@@ -88,9 +88,9 @@ ${JSON.stringify(context, null, 2)}`;
       body: JSON.stringify({
         model: "claude-sonnet-5",
         max_tokens: 1200,
-        // Lower temperature for a consistent, analytical desk-note voice
-        // rather than the API's default (1.0), which reads more casual/varied.
-        temperature: 0.3,
+        // Note: `temperature` is intentionally omitted — this model rejects
+        // it as a deprecated parameter (400 invalid_request_error). Voice
+        // consistency is handled entirely via the system prompt instead.
         system: systemPrompt,
         messages: [{ role: "user", content: message }],
       }),
