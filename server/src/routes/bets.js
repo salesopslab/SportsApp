@@ -345,7 +345,13 @@ ${JSON.stringify(summary, null, 2)}`;
         // (400 invalid_request_error), so grounding relies entirely on the
         // system prompt's "never invent a number" instructions instead.
         model: "claude-sonnet-5",
-        max_tokens: 700,
+        // This model can spend part of its budget on an internal "thinking"
+        // block before writing the reply -- max_tokens caps thinking + text
+        // together, so a low cap here left no room for text and produced an
+        // empty response 200 OK (observed and root-caused via /api/chat's
+        // debug instrumentation: stop_reason "max_tokens", block types
+        // ["thinking"] only). Sized generously so that can't happen.
+        max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: "user", content: "Analyze my betting history." }],
       }),
@@ -359,6 +365,10 @@ ${JSON.stringify(summary, null, 2)}`;
       .filter((b) => b.type === "text")
       .map((b) => b.text)
       .join("\n");
+
+    if (!text) {
+      throw new Error(`Empty response from model (stop_reason: ${data.stop_reason})`);
+    }
 
     res.json({ insights: text, summary });
   } catch (err) {
@@ -453,7 +463,10 @@ Rules:
       body: JSON.stringify({
         // No `temperature` -- this model rejects it as a deprecated param.
         model: "claude-sonnet-5",
-        max_tokens: 2000,
+        // Sized generously so an internal "thinking" block (which counts
+        // against this same budget) can never crowd out the actual JSON
+        // reply -- see the /insights route above for how that failed.
+        max_tokens: 4096,
         system: systemPrompt,
         messages: [
           {

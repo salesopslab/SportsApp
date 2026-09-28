@@ -87,7 +87,15 @@ ${JSON.stringify(context, null, 2)}`;
       },
       body: JSON.stringify({
         model: "claude-sonnet-5",
-        max_tokens: 1200,
+        // This model can spend part of its budget on an internal "thinking"
+        // block before writing the reply, and max_tokens caps thinking +
+        // text together. At 1200 an open-ended question ("what do you
+        // think about this game?") could burn the whole budget thinking
+        // and hit max_tokens with zero text -- a real 200 OK with an empty
+        // reply, which is exactly the "AI didn't return an answer" bug
+        // reported from voice input (confirmed via stop_reason "max_tokens"
+        // / block types ["thinking"]). Sized generously so that can't happen.
+        max_tokens: 4096,
         // Note: `temperature` is intentionally omitted — this model rejects
         // it as a deprecated parameter (400 invalid_request_error). Voice
         // consistency is handled entirely via the system prompt instead.
@@ -106,13 +114,14 @@ ${JSON.stringify(context, null, 2)}`;
       .map((block) => block.text)
       .join("\n");
 
-    // TEMP DEBUG (voice-chat empty-reply investigation) -- remove once root
-    // cause confirmed. Extra keys are ignored by the current frontend.
-    res.json({
-      reply: text,
-      _debugStopReason: data.stop_reason,
-      _debugBlockTypes: Array.isArray(data.content) ? data.content.map((b) => b.type) : null,
-    });
+    if (!text) {
+      // Belt-and-suspenders: if this ever happens again despite the larger
+      // budget above, surface it as a real error (so the frontend's retry
+      // path kicks in) instead of a silent 200-with-nothing.
+      throw new Error(`Empty response from model (stop_reason: ${data.stop_reason})`);
+    }
+
+    res.json({ reply: text });
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "AI chat failed", detail: err.message });
