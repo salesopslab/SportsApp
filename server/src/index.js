@@ -25,7 +25,10 @@ app.use(cors());
 // own express.raw() body parser. Every other route gets JSON as normal.
 app.post("/api/billing/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
 
-app.use(express.json());
+// Raised from Express's 100kb default so a base64-encoded bet-slip
+// screenshot (Ledger AI's scan-to-import feature) fits in a single JSON
+// body; everything else on the app sends far smaller payloads.
+app.use(express.json({ limit: "15mb" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 

@@ -293,6 +293,32 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .parlay-leg-teased{ font-size:11.5px; color:var(--amber); margin-top:2px; }
 .parlay-odds-suggest{ font-size:11.5px; color:var(--sub); margin:4px 0 8px; }
 .parlay-odds-suggest a{ color:var(--amber); cursor:pointer; text-decoration:underline; }
+.scan-dropzone{ border:2px dashed var(--line); border-radius:14px; padding:28px 16px; text-align:center; cursor:pointer; }
+.scan-dropzone.dragover{ border-color:var(--amber); background:rgba(199,127,29,0.08); }
+.scan-dropzone-icon{ font-size:32px; margin-bottom:8px; }
+.scan-dropzone-title{ font-weight:700; font-size:14.5px; margin-bottom:4px; }
+.scan-dropzone-sub{ font-size:12px; color:var(--sub); line-height:1.5; margin-bottom:16px; }
+.scan-loading{ text-align:center; padding:34px 0; }
+.scan-loading-spinner{ width:28px; height:28px; border:3px solid var(--line); border-top-color:var(--amber); border-radius:50%; margin:0 auto 14px; animation:scanspin 0.8s linear infinite; }
+@keyframes scanspin{ to{ transform:rotate(360deg); } }
+.scan-loading-text{ font-size:13px; color:var(--sub); text-align:center; }
+.scan-review-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.scan-review-count{ font-size:12.5px; color:var(--sub); font-weight:600; }
+.scan-bet-card{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; background:var(--surface2); }
+.scan-bet-card.discarded{ opacity:0.4; }
+.scan-confidence{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; padding:2px 8px; border-radius:10px; display:inline-block; margin-bottom:8px; }
+.scan-confidence.high{ background:var(--green); color:#fff; }
+.scan-confidence.medium{ background:var(--amber); color:#fff; }
+.scan-confidence.low{ background:var(--red); color:#fff; }
+.scan-dup-warning{ font-size:11.5px; color:var(--red); background:rgba(196,60,60,0.08); border:1px dashed var(--red); border-radius:8px; padding:7px 10px; margin-bottom:8px; }
+.scan-field-label{ font-size:10px; color:var(--sub); text-transform:uppercase; letter-spacing:0.3px; margin:7px 0 3px; }
+.scan-field-label.uncertain{ color:var(--amber); }
+.scan-field-label.uncertain::after{ content:' — confirm this'; text-transform:none; letter-spacing:0; }
+.scan-bet-card input.uncertain, .scan-bet-card select.uncertain{ border-color:var(--amber); background:rgba(199,127,29,0.06); }
+.scan-leg-row{ display:flex; gap:6px; margin-bottom:6px; }
+.scan-leg-row input:first-child{ flex:1; min-width:0; }
+.scan-leg-row input:last-child{ width:84px; flex-shrink:0; }
+.scan-bet-actions{ display:flex; gap:8px; margin-top:10px; }
 .account-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
 .account-row:last-of-type{ border-bottom:none; }
 .account-label{ color:var(--sub); }
@@ -503,6 +529,37 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
           <div class="trackbet-option-title">Parlay / Teaser</div>
           <div class="trackbet-option-sub">Multiple legs on one slip — enter each leg and the combined odds.</div>
         </button>
+        <button class="trackbet-option" id="trackBetChooseScan">
+          <div class="trackbet-option-title">📸 Scan Bet Screenshot</div>
+          <div class="trackbet-option-sub">Upload your bet slip — Ledger AI reads the odds, wager and payout for you.</div>
+        </button>
+      </div>
+
+      <div id="scanScreen" class="hidden">
+        <div class="modal-error" id="scanError"></div>
+        <div id="scanGate"></div>
+        <div id="scanUpload">
+          <div class="scan-dropzone" id="scanDropzone">
+            <div class="scan-dropzone-icon">📸</div>
+            <div class="scan-dropzone-title">Screenshot it. BetEdge logs it.</div>
+            <div class="scan-dropzone-sub">Drop a bet slip screenshot here, or choose a photo — Ledger AI reads the sport, odds, wager and payout automatically.</div>
+            <button type="button" class="modal-submit" id="scanChooseBtn">Choose Screenshot</button>
+          </div>
+          <input type="file" id="scanFileInput" accept="image/*" class="hidden">
+        </div>
+        <div id="scanLoading" class="hidden">
+          <div class="scan-loading-spinner"></div>
+          <div class="scan-loading-text">Reading your bet slip…</div>
+        </div>
+        <div id="scanReview" class="hidden">
+          <div class="scan-review-header">
+            <span class="scan-review-count" id="scanReviewCount"></span>
+            <button type="button" class="pick-action-btn" id="scanAddAnother">+ Scan another</button>
+          </div>
+          <div id="scanReviewList"></div>
+          <button type="button" class="modal-submit" id="scanAddAll">Add All to Ledger</button>
+        </div>
+        <button type="button" class="manage-billing-link" id="scanBack">‹ Back</button>
       </div>
 
       <form id="customBetForm" class="hidden">
@@ -1370,6 +1427,7 @@ function openTrackBetModal(){
   document.getElementById('trackBetChooser').classList.remove('hidden');
   document.getElementById('customBetForm').classList.add('hidden');
   document.getElementById('parlayForm').classList.add('hidden');
+  document.getElementById('scanScreen').classList.add('hidden');
   document.getElementById('trackBetModal').classList.remove('hidden');
 }
 function closeTrackBetModal(){
@@ -1747,6 +1805,342 @@ document.getElementById('parlayForm').addEventListener('submit', async (e)=>{
   }finally{
     btn.disabled = false;
     btn.textContent = parlayType === 'teaser' ? 'Track teaser' : 'Track parlay';
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Ledger AI — screenshot import. Upload/drag-drop a bet-slip screenshot,
+// Claude reads it into structured bet(s) via POST /api/bets/scan, the person
+// reviews/edits every field (nothing is ever auto-saved), then each
+// reviewed bet is saved through the exact same POST /api/bets the manual
+// forms use — this flow is purely a faster way to fill those same forms.
+// ---------------------------------------------------------------------------
+const SPORT_LABELS = { nfl:'NFL', nba:'NBA', mlb:'MLB', ncaafb:'CFB', ncaamb:'CBB', other:'Other' };
+let scanResults = []; // [{ ...extracted fields, discarded }]
+
+function sportOptionsHtml(selected){
+  return Object.entries(SPORT_LABELS).map(([v,l])=>`<option value="${v}" ${v===selected?'selected':''}>${l}</option>`).join('');
+}
+function isUncertain(bet, field){
+  return Array.isArray(bet.uncertainFields) && bet.uncertainFields.some(f=>f===field || String(f).startsWith(field+'['));
+}
+function isLegUncertain(bet, legIdx){
+  return Array.isArray(bet.uncertainFields) && bet.uncertainFields.some(f=>String(f).startsWith(`legs[${legIdx}]`) || f==='legs');
+}
+
+// Rough client-side duplicate check against bets already in the ledger --
+// same event, same odds, same wager (and same day, when we have a date for
+// both) reads as a likely re-import of the same slip.
+function findDuplicatePick(bet){
+  const bets = (picksCache.bets || []);
+  const wager = Number(bet.wagerAmount);
+  const price = Number(bet.price);
+  return bets.find(b=>{
+    if(b.market === 'parlay' || b.market === 'teaser'){
+      if(bet.kind !== 'parlay') return false;
+    } else if(bet.kind !== 'straight') return false;
+    const bEvent = (b.event_label || `${b.away_team||''} @ ${b.home_team||''}`).trim().toLowerCase();
+    const sEvent = (bet.eventLabel || '').trim().toLowerCase();
+    if(!bEvent || !sEvent || bEvent !== sEvent) return false;
+    if(Number(b.price) !== price) return false;
+    if(b.wager_amount != null && wager > 0 && Math.abs(Number(b.wager_amount) - wager) > 0.01) return false;
+    return true;
+  }) || null;
+}
+
+function resetScanScreen(){
+  document.getElementById('scanError').textContent = '';
+  document.getElementById('scanFileInput').value = '';
+  document.getElementById('scanUpload').classList.remove('hidden');
+  document.getElementById('scanLoading').classList.add('hidden');
+  document.getElementById('scanReview').classList.add('hidden');
+  document.getElementById('scanDropzone').classList.remove('dragover');
+  scanResults = [];
+}
+async function openScanScreen(){
+  if(!currentUser){ closeTrackBetModal(); openAuthModal(); return; }
+  document.getElementById('trackBetChooser').classList.add('hidden');
+  document.getElementById('scanScreen').classList.remove('hidden');
+  resetScanScreen();
+  const gateEl = document.getElementById('scanGate');
+  if(!picksCache.access){
+    gateEl.innerHTML = '<div class="scan-loading-text" style="text-align:center;padding:20px 0;">Loading…</div>';
+    document.getElementById('scanUpload').classList.add('hidden');
+    try{ await loadPicks(); }catch(e){}
+  }
+  const hasEdge = picksCache.access ? picksCache.access.edge : false;
+  if(!hasEdge){
+    gateEl.innerHTML = upgradePromptHtml('edge', 'Import bet slip screenshots and skip manual entry — Ledger AI reads the odds, wager and payout for you.');
+    wireUpgradePrompts(gateEl);
+    document.getElementById('scanUpload').classList.add('hidden');
+  } else {
+    gateEl.innerHTML = '';
+    document.getElementById('scanUpload').classList.remove('hidden');
+  }
+}
+document.getElementById('trackBetChooseScan').addEventListener('click', openScanScreen);
+document.getElementById('scanBack').addEventListener('click', ()=>{
+  document.getElementById('scanScreen').classList.add('hidden');
+  document.getElementById('trackBetChooser').classList.remove('hidden');
+});
+document.getElementById('scanAddAnother').addEventListener('click', resetScanScreen);
+document.getElementById('scanChooseBtn').addEventListener('click', ()=>document.getElementById('scanFileInput').click());
+document.getElementById('scanDropzone').addEventListener('click', (e)=>{
+  if(e.target.id !== 'scanChooseBtn') document.getElementById('scanFileInput').click();
+});
+document.getElementById('scanDropzone').addEventListener('dragover', (e)=>{
+  e.preventDefault();
+  document.getElementById('scanDropzone').classList.add('dragover');
+});
+document.getElementById('scanDropzone').addEventListener('dragleave', ()=>{
+  document.getElementById('scanDropzone').classList.remove('dragover');
+});
+document.getElementById('scanDropzone').addEventListener('drop', (e)=>{
+  e.preventDefault();
+  document.getElementById('scanDropzone').classList.remove('dragover');
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if(file) handleScanFile(file);
+});
+document.getElementById('scanFileInput').addEventListener('change', (e)=>{
+  const file = e.target.files && e.target.files[0];
+  if(file) handleScanFile(file);
+});
+
+function handleScanFile(file){
+  const errEl = document.getElementById('scanError');
+  errEl.textContent = '';
+  if(!file.type || !file.type.startsWith('image/')){
+    errEl.textContent = 'Upload an image — a screenshot or photo of the bet slip.';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ()=>runScan(reader.result);
+  reader.onerror = ()=>{ errEl.textContent = 'Could not read that file — try again.'; };
+  reader.readAsDataURL(file);
+}
+
+async function runScan(dataUrl){
+  document.getElementById('scanUpload').classList.add('hidden');
+  document.getElementById('scanReview').classList.add('hidden');
+  document.getElementById('scanLoading').classList.remove('hidden');
+  document.getElementById('scanError').textContent = '';
+  try{
+    const res = await apiFetch('/api/bets/scan', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ image: dataUrl })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Failed to read that screenshot.');
+    const bets = Array.isArray(data.bets) ? data.bets : [];
+    if(bets.length === 0){
+      document.getElementById('scanLoading').classList.add('hidden');
+      document.getElementById('scanUpload').classList.remove('hidden');
+      document.getElementById('scanError').textContent = "Couldn't find a bet on that screenshot — try a clearer crop of the slip.";
+      return;
+    }
+    scanResults = bets.map(b=>({
+      kind: b.kind === 'parlay' ? 'parlay' : 'straight',
+      market: b.market === 'teaser' ? 'teaser' : 'parlay',
+      sport: b.sport && SPORT_LABELS[b.sport] ? b.sport : 'other',
+      eventLabel: b.eventLabel || '',
+      betTypeLabel: b.betTypeLabel || '',
+      lineLabel: b.lineLabel || '',
+      price: b.price ?? null,
+      wagerAmount: b.wagerAmount ?? null,
+      teaserPoints: b.teaserPoints ?? null,
+      betDate: b.betDate || '',
+      sportsbook: b.sportsbook || null,
+      legs: Array.isArray(b.legs) ? b.legs.map(l=>({ label: l.label || '', price: l.price ?? null })) : [],
+      confidence: b.confidence || 'medium',
+      uncertainFields: Array.isArray(b.uncertainFields) ? b.uncertainFields : [],
+      discarded: false,
+      added: false,
+    }));
+    document.getElementById('scanLoading').classList.add('hidden');
+    renderScanReview();
+  }catch(err){
+    document.getElementById('scanLoading').classList.add('hidden');
+    document.getElementById('scanUpload').classList.remove('hidden');
+    document.getElementById('scanError').textContent = err.message;
+  }
+}
+
+function renderScanBetCard(bet, idx){
+  const dup = !bet.added ? findDuplicatePick(bet) : null;
+  const dupWarning = dup ? `<div class="scan-dup-warning">⚠️ Possible duplicate bet detected — you already have a similar bet tracked. Add it anyway if this is a different one.</div>` : '';
+
+  const legsHtml = bet.kind === 'parlay' ? `
+    <div class="scan-field-label ${isUncertain(bet,'legs')?'uncertain':''}">Legs</div>
+    ${bet.legs.map((leg,li)=>`
+      <div class="scan-leg-row">
+        <input class="modal-input ${isLegUncertain(bet,li)?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="legs.${li}.label" value="${escapeHtml(leg.label)}" placeholder="e.g. Chiefs -2.5">
+        <input class="modal-input ${isLegUncertain(bet,li)?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="legs.${li}.price" value="${leg.price ?? ''}" placeholder="odds">
+      </div>
+    `).join('')}
+  ` : '';
+
+  const straightFieldsHtml = bet.kind === 'straight' ? `
+    <div class="scan-field-label ${isUncertain(bet,'betTypeLabel')?'uncertain':''}">Bet type</div>
+    <input class="modal-input ${isUncertain(bet,'betTypeLabel')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="betTypeLabel" value="${escapeHtml(bet.betTypeLabel)}" placeholder="e.g. Chiefs ML">
+    <div class="scan-field-label ${isUncertain(bet,'lineLabel')?'uncertain':''}">Line (optional)</div>
+    <input class="modal-input ${isUncertain(bet,'lineLabel')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="lineLabel" value="${escapeHtml(bet.lineLabel)}" placeholder="optional">
+  ` : `
+    <div class="scan-field-label">Type</div>
+    <select class="modal-input" data-scan-idx="${idx}" data-scan-field="market">
+      <option value="parlay" ${bet.market==='parlay'?'selected':''}>Parlay</option>
+      <option value="teaser" ${bet.market==='teaser'?'selected':''}>Teaser</option>
+    </select>
+    ${legsHtml}
+  `;
+
+  return `
+    <div class="scan-bet-card ${bet.discarded?'discarded':''}" data-scan-card="${idx}">
+      <span class="scan-confidence ${bet.confidence}">${bet.confidence} confidence</span>
+      ${dupWarning}
+      <div class="scan-field-label">Sport</div>
+      <select class="modal-input" data-scan-idx="${idx}" data-scan-field="sport">${sportOptionsHtml(bet.sport)}</select>
+      <div class="scan-field-label ${isUncertain(bet,'eventLabel')?'uncertain':''}">Event / game</div>
+      <input class="modal-input ${isUncertain(bet,'eventLabel')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="eventLabel" value="${escapeHtml(bet.eventLabel)}" placeholder="e.g. Chiefs @ Bills">
+      ${straightFieldsHtml}
+      <div class="scan-field-label ${isUncertain(bet,'price')?'uncertain':''}">${bet.kind==='parlay' ? 'Combined odds' : 'American odds'}</div>
+      <input class="modal-input ${isUncertain(bet,'price')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="price" value="${bet.price ?? ''}" placeholder="e.g. -110 or +150">
+      <div class="scan-field-label ${isUncertain(bet,'wagerAmount')?'uncertain':''}">Wager amount ($)</div>
+      <input class="modal-input ${isUncertain(bet,'wagerAmount')?'uncertain':''}" type="number" data-scan-idx="${idx}" data-scan-field="wagerAmount" value="${bet.wagerAmount ?? ''}" placeholder="100">
+      <div class="scan-field-label">Date</div>
+      <input class="modal-input" type="date" data-scan-idx="${idx}" data-scan-field="betDate" value="${bet.betDate || ''}">
+      ${bet.sportsbook ? `<div class="pick-sub">Detected sportsbook: ${escapeHtml(bet.sportsbook)}</div>` : ''}
+      <div class="scan-bet-actions">
+        ${bet.added
+          ? `<span class="pick-result win">Added</span>`
+          : `<button type="button" class="modal-submit" style="margin:0;" data-scan-action="add" data-scan-idx="${idx}">Add to Ledger</button>
+             <button type="button" class="pick-action-btn danger" data-scan-action="discard" data-scan-idx="${idx}">${bet.discarded ? 'Restore' : 'Discard'}</button>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+function renderScanReview(){
+  const list = document.getElementById('scanReviewList');
+  const remaining = scanResults.filter(b=>!b.added).length;
+  document.getElementById('scanReviewCount').textContent = scanResults.length === 1 ? '1 bet detected' : `${scanResults.length} bets detected`;
+  document.getElementById('scanAddAll').textContent = remaining > 1 ? `Add All to Ledger (${remaining})` : 'Add All to Ledger';
+  document.getElementById('scanAddAll').classList.toggle('hidden', remaining === 0);
+  list.innerHTML = scanResults.map((b,i)=>renderScanBetCard(b,i)).join('');
+  document.getElementById('scanReview').classList.remove('hidden');
+}
+
+// Any edit in a review card updates scanResults in place so "Add to Ledger"
+// always saves what the person actually confirmed, not the raw AI read.
+document.getElementById('scanReviewList').addEventListener('input', (e)=>{
+  const el = e.target.closest('[data-scan-idx]');
+  if(!el) return;
+  const idx = Number(el.dataset.scanIdx);
+  const field = el.dataset.scanField;
+  const bet = scanResults[idx];
+  if(!bet) return;
+  const legMatch = /^legs\.(\d+)\.(label|price)$/.exec(field);
+  if(legMatch){
+    const [, li, sub] = legMatch;
+    bet.legs[Number(li)][sub] = sub === 'price' ? (el.value.trim() === '' ? null : Number(el.value)) : el.value;
+  } else if(field === 'wagerAmount' || field === 'price'){
+    bet[field] = el.value.trim() === '' ? null : Number(el.value);
+  } else {
+    bet[field] = el.value;
+  }
+});
+
+async function saveScannedBet(idx){
+  const bet = scanResults[idx];
+  if(!bet || bet.added) return true;
+  const price = Number(bet.price);
+  if(!isValidOdds(price)){ throw new Error('Enter valid American odds for one of your bets (e.g. -110 or +150).'); }
+  const wagerAmount = Number(bet.wagerAmount);
+  if(!(wagerAmount > 0)){ throw new Error('Enter a wager amount for one of your bets.'); }
+
+  let body;
+  if(bet.kind === 'parlay'){
+    if(!bet.legs.length || bet.legs.some(l=>!l.label || !l.label.trim())){
+      throw new Error('Every leg needs a description — fill in any blank legs.');
+    }
+    if(bet.market === 'teaser' && !(Number(bet.teaserPoints) > 0)){
+      throw new Error('Enter the teaser point adjustment.');
+    }
+    body = {
+      betSource: 'parlay',
+      market: bet.market,
+      sport: bet.sport,
+      price, wagerAmount, betDate: bet.betDate || null,
+      teaserPoints: bet.market === 'teaser' ? Number(bet.teaserPoints) : null,
+      legs: bet.legs.map(l=>({ label: l.label.trim(), price: l.price != null && isValidOdds(Number(l.price)) ? Number(l.price) : null })),
+    };
+  } else {
+    if(!bet.eventLabel || !bet.eventLabel.trim()){ throw new Error('Enter the event/game for one of your bets.'); }
+    if(!bet.betTypeLabel || !bet.betTypeLabel.trim()){ throw new Error('Enter what was bet on for one of your bets.'); }
+    body = {
+      betSource: 'custom',
+      sport: bet.sport,
+      eventLabel: bet.eventLabel.trim(),
+      betTypeLabel: bet.betTypeLabel.trim(),
+      lineLabel: bet.lineLabel && bet.lineLabel.trim() ? bet.lineLabel.trim() : null,
+      price, wagerAmount, betDate: bet.betDate || null,
+    };
+  }
+
+  const res = await apiFetch('/api/bets', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if(!res.ok) throw new Error((await res.json()).error || 'Failed to save that bet.');
+  bet.added = true;
+  return true;
+}
+
+document.getElementById('scanReviewList').addEventListener('click', async (e)=>{
+  const el = e.target.closest('[data-scan-action]');
+  if(!el) return;
+  const idx = Number(el.dataset.scanIdx);
+  const errEl = document.getElementById('scanError');
+  if(el.dataset.scanAction === 'discard'){
+    scanResults[idx].discarded = !scanResults[idx].discarded;
+    renderScanReview();
+    return;
+  }
+  if(el.dataset.scanAction === 'add'){
+    errEl.textContent = '';
+    el.disabled = true;
+    el.textContent = 'Saving…';
+    try{
+      await saveScannedBet(idx);
+      renderScanReview();
+      if(document.getElementById('picks').classList.contains('active')) loadPicks();
+    }catch(err){
+      errEl.textContent = err.message;
+      el.disabled = false;
+      el.textContent = 'Add to Ledger';
+    }
+  }
+});
+
+document.getElementById('scanAddAll').addEventListener('click', async ()=>{
+  const errEl = document.getElementById('scanError');
+  errEl.textContent = '';
+  const btn = document.getElementById('scanAddAll');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  let failed = 0;
+  for(let i = 0; i < scanResults.length; i++){
+    if(scanResults[i].added || scanResults[i].discarded) continue;
+    try{ await saveScannedBet(i); }
+    catch(err){ failed++; errEl.textContent = err.message; }
+  }
+  renderScanReview();
+  btn.disabled = false;
+  if(document.getElementById('picks').classList.contains('active')) loadPicks();
+  if(failed === 0 && scanResults.every(b=>b.added || b.discarded)){
+    closeTrackBetModal();
   }
 });
 

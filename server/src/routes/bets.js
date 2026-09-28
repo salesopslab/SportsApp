@@ -340,6 +340,119 @@ ${JSON.stringify(summary, null, 2)}`;
   }
 });
 
+// "Ledger AI" -- Edge feature. The person uploads a photo/screenshot of a
+// real bet slip (sportsbook app, a text message, whatever) and Claude reads
+// it back as structured bet(s) in the SAME shape the ordinary POST / body
+// expects (betSource "custom" or "parlay"/legs), so the frontend's review
+// screen can let the person edit anything it got wrong and then save each
+// one through the normal POST / route -- this endpoint only ever reads the
+// image and returns a proposal. It never writes to the database itself.
+//
+// Body: { image: "data:image/png;base64,...." }  (or image/jpeg, image/webp)
+const MAX_SCAN_IMAGE_BASE64_CHARS = 12_000_000; // ~9MB of raw image data
+function parseImageDataUrl(raw) {
+  if (typeof raw !== "string") return null;
+  const match = /^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,(.+)$/s.exec(raw.trim());
+  if (!match) return null;
+  const mediaType = match[1] === "image/jpg" ? "image/jpeg" : match[1];
+  return { mediaType, data: match[2] };
+}
+
+router.post("/scan", requireTier("edge"), async (req, res) => {
+  try {
+    if (!ANTHROPIC_KEY) {
+      return res.status(503).json({ error: "Screenshot import isn't configured yet." });
+    }
+    const parsed = parseImageDataUrl(req.body && req.body.image);
+    if (!parsed) {
+      return res.status(400).json({ error: "Upload a PNG, JPEG, WEBP or GIF screenshot." });
+    }
+    if (parsed.data.length > MAX_SCAN_IMAGE_BASE64_CHARS) {
+      return res.status(400).json({ error: "That image is too large -- try a tighter crop or a smaller screenshot." });
+    }
+
+    const systemPrompt = `You read screenshots of sports-betting slips (from sportsbook apps, betting sites, or a text/screenshot someone sent) and extract the bet(s) on them as strict JSON. You never place, hold, or advise on a wager -- you only transcribe what's visibly on the image.
+
+Output ONLY a single JSON object, no markdown fences, no commentary, in exactly this shape:
+{
+  "bets": [
+    {
+      "kind": "straight" | "parlay",
+      "market": "parlay" | "teaser",           // parlay kind only; omit/null for straight
+      "sport": "nfl" | "nba" | "mlb" | "ncaafb" | "ncaamb" | "other",
+      "eventLabel": string,                     // e.g. "Chiefs @ Bills", or "3-Team Parlay" for a parlay/teaser
+      "betTypeLabel": string,                    // straight only, e.g. "Chiefs ML", "Over 47.5", "Mahomes 250+ Pass Yards"
+      "lineLabel": string | null,                // straight only, the line if separate from betTypeLabel
+      "price": number | null,                    // American odds, integer (e.g. -150, +525). The combined/parlay odds for a parlay.
+      "wagerAmount": number | null,
+      "teaserPoints": number | null,             // teaser kind only
+      "betDate": "YYYY-MM-DD" | null,            // only if a date is actually visible on the slip
+      "sportsbook": string | null,               // e.g. "DraftKings", only if the logo/name is visible
+      "legs": [ { "label": string, "price": number | null } ],  // parlay kind only, one per leg, in slip order
+      "confidence": "high" | "medium" | "low",
+      "uncertainFields": string[]                // field names (or "legs[N]") you weren't confident reading -- empty array if none
+    }
+  ]
+}
+
+Rules:
+- If the image contains multiple separate bet slips or bets, return one object per bet in "bets", in the order they appear.
+- If you cannot make out a real bet slip at all, return { "bets": [] } -- never invent a plausible-looking bet.
+- Never guess a number you can't actually read. If odds, wager, or payout are illegible or not shown, use null and add that field's name to "uncertainFields" -- do not fill in a "typical" value.
+- "confidence" reflects your overall read of that one bet: "low" if more than one field is uncertain or the image is blurry/cropped, "high" only if every important field (event, selection, odds, wager) is clearly legible.
+- Round dollar amounts to the cent if shown with cents, otherwise a whole number.
+- For a parlay/teaser, each leg's "label" should read like a person would say it out loud (e.g. "Chiefs -2.5", "Eagles ML", "Over 47.5"), not a raw field dump.`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 2000,
+        temperature: 0.2,
+        system: systemPrompt,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: parsed.mediaType, data: parsed.data } },
+              { type: "text", text: "Read this bet slip screenshot and return the JSON described in your instructions." },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Anthropic API error ${response.status}: ${await response.text()}`);
+    }
+    const data = await response.json();
+    const text = data.content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+
+    let parsedOut;
+    try {
+      const jsonText = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+      parsedOut = JSON.parse(jsonText);
+    } catch {
+      return res.status(502).json({ error: "Couldn't read that screenshot -- try a clearer crop of the bet slip." });
+    }
+
+    const bets = Array.isArray(parsedOut && parsedOut.bets) ? parsedOut.bets : [];
+    res.json({ bets });
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: "Failed to read that screenshot", detail: err.message });
+  }
+});
+
 // Edit a not-yet-settled bet: attach/change its dollar wager amount, or
 // correct the line/odds to match what the person actually got at their own
 // sportsbook (the board's number can move after they tracked it). Also how
