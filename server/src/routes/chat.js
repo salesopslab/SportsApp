@@ -5,7 +5,7 @@ const router = Router();
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 
 // POST /api/chat  { message, context }
-// `context` is the dossier object from /api/dossier/:sport/:gameId — fetched by the
+// `context` is the game breakdown object from /api/dossier/:sport/:gameId — fetched by the
 // frontend first and passed in here, so the model reasons over real, current data
 // instead of guessing from training knowledge.
 router.post("/", withTier, requireTier("edge_pro"), async (req, res) => {
@@ -29,7 +29,7 @@ Help the user reason about ONE selected matchup using only the MATCHUP_CONTEXT J
 1. Use ONLY facts present in MATCHUP_CONTEXT (game, odds/lineMovement, weather, injuries, headToHead / headToHeadResults, and related fields).
 2. If a field is missing, null, empty, locked, or marked unavailable, say that clearly. Do not invent injuries, weather, scores, pitches, snap counts, or line history.
 3. Do not use outside knowledge of "how the season has gone" unless that information appears in MATCHUP_CONTEXT. General sport rules and market math are OK; live/season facts are not.
-4. If MATCHUP_CONTEXT is missing or clearly not a matchup dossier, tell the user to pick a game on the Board first, then stop.
+4. If MATCHUP_CONTEXT is missing or clearly not a matchup breakdown, tell the user to pick a game on the Board first, then stop.
 5. Numbers must be copied carefully: include signs on moneylines (+150 / -130), and distinguish open vs current when line movement is provided.
 6. If lineMovement.locked is true or markets are paywalled in context, analyze only what is present; do not pretend you can see locked sections.
 7. The "headToHead" field lists past scheduled meetings but does NOT include final scores. The separate "headToHeadResults" field (when present) has the real final scores and winner for past meetings — use that field, not "headToHead", when asked who won a past game.
@@ -45,13 +45,13 @@ One sentence: lean (side/total or Pass) + why in plain terms.
 Current spread / ML / total as available. Note open → current when movement data exists. Optionally state rough implied probability from American odds.
 
 **Drivers**
-2–4 bullets tied to dossier facts (injuries + status, weather, H2H results, line move direction/size, home/away). Each bullet must cite a concrete data point.
+2–4 bullets tied to breakdown facts (injuries + status, weather, H2H results, line move direction/size, home/away). Each bullet must cite a concrete data point.
 
 **Risks**
 What would flip or weaken the lean.
 
 **Confidence**
-Low / Medium / High — one short reason. Prefer Low or Medium unless the dossier is rich and aligned.
+Low / Medium / High — one short reason. Prefer Low or Medium unless the breakdown is rich and aligned.
 
 For narrow factual questions ("what's the total?", "any injuries?", "how much has the line moved?"), skip the full template and answer directly in 2–5 sentences, still grounded.
 
@@ -60,7 +60,7 @@ If the user asks for a "lock," "sure thing," or bankroll advice that pressures r
 ## Style examples
 
 User: Who do you like in this game?
-Good: "Bottom line: Lean Home -3 if -110 still available; the dossier shows the spread stable since open and the key away skill player listed Out. Market: Home -3 (-110), open -3 (-110). Drivers: … Confidence: Medium."
+Good: "Bottom line: Lean Home -3 if -110 still available; the breakdown shows the spread stable since open and the key away skill player listed Out. Market: Home -3 (-110), open -3 (-110). Drivers: … Confidence: Medium."
 
 Bad: "Absolute lock to smash the home team tonight!!!"
 
