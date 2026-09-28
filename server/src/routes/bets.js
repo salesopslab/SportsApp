@@ -18,6 +18,23 @@ router.use(withTier);
 
 const VALID_SETTLE_RESULTS = new Set(["win", "loss", "push", "cashed_out"]);
 
+// Ledger AI screenshot import is an Edge feature; Edge Pro gets "substantially
+// higher" (spec's words) rather than a separate quality tier -- both caps are
+// generous enough not to bite normal use, just abuse/cost. Calendar-month
+// window, reset on the 1st.
+const SCAN_LIMIT_EDGE = 5;
+const SCAN_LIMIT_EDGE_PRO = 100;
+function scanLimitForAccess(access) {
+  return access.edgePro ? SCAN_LIMIT_EDGE_PRO : SCAN_LIMIT_EDGE;
+}
+async function monthlyScanCount(userId) {
+  const { rows } = await pool.query(
+    "SELECT COUNT(*)::int AS count FROM bet_scan_usage WHERE user_id = $1 AND created_at >= date_trunc('month', now())",
+    [userId]
+  );
+  return rows[0].count;
+}
+
 function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
@@ -234,6 +251,14 @@ router.get("/", async (req, res) => {
         startingBankroll,
         currentBankroll: startingBankroll != null ? round2(startingBankroll + record.profit) : null,
       };
+      // Ledger AI screenshot-import usage this calendar month, so the scan
+      // screen can show "3 of 5 left" and gate the upload UI before the
+      // person wastes a screenshot on a request that'll just 429.
+      const scanLimit = scanLimitForAccess(access);
+      const scansUsed = await monthlyScanCount(req.user.id);
+      access.scanLimit = scanLimit;
+      access.scansUsed = scansUsed;
+      access.scansRemaining = Math.max(0, scanLimit - scansUsed);
     }
 
     res.json({ bets: withLegs, record, access, bankroll });
@@ -373,6 +398,19 @@ router.post("/scan", requireTier("edge"), async (req, res) => {
       return res.status(400).json({ error: "That image is too large -- try a tighter crop or a smaller screenshot." });
     }
 
+    const access = { edge: meetsTier(req.userRow, "edge"), edgePro: meetsTier(req.userRow, "edge_pro") };
+    const scanLimit = scanLimitForAccess(access);
+    const scansUsed = await monthlyScanCount(req.user.id);
+    if (scansUsed >= scanLimit) {
+      return res.status(429).json({
+        error: access.edgePro
+          ? `You've used all ${scanLimit} screenshot imports for this month -- it resets on the 1st.`
+          : `You've used all ${scanLimit} screenshot imports on Edge this month. Edge Pro gets ${SCAN_LIMIT_EDGE_PRO}/month -- or wait for the reset on the 1st.`,
+        scansUsed, scansLimit: scanLimit,
+        upgradeTier: access.edgePro ? null : "edge_pro",
+      });
+    }
+
     const systemPrompt = `You read screenshots of sports-betting slips (from sportsbook apps, betting sites, or a text/screenshot someone sent) and extract the bet(s) on them as strict JSON. You never place, hold, or advise on a wager -- you only transcribe what's visibly on the image.
 
 Output ONLY a single JSON object, no markdown fences, no commentary, in exactly this shape:
@@ -432,6 +470,10 @@ Rules:
     if (!response.ok) {
       throw new Error(`Anthropic API error ${response.status}: ${await response.text()}`);
     }
+    // Count it here, right after a real model call succeeded -- a request
+    // rejected earlier (bad image, over the cap) never reaches this line, so
+    // the quota only tracks scans that actually cost something.
+    await pool.query("INSERT INTO bet_scan_usage (user_id) VALUES ($1)", [req.user.id]);
     const data = await response.json();
     const text = data.content
       .filter((b) => b.type === "text")
@@ -448,7 +490,7 @@ Rules:
     }
 
     const bets = Array.isArray(parsedOut && parsedOut.bets) ? parsedOut.bets : [];
-    res.json({ bets });
+    res.json({ bets, scansUsed: scansUsed + 1, scansLimit: scanLimit, scansRemaining: Math.max(0, scanLimit - scansUsed - 1) });
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "Failed to read that screenshot", detail: err.message });

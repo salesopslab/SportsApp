@@ -298,6 +298,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .scan-dropzone-icon{ font-size:32px; margin-bottom:8px; }
 .scan-dropzone-title{ font-weight:700; font-size:14.5px; margin-bottom:4px; }
 .scan-dropzone-sub{ font-size:12px; color:var(--sub); line-height:1.5; margin-bottom:16px; }
+.scan-quota-note{ font-size:11.5px; color:var(--sub); text-align:center; margin-top:10px; }
 .scan-loading{ text-align:center; padding:34px 0; }
 .scan-loading-spinner{ width:28px; height:28px; border:3px solid var(--line); border-top-color:var(--amber); border-radius:50%; margin:0 auto 14px; animation:scanspin 0.8s linear infinite; }
 @keyframes scanspin{ to{ transform:rotate(360deg); } }
@@ -546,6 +547,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
             <button type="button" class="modal-submit" id="scanChooseBtn">Choose Screenshot</button>
           </div>
           <input type="file" id="scanFileInput" accept="image/*" class="hidden">
+          <div class="scan-quota-note" id="scanQuotaNote"></div>
         </div>
         <div id="scanLoading" class="hidden">
           <div class="scan-loading-spinner"></div>
@@ -1857,25 +1859,42 @@ function resetScanScreen(){
   document.getElementById('scanDropzone').classList.remove('dragover');
   scanResults = [];
 }
+function renderScanQuotaNote(){
+  const el = document.getElementById('scanQuotaNote');
+  if(!el) return;
+  const acc = picksCache.access;
+  if(!acc || acc.scanLimit == null){ el.textContent = ''; return; }
+  el.textContent = `${acc.scansRemaining} of ${acc.scanLimit} screenshot imports left this month${acc.edgePro ? '' : ' on Edge'}.`;
+}
+function scanQuotaGateHtml(access){
+  return access.edgePro
+    ? `<div class="upgrade-prompt"><div class="lock">📸</div><div class="headline">Out of screenshot imports</div><div class="sub">You've used all ${access.scanLimit} for this month — it resets on the 1st.</div></div>`
+    : upgradePromptHtml('edge_pro', `You've used all ${access.scanLimit} screenshot imports on Edge this month. Edge Pro gets ${access.scanLimit < 100 ? 'up to 100' : 'substantially more'} per month.`);
+}
 async function openScanScreen(){
   if(!currentUser){ closeTrackBetModal(); openAuthModal(); return; }
   document.getElementById('trackBetChooser').classList.add('hidden');
   document.getElementById('scanScreen').classList.remove('hidden');
   resetScanScreen();
   const gateEl = document.getElementById('scanGate');
-  if(!picksCache.access){
+  if(!picksCache.access || picksCache.access.scanLimit == null){
     gateEl.innerHTML = '<div class="scan-loading-text" style="text-align:center;padding:20px 0;">Loading…</div>';
     document.getElementById('scanUpload').classList.add('hidden');
     try{ await loadPicks(); }catch(e){}
   }
-  const hasEdge = picksCache.access ? picksCache.access.edge : false;
-  if(!hasEdge){
+  const acc = picksCache.access || {};
+  if(!acc.edge){
     gateEl.innerHTML = upgradePromptHtml('edge', 'Import bet slip screenshots and skip manual entry — Ledger AI reads the odds, wager and payout for you.');
+    wireUpgradePrompts(gateEl);
+    document.getElementById('scanUpload').classList.add('hidden');
+  } else if(acc.scanLimit != null && acc.scansRemaining <= 0){
+    gateEl.innerHTML = scanQuotaGateHtml(acc);
     wireUpgradePrompts(gateEl);
     document.getElementById('scanUpload').classList.add('hidden');
   } else {
     gateEl.innerHTML = '';
     document.getElementById('scanUpload').classList.remove('hidden');
+    renderScanQuotaNote();
   }
 }
 document.getElementById('trackBetChooseScan').addEventListener('click', openScanScreen);
@@ -1883,7 +1902,19 @@ document.getElementById('scanBack').addEventListener('click', ()=>{
   document.getElementById('scanScreen').classList.add('hidden');
   document.getElementById('trackBetChooser').classList.remove('hidden');
 });
-document.getElementById('scanAddAnother').addEventListener('click', resetScanScreen);
+document.getElementById('scanAddAnother').addEventListener('click', ()=>{
+  resetScanScreen();
+  const acc = picksCache.access || {};
+  const gateEl = document.getElementById('scanGate');
+  if(acc.scanLimit != null && acc.scansRemaining <= 0){
+    gateEl.innerHTML = scanQuotaGateHtml(acc);
+    wireUpgradePrompts(gateEl);
+    document.getElementById('scanUpload').classList.add('hidden');
+  } else {
+    gateEl.innerHTML = '';
+    renderScanQuotaNote();
+  }
+});
 document.getElementById('scanChooseBtn').addEventListener('click', ()=>document.getElementById('scanFileInput').click());
 document.getElementById('scanDropzone').addEventListener('click', (e)=>{
   if(e.target.id !== 'scanChooseBtn') document.getElementById('scanFileInput').click();
@@ -1931,12 +1962,32 @@ async function runScan(dataUrl){
       body: JSON.stringify({ image: dataUrl })
     });
     const data = await res.json();
+    if(res.status === 429){
+      // Over the monthly quota -- swap in the same gate a person would see
+      // opening the scan screen fresh, rather than a one-line error.
+      if(picksCache.access){
+        picksCache.access.scansUsed = data.scansUsed ?? picksCache.access.scansUsed;
+        picksCache.access.scanLimit = data.scansLimit ?? picksCache.access.scanLimit;
+        picksCache.access.scansRemaining = 0;
+      }
+      document.getElementById('scanLoading').classList.add('hidden');
+      const gateEl = document.getElementById('scanGate');
+      gateEl.innerHTML = scanQuotaGateHtml({ edgePro: !data.upgradeTier, scanLimit: data.scansLimit });
+      wireUpgradePrompts(gateEl);
+      return;
+    }
     if(!res.ok) throw new Error(data.error || 'Failed to read that screenshot.');
+    if(picksCache.access && data.scansRemaining != null){
+      picksCache.access.scansUsed = data.scansUsed;
+      picksCache.access.scanLimit = data.scansLimit;
+      picksCache.access.scansRemaining = data.scansRemaining;
+    }
     const bets = Array.isArray(data.bets) ? data.bets : [];
     if(bets.length === 0){
       document.getElementById('scanLoading').classList.add('hidden');
       document.getElementById('scanUpload').classList.remove('hidden');
       document.getElementById('scanError').textContent = "Couldn't find a bet on that screenshot — try a clearer crop of the slip.";
+      renderScanQuotaNote();
       return;
     }
     scanResults = bets.map(b=>({

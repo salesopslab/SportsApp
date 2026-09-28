@@ -164,6 +164,19 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_bet_legs_bet ON bet_legs (bet_id, leg_order);
 
+      -- One row per Ledger AI screenshot scan actually sent to the model
+      -- (POST /api/bets/scan) -- lets the route enforce a per-tier monthly
+      -- cap (Edge gets a handful, Edge Pro gets substantially more) without
+      -- guessing usage from anything else. A row is written only for a scan
+      -- that actually reached the model, not a request rejected for a bad
+      -- image or for being over the cap.
+      CREATE TABLE IF NOT EXISTS bet_scan_usage (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_bet_scan_usage_user_time ON bet_scan_usage (user_id, created_at);
+
       CREATE TABLE IF NOT EXISTS odds_api_usage (
         id BIGSERIAL PRIMARY KEY,
         requests_used INTEGER,
