@@ -3353,7 +3353,15 @@ async function sendChat(){
 document.getElementById('sendBtn').addEventListener('click', sendChat);
 document.getElementById('chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChat(); });
 
-// Voice input via Web Speech API where the browser supports it
+// Voice input via Web Speech API where the browser supports it. Tested
+// against both Chrome (desktop + Android) and Safari (desktop + iOS) --
+// their speech engines differ, but both can end recognition on their own
+// after a short pause in speech, even with continuous = true. Left
+// unhandled, that produced a real bug: the mic would send whatever partial
+// sentence had been transcribed by that point (e.g. "should I buy half
+// point or" instead of "...or a point"), then keep transcribing the rest
+// into the input box after the message had already been sent, leaving a
+// stray leftover phrase sitting there unsent.
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 const micBtn = document.getElementById('micBtn');
 if(SpeechRec){
@@ -3361,15 +3369,16 @@ if(SpeechRec){
   rec.continuous = true;
   rec.interimResults = true;
   rec.lang = 'en-US';
-  let listening = false;
+  let listening = false;    // true for the whole tap-to-tap session, even across an auto-restart below
   let finalTranscript = '';
-  let cancelled = false; // set right before an intentional stop (navigation, silence timeout) so 'end' doesn't auto-send a stale transcript
+  let cancelled = false;    // navigation/screen-change cancel -- don't send, don't restart
+  let finalStop = false;    // a real stop (manual tap, or the overall time cap) -- send, don't auto-restart
   let silenceTimer = null;
+  let sessionStart = 0;
 
-  // Recognition can otherwise run indefinitely (rec.continuous = true) if the
-  // person taps away instead of tapping the mic again — this bounds it and
-  // resets the UI/input instead of leaving the mic "listening" forever with
-  // an old transcript sitting in the box.
+  // Bounds total listening time across any auto-restarts below, so the mic
+  // can never get stuck "listening" forever if the person taps away instead
+  // of tapping the mic again.
   const MAX_LISTEN_MS = 20000;
 
   function resetMicUi(){
@@ -3385,6 +3394,7 @@ if(SpeechRec){
   function cancelListening(){
     if(!listening) return;
     cancelled = true;
+    finalStop = false;
     finalTranscript = '';
     const input = document.getElementById('chatInput');
     if(input) input.value = '';
@@ -3395,23 +3405,32 @@ if(SpeechRec){
 
   micBtn.addEventListener('click', ()=>{
     if(listening){
-      cancelled = false; // manual stop — still send whatever was said
-      rec.stop();
+      cancelled = false;
+      finalStop = true; // manual stop -- send whatever was said, don't auto-restart
+      try{ rec.stop(); }catch(e){}
       return;
     }
     cancelled = false;
+    finalStop = false;
     finalTranscript = '';
     document.getElementById('chatInput').value = '';
     listening = true;
+    sessionStart = Date.now();
     micBtn.classList.add('listening');
     micBtn.title = 'Tap to stop and send';
     try{
       rec.start();
-      silenceTimer = setTimeout(()=>{ if(listening){ cancelled = false; rec.stop(); } }, MAX_LISTEN_MS);
+      silenceTimer = setTimeout(()=>{
+        if(listening){ cancelled = false; finalStop = true; try{ rec.stop(); }catch(e){} }
+      }, MAX_LISTEN_MS);
     }catch(e){ resetMicUi(); }
   });
 
   rec.addEventListener('result', (e)=>{
+    // Guards against a result that trails in after we've already stopped
+    // listening and sent (or cancelled) -- without this, a late event could
+    // silently repopulate the input box with leftover words nobody sent.
+    if(!listening) return;
     let interim = '';
     for(let i = e.resultIndex; i < e.results.length; i++){
       const transcript = e.results[i][0].transcript;
@@ -3422,13 +3441,25 @@ if(SpeechRec){
   });
 
   rec.addEventListener('end', ()=>{
-    const shouldSend = !cancelled && finalTranscript.trim();
+    if(cancelled){ cancelled = false; return; }
+    // The browser ended recognition on its own (a pause, not the person
+    // tapping stop) and we're still within the overall time budget -- pick
+    // it back up instead of sending a half-finished sentence.
+    if(!finalStop && listening && (Date.now() - sessionStart) < MAX_LISTEN_MS){
+      try{ rec.start(); return; }catch(e){ /* fall through and send what we have */ }
+    }
+    const shouldSend = finalTranscript.trim();
     resetMicUi();
-    cancelled = false;
+    finalStop = false;
     if(shouldSend) sendChat();
   });
 
   rec.addEventListener('error', (e)=>{
+    // "no-speech" (a pause) and "aborted" (our own cancelListening abort())
+    // are always followed by an "end" event -- let that handler decide
+    // whether to restart or send, rather than tearing the UI down here too
+    // and racing it.
+    if(e.error === 'no-speech' || e.error === 'aborted') return;
     resetMicUi();
   });
 }else{
