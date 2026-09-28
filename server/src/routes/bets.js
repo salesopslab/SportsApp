@@ -38,16 +38,29 @@ function isValidAmericanOdds(price) {
   return Number.isFinite(p) && Number.isInteger(p) && Math.abs(p) >= 100;
 }
 
-// Log a new pick — either a BetEdge pick (tracked off a real game/line we
-// show, betSource: "betedge_pick", the default) or a custom bet the person
-// placed somewhere else entirely (betSource: "custom"). BetEdge AI never
-// accepts or holds the wager itself; this only ever records what the person
-// says they bet elsewhere.
+// A leg needs enough to describe itself: either structured fields (sport +
+// market + side) or a freeform label — never nothing. Individual odds and a
+// line are both optional (not every book shows per-leg odds on a parlay
+// slip), teaser legs carry both the original and teased point.
+function isValidLeg(leg) {
+  if (!leg || typeof leg !== "object") return false;
+  if (leg.label && String(leg.label).trim()) return true;
+  return !!(leg.sport && leg.market && leg.side);
+}
+
+// Log a new pick. betSource "betedge_pick" is a BetEdge pick tracked off a
+// real game/line we show; "custom" is a straight bet the person placed
+// somewhere else; "parlay" covers both parlays and teasers (market decides
+// which), each carrying 2+ legs in bet_legs. BetEdge AI never accepts or
+// holds the wager itself; this only ever records what the person says they
+// bet elsewhere.
 //
 // Body: { betSource, sport, gameId, homeTeam, awayTeam, market, side, point,
 //         price, wagerAmount, stake, commenceTime,
-//         eventLabel, betTypeLabel, lineLabel, betDate }
+//         eventLabel, betTypeLabel, lineLabel, betDate,
+//         legs, teaserPoints }  // parlay/teaser only
 router.post("/", async (req, res) => {
+  const client = pool ? await pool.connect() : null;
   try {
     if (!pool) return res.status(503).json({ error: "Bet tracking isn't available yet." });
     await ensureSchema();
@@ -58,6 +71,7 @@ router.post("/", async (req, res) => {
       point = null, price, stake = 1, wagerAmount = null,
       commenceTime = null,
       eventLabel = null, betTypeLabel = null, lineLabel = null, betDate = null,
+      legs = null, teaserPoints = null,
     } = req.body || {};
 
     if (!isValidAmericanOdds(price)) {
@@ -65,6 +79,64 @@ router.post("/", async (req, res) => {
     }
     if (wagerAmount !== null && wagerAmount !== undefined && !(Number(wagerAmount) > 0)) {
       return res.status(400).json({ error: "Wager amount must be greater than $0." });
+    }
+
+    if (betSource === "parlay") {
+      if (market !== "parlay" && market !== "teaser") {
+        return res.status(400).json({ error: "market must be 'parlay' or 'teaser'." });
+      }
+      if (!Array.isArray(legs) || legs.length < 2) {
+        return res.status(400).json({ error: "Add at least 2 legs." });
+      }
+      if (!legs.every(isValidLeg)) {
+        return res.status(400).json({ error: "Every leg needs a sport, bet type and selection (or a description)." });
+      }
+      if (!(Number(wagerAmount) > 0)) {
+        return res.status(400).json({ error: "Enter a wager amount." });
+      }
+      if (market === "teaser" && !(Number(teaserPoints) > 0)) {
+        return res.status(400).json({ error: "Enter the teaser point adjustment." });
+      }
+
+      const finalGameId = `parlay-${req.user.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const finalEventLabel = eventLabel
+        || `${legs.length}-Team ${market === "teaser" ? "Teaser" : "Parlay"}${market === "teaser" ? ` (+${teaserPoints})` : ""}`;
+
+      await client.query("BEGIN");
+      const { rows } = await client.query(
+        `INSERT INTO bets (
+           user_id, sport, game_id, market, side, price, stake,
+           commence_time, bet_source, wager_amount, event_label, bet_type_label, bet_date, teaser_points
+         )
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         RETURNING *`,
+        [
+          req.user.id, sport || legs[0]?.sport || "other", finalGameId, market, `${legs.length} legs`,
+          price, stake, commenceTime, betSource, wagerAmount, finalEventLabel,
+          betTypeLabel || finalEventLabel, betDate || null, market === "teaser" ? teaserPoints : null,
+        ]
+      );
+      const bet = rows[0];
+
+      for (let i = 0; i < legs.length; i++) {
+        const leg = legs[i];
+        await client.query(
+          `INSERT INTO bet_legs (bet_id, leg_order, sport, game_id, home_team, away_team, market, side, point, original_point, price, label)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+          [
+            bet.id, i, leg.sport || null, leg.gameId || null, leg.homeTeam || null, leg.awayTeam || null,
+            leg.market || null, leg.side || null, leg.point ?? null, leg.originalPoint ?? null,
+            leg.price != null && isValidAmericanOdds(leg.price) ? leg.price : null, leg.label || null,
+          ]
+        );
+      }
+      await client.query("COMMIT");
+
+      const { rows: legRows } = await pool.query(
+        "SELECT * FROM bet_legs WHERE bet_id = $1 ORDER BY leg_order ASC",
+        [bet.id]
+      );
+      return res.json({ bet: { ...bet, legs: legRows } });
     }
 
     let finalGameId = gameId || null;
@@ -108,8 +180,11 @@ router.post("/", async (req, res) => {
     );
     res.json({ bet: rows[0] });
   } catch (err) {
+    if (client) { try { await client.query("ROLLBACK"); } catch {} }
     console.error(err);
     res.status(500).json({ error: "Failed to save that bet." });
+  } finally {
+    if (client) client.release();
   }
 });
 
@@ -141,7 +216,8 @@ router.get("/", async (req, res) => {
     );
 
     const graded = await autoGradePending(rows);
-    const record = computeRecord(graded);
+    const withLegs = await attachLegs(graded);
+    const record = computeRecord(withLegs);
 
     let bankroll = null;
     if (access.edge) {
@@ -160,7 +236,7 @@ router.get("/", async (req, res) => {
       };
     }
 
-    res.json({ bets: graded, record, access, bankroll });
+    res.json({ bets: withLegs, record, access, bankroll });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load your picks." });
@@ -346,6 +422,70 @@ router.post("/:id/settle", async (req, res) => {
   }
 });
 
+const VALID_LEG_RESULTS = new Set(["win", "loss", "push"]);
+
+// Settle one leg of a parlay/teaser, then roll the parent bet's overall
+// result up from all its legs: any leg loss marks the whole parlay lost
+// immediately (regardless of other legs still pending), all legs decided
+// with no loss means win (or push if every leg pushed), and otherwise it
+// stays pending. This is the one place a parlay's result ever changes on
+// its own -- POST /:id/settle still exists for a manual override (e.g. a
+// cash-out on the whole slip).
+router.post("/:id/legs/:legId/settle", async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "Bet tracking isn't available yet." });
+    const { result } = req.body || {};
+    if (!VALID_LEG_RESULTS.has(result)) {
+      return res.status(400).json({ error: "Invalid leg result." });
+    }
+
+    const { rows: betRows } = await pool.query(
+      "SELECT * FROM bets WHERE id = $1 AND user_id = $2",
+      [req.params.id, req.user.id]
+    );
+    if (!betRows.length) return res.status(404).json({ error: "Pick not found." });
+    const bet = betRows[0];
+    if (bet.market !== "parlay" && bet.market !== "teaser") {
+      return res.status(400).json({ error: "This pick has no legs to settle." });
+    }
+
+    const { rows: legCheck } = await pool.query(
+      "UPDATE bet_legs SET result = $1 WHERE id = $2 AND bet_id = $3 RETURNING *",
+      [result, req.params.legId, bet.id]
+    );
+    if (!legCheck.length) return res.status(404).json({ error: "Leg not found." });
+
+    const { rows: allLegs } = await pool.query(
+      "SELECT * FROM bet_legs WHERE bet_id = $1 ORDER BY leg_order ASC",
+      [bet.id]
+    );
+
+    let overall = null;
+    if (allLegs.some((l) => l.result === "loss")) {
+      overall = "loss";
+    } else if (allLegs.every((l) => l.result === "push")) {
+      overall = allLegs.length ? "push" : null;
+    } else if (allLegs.every((l) => l.result === "win" || l.result === "push")) {
+      overall = "win";
+    }
+    // else: at least one leg still pending and none have lost yet -- stays pending.
+
+    let updatedBet = bet;
+    if (overall && bet.result === "pending") {
+      const { rows } = await pool.query(
+        "UPDATE bets SET result = $1, settled_at = now() WHERE id = $2 RETURNING *",
+        [overall, bet.id]
+      );
+      updatedBet = rows[0];
+    }
+
+    res.json({ bet: { ...updatedBet, legs: allLegs } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to settle that leg." });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: "Bet tracking isn't available yet." });
@@ -367,10 +507,10 @@ function emptyRecord() {
 }
 
 async function autoGradePending(bets) {
-  // Custom (off-platform) bets have a synthetic game id and no real odds
-  // data behind them — there's nothing to auto-grade, so they're left out
-  // of the score lookup entirely and only ever settled by hand.
-  const pending = bets.filter((b) => b.result === "pending" && b.bet_source !== "custom");
+  // Custom (off-platform) bets and parlays/teasers (settled leg-by-leg, see
+  // POST /:id/legs/:legId/settle) both have a synthetic game id and nothing
+  // to auto-grade against — left out of the score lookup entirely.
+  const pending = bets.filter((b) => b.result === "pending" && b.bet_source !== "custom" && b.bet_source !== "parlay");
   if (!pending.length) return bets;
 
   const sports = [...new Set(pending.map((b) => b.sport))];
@@ -408,6 +548,24 @@ async function autoGradePending(bets) {
     );
   }
   return result;
+}
+
+// Attaches each parlay/teaser bet's legs (bet.legs = [...]) in one batched
+// query rather than one round trip per bet. Straight bets get legs: [] so
+// the frontend never has to branch on the field being present at all.
+async function attachLegs(bets) {
+  const parlayIds = bets.filter((b) => b.market === "parlay" || b.market === "teaser").map((b) => b.id);
+  if (!parlayIds.length) return bets.map((b) => ({ ...b, legs: [] }));
+
+  const { rows: legRows } = await pool.query(
+    "SELECT * FROM bet_legs WHERE bet_id = ANY($1) ORDER BY bet_id, leg_order ASC",
+    [parlayIds]
+  );
+  const legsByBet = {};
+  for (const leg of legRows) {
+    (legsByBet[leg.bet_id] = legsByBet[leg.bet_id] || []).push(leg);
+  }
+  return bets.map((b) => ({ ...b, legs: legsByBet[b.id] || [] }));
 }
 
 // Grades one bet against a final score. Returns 'win' | 'loss' | 'push', or

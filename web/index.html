@@ -282,6 +282,17 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .settle-option-btn.lost:hover{ border-color:var(--red); color:var(--red); }
 .settle-option-btn.push:hover{ border-color:var(--sub); }
 .settle-option-btn.cashed:hover{ border-color:var(--teal); color:var(--teal); }
+.parlay-type-toggle{ display:flex; gap:8px; margin-bottom:14px; }
+.parlay-type-btn{ flex:1; padding:9px; border-radius:10px; border:1px solid var(--line); background:var(--surface2); color:var(--sub); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; }
+.parlay-type-btn.active{ background:var(--amber); border-color:var(--amber); color:var(--bg); }
+.parlay-leg{ border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px; background:var(--surface2); }
+.parlay-leg-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:12px; font-weight:700; color:var(--sub); text-transform:uppercase; letter-spacing:0.3px; }
+.parlay-leg-remove{ background:none; border:none; color:var(--sub); font-size:16px; cursor:pointer; line-height:1; padding:2px 6px; }
+.parlay-leg-remove:hover{ color:var(--red); }
+.parlay-leg .modal-input{ margin-bottom:6px; }
+.parlay-leg-teased{ font-size:11.5px; color:var(--amber); margin-top:2px; }
+.parlay-odds-suggest{ font-size:11.5px; color:var(--sub); margin:4px 0 8px; }
+.parlay-odds-suggest a{ color:var(--amber); cursor:pointer; text-decoration:underline; }
 .account-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
 .account-row:last-of-type{ border-bottom:none; }
 .account-label{ color:var(--sub); }
@@ -385,6 +396,24 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .pick-action-btn{ font-size:11.5px; padding:5px 11px; border-radius:14px; border:1px solid var(--line); color:var(--sub); background:none; cursor:pointer; font-family:inherit; }
 .pick-action-btn:hover{ border-color:var(--amber); color:var(--text); }
 .pick-action-btn.danger:hover{ border-color:var(--red); color:var(--red); }
+.parlay-toggle-legs{ font-size:11.5px; color:var(--amber); background:none; border:none; cursor:pointer; font-family:inherit; padding:6px 0 0; font-weight:600; }
+.parlay-legs{ margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); }
+.parlay-leg-row{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-bottom:1px dashed var(--line); font-size:12px; }
+.parlay-leg-row:last-child{ border-bottom:none; }
+.parlay-leg-desc{ min-width:0; }
+.parlay-leg-desc .main{ color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.parlay-leg-desc .teased-line{ color:var(--amber); font-size:11px; margin-top:1px; }
+.parlay-leg-desc .odds{ color:var(--sub); font-size:11px; margin-top:1px; }
+.parlay-leg-result{ font-size:9.5px; padding:2px 8px; border-radius:10px; font-weight:700; text-transform:uppercase; white-space:nowrap; flex-shrink:0; }
+.parlay-leg-result.pending{ background:var(--surface2); color:var(--sub); }
+.parlay-leg-result.win{ background:var(--green); color:#fff; }
+.parlay-leg-result.loss{ background:var(--red); color:#fff; }
+.parlay-leg-result.push{ background:var(--surface2); color:var(--text); }
+.parlay-leg-settle{ display:flex; gap:5px; flex-shrink:0; }
+.parlay-leg-settle-btn{ font-size:10px; padding:3px 8px; border-radius:10px; border:1px solid var(--line); color:var(--sub); background:none; cursor:pointer; font-family:inherit; font-weight:700; }
+.parlay-leg-settle-btn.win:hover{ border-color:var(--green); color:var(--green); }
+.parlay-leg-settle-btn.loss:hover{ border-color:var(--red); color:var(--red); }
+.parlay-leg-settle-btn.push:hover{ border-color:var(--sub); color:var(--text); }
 </style>
 <body>
 
@@ -470,6 +499,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
           <div class="trackbet-option-title">Custom Bet</div>
           <div class="trackbet-option-sub">Log a bet you placed anywhere else — any sport, any book.</div>
         </button>
+        <button class="trackbet-option" id="trackBetChooseParlay">
+          <div class="trackbet-option-title">Parlay / Teaser</div>
+          <div class="trackbet-option-sub">Multiple legs on one slip — enter each leg and the combined odds.</div>
+        </button>
       </div>
 
       <form id="customBetForm" class="hidden">
@@ -490,7 +523,6 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
           <option value="Moneyline">Moneyline</option>
           <option value="Spread">Spread</option>
           <option value="Total">Total</option>
-          <option value="Parlay">Parlay</option>
           <option value="Prop">Prop</option>
           <option value="Other">Other</option>
         </select>
@@ -506,6 +538,49 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
         <div class="trackbet-potential" id="customBetPotential"></div>
         <button type="submit" class="modal-submit" id="customBetSubmit">Track bet</button>
         <button type="button" class="manage-billing-link" id="customBetBack">‹ Back</button>
+      </form>
+
+      <form id="parlayForm" class="hidden">
+        <div class="modal-error" id="parlayError"></div>
+        <div class="parlay-type-toggle">
+          <button type="button" class="parlay-type-btn active" id="parlayTypeParlay" data-type="parlay">Parlay</button>
+          <button type="button" class="parlay-type-btn" id="parlayTypeTeaser" data-type="teaser">Teaser</button>
+        </div>
+
+        <div id="teaserOptions" class="hidden">
+          <label class="modal-label">Teams</label>
+          <select class="modal-input" id="teaserTeamCount">
+            <option value="2">2-Team</option>
+            <option value="3">3-Team</option>
+            <option value="4">4-Team</option>
+            <option value="custom">Custom</option>
+          </select>
+          <input class="modal-input hidden" id="teaserTeamCountCustom" type="number" min="2" step="1" placeholder="Number of teams" style="margin-top:8px;">
+          <label class="modal-label">Points adjustment</label>
+          <select class="modal-input" id="teaserPointsSelect">
+            <option value="6">6 points</option>
+            <option value="6.5">6.5 points</option>
+            <option value="7">7 points</option>
+            <option value="custom">Custom</option>
+          </select>
+          <input class="modal-input hidden" id="teaserPointsCustom" type="number" min="0" step="0.5" placeholder="Custom points" style="margin-top:8px;">
+        </div>
+
+        <label class="modal-label">Legs</label>
+        <div id="parlayLegsList"></div>
+        <button type="button" class="pick-action-btn" id="parlayAddLeg">+ Add leg</button>
+
+        <label class="modal-label" style="margin-top:12px;">Combined odds</label>
+        <input class="modal-input" id="parlayOdds" type="text" inputmode="numeric" placeholder="e.g. +600">
+        <div class="parlay-odds-suggest hidden" id="parlayOddsSuggest"></div>
+
+        <label class="modal-label">Wager amount ($)</label>
+        <input class="modal-input" id="parlayWager" type="number" inputmode="decimal" min="0" step="0.01" placeholder="100">
+        <label class="modal-label">Date</label>
+        <input class="modal-input" id="parlayDate" type="date">
+        <div class="trackbet-potential" id="parlayPotential"></div>
+        <button type="submit" class="modal-submit" id="parlaySubmit">Track parlay</button>
+        <button type="button" class="manage-billing-link" id="parlayBack">‹ Back</button>
       </form>
     </div>
   </div>
@@ -1294,6 +1369,7 @@ document.getElementById('wagerConfirmForm').addEventListener('submit', async (e)
 function openTrackBetModal(){
   document.getElementById('trackBetChooser').classList.remove('hidden');
   document.getElementById('customBetForm').classList.add('hidden');
+  document.getElementById('parlayForm').classList.add('hidden');
   document.getElementById('trackBetModal').classList.remove('hidden');
 }
 function closeTrackBetModal(){
@@ -1325,6 +1401,10 @@ document.getElementById('trackBetChooseCustom').addEventListener('click', ()=>{
 document.getElementById('customBetBack').addEventListener('click', ()=>{
   document.getElementById('customBetForm').classList.add('hidden');
   document.getElementById('trackBetChooser').classList.remove('hidden');
+});
+document.getElementById('trackBetChooseParlay').addEventListener('click', ()=>{
+  if(!currentUser){ closeTrackBetModal(); openAuthModal(); return; }
+  openParlayForm();
 });
 document.getElementById('customBetType').addEventListener('change', (e)=>{
   document.getElementById('customBetTypeOther').classList.toggle('hidden', e.target.value !== 'Other');
@@ -1382,6 +1462,291 @@ document.getElementById('customBetForm').addEventListener('submit', async (e)=>{
   }finally{
     btn.disabled = false;
     btn.textContent = 'Track bet';
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Parlay / Teaser form: multiple legs on one slip. Combined odds and wager
+// are entered once for the whole bet; each leg is settled individually
+// later (see renderPickCard / the leg settle buttons) and the server rolls
+// the overall result up from the legs (any leg loss -> whole parlay lost).
+// A teaser adds a fixed point adjustment to every spread/total leg — the
+// user enters the original line and the teased line is computed and shown
+// live, matching how a real teaser slip reads ("Chiefs -8.5 -> -2.5").
+// ---------------------------------------------------------------------------
+let parlayType = 'parlay';
+let parlayLegSeq = 0;
+
+function legTypeOptionsHtml(mode){
+  const opts = mode === 'teaser'
+    ? [['spread','Spread'],['total','Total']]
+    : [['moneyline','Moneyline'],['spread','Spread'],['total','Total'],['prop','Prop']];
+  return opts.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+}
+
+function renderParlayLegHtml(id){
+  return `
+    <div class="parlay-leg" data-leg-id="${id}">
+      <div class="parlay-leg-header">
+        <span>Leg</span>
+        <button type="button" class="parlay-leg-remove" data-action="remove-parlay-leg">×</button>
+      </div>
+      <select class="modal-input leg-sport">
+        <option value="nfl">NFL</option>
+        <option value="nba">NBA</option>
+        <option value="mlb">MLB</option>
+        <option value="ncaafb">CFB</option>
+        <option value="ncaamb">CBB</option>
+        <option value="other">Other</option>
+      </select>
+      <input class="modal-input leg-event" type="text" placeholder="e.g. Chiefs @ Bills">
+      <select class="modal-input leg-type">${legTypeOptionsHtml(parlayType)}</select>
+      <input class="modal-input leg-selection" type="text" placeholder="e.g. Chiefs, Over, Mahomes 250+ yards">
+      <input class="modal-input leg-line" type="text" placeholder="Line (optional)">
+      <input class="modal-input leg-odds" type="text" inputmode="numeric" placeholder="This leg's odds (optional)">
+      <div class="parlay-leg-teased hidden"></div>
+    </div>
+  `;
+}
+
+function addParlayLeg(){
+  parlayLegSeq++;
+  const id = parlayLegSeq;
+  document.getElementById('parlayLegsList').insertAdjacentHTML('beforeend', renderParlayLegHtml(id));
+  const legEl = document.querySelector(`.parlay-leg[data-leg-id="${id}"]`);
+  legEl.querySelector('.leg-sport').value = currentSport || 'nfl';
+  legEl.querySelectorAll('.leg-type, .leg-line, .leg-selection, .leg-odds').forEach(el=>{
+    el.addEventListener('input', ()=>{ updateLegTeasedPreview(legEl); updateParlayOddsSuggestion(); });
+    el.addEventListener('change', ()=>{ updateLegTeasedPreview(legEl); updateParlayOddsSuggestion(); });
+  });
+  renumberParlayLegs();
+}
+function renumberParlayLegs(){
+  document.querySelectorAll('#parlayLegsList .parlay-leg').forEach((el,i)=>{
+    el.querySelector('.parlay-leg-header span').textContent = `Leg ${i+1}`;
+  });
+}
+document.getElementById('parlayLegsList').addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-action="remove-parlay-leg"]');
+  if(!btn) return;
+  if(document.querySelectorAll('#parlayLegsList .parlay-leg').length <= 2) return; // at least 2 legs
+  btn.closest('.parlay-leg').remove();
+  renumberParlayLegs();
+  updateParlayOddsSuggestion();
+});
+document.getElementById('parlayAddLeg').addEventListener('click', addParlayLeg);
+
+function getTeaserPoints(){
+  const sel = document.getElementById('teaserPointsSelect').value;
+  if(sel === 'custom') return Number(document.getElementById('teaserPointsCustom').value) || 0;
+  return Number(sel);
+}
+function getTeaserTeamCount(){
+  const sel = document.getElementById('teaserTeamCount').value;
+  if(sel === 'custom') return Math.max(2, Number(document.getElementById('teaserTeamCountCustom').value) || 2);
+  return Number(sel);
+}
+// Teasing always moves the number in the bettor's favor: a spread just
+// shifts by the adjustment either way (-8.5 + 6 = -2.5, +3 + 6 = +9); a
+// total Over gets easier (lower threshold), Under gets easier (higher one).
+function computeTeasedLine(originalPoint, betType, selection){
+  if(originalPoint === null || originalPoint === undefined || Number.isNaN(originalPoint)) return null;
+  const pts = getTeaserPoints();
+  if(!pts) return null;
+  if(betType === 'spread') return originalPoint + pts;
+  if(betType === 'total') return /under/i.test(selection || '') ? originalPoint + pts : originalPoint - pts;
+  return null;
+}
+function updateLegTeasedPreview(legEl){
+  const preview = legEl.querySelector('.parlay-leg-teased');
+  const betType = legEl.querySelector('.leg-type').value;
+  const selection = legEl.querySelector('.leg-selection').value;
+  const lineRaw = legEl.querySelector('.leg-line').value.trim();
+  const original = lineRaw === '' ? null : Number(lineRaw);
+  if(parlayType !== 'teaser' || original === null || Number.isNaN(original) || (betType !== 'spread' && betType !== 'total')){
+    preview.classList.add('hidden'); preview.textContent = ''; return;
+  }
+  const teased = computeTeasedLine(original, betType, selection);
+  if(teased === null){ preview.classList.add('hidden'); preview.textContent = ''; return; }
+  preview.textContent = `${selection || ''} ${original > 0 ? '+'+original : original} → ${teased > 0 ? '+'+teased : teased}`;
+  preview.classList.remove('hidden');
+}
+function refreshAllTeasedPreviews(){
+  document.querySelectorAll('#parlayLegsList .parlay-leg').forEach(updateLegTeasedPreview);
+}
+function syncParlayLegCountToTeaserTeams(){
+  if(parlayType !== 'teaser') return;
+  const target = getTeaserTeamCount();
+  const legs = document.querySelectorAll('#parlayLegsList .parlay-leg');
+  if(legs.length < target){ for(let i=legs.length;i<target;i++) addParlayLeg(); }
+  else if(legs.length > target){ for(let i=legs.length;i>target;i--) legs[i-1].remove(); renumberParlayLegs(); }
+}
+document.getElementById('teaserTeamCount').addEventListener('change', (e)=>{
+  document.getElementById('teaserTeamCountCustom').classList.toggle('hidden', e.target.value !== 'custom');
+  syncParlayLegCountToTeaserTeams();
+});
+document.getElementById('teaserTeamCountCustom').addEventListener('input', syncParlayLegCountToTeaserTeams);
+document.getElementById('teaserPointsSelect').addEventListener('change', (e)=>{
+  document.getElementById('teaserPointsCustom').classList.toggle('hidden', e.target.value !== 'custom');
+  refreshAllTeasedPreviews();
+});
+document.getElementById('teaserPointsCustom').addEventListener('input', refreshAllTeasedPreviews);
+
+// Combined parlay odds are suggested (never forced) from each leg's own
+// odds when every leg has one, via standard decimal-odds multiplication —
+// teasers use book-specific payout tables instead, so no suggestion there.
+function americanToDecimal(price){
+  const p = Number(price);
+  return p > 0 ? 1 + p/100 : 1 + 100/Math.abs(p);
+}
+function decimalToAmerican(decimal){
+  return decimal >= 2 ? Math.round((decimal-1)*100) : Math.round(-100/(decimal-1));
+}
+function updateParlayOddsSuggestion(){
+  const el = document.getElementById('parlayOddsSuggest');
+  if(parlayType !== 'parlay'){ el.classList.add('hidden'); el.innerHTML = ''; return; }
+  const legs = document.querySelectorAll('#parlayLegsList .parlay-leg');
+  const odds = Array.from(legs).map(l => l.querySelector('.leg-odds').value.trim()).filter(v=>v!=='').map(Number);
+  if(odds.length !== legs.length || odds.some(o=>!isValidOdds(o))){ el.classList.add('hidden'); el.innerHTML = ''; return; }
+  const combined = decimalToAmerican(odds.reduce((acc,o)=>acc*americanToDecimal(o), 1));
+  el.innerHTML = `Suggested from leg odds: <b>${combined>0?'+':''}${combined}</b> · <a data-action="use-suggested-odds">Use</a>`;
+  el.classList.remove('hidden');
+}
+document.getElementById('parlayOddsSuggest').addEventListener('click', (e)=>{
+  if(!e.target.closest('[data-action="use-suggested-odds"]')) return;
+  const b = e.currentTarget.querySelector('b');
+  document.getElementById('parlayOdds').value = b.textContent;
+  updateParlayPotential();
+});
+
+function updateParlayPotential(){
+  const wager = Number(document.getElementById('parlayWager').value);
+  const price = Number(document.getElementById('parlayOdds').value);
+  const el = document.getElementById('parlayPotential');
+  if(wager > 0 && isValidOdds(price)){
+    const { toWin, totalReturn } = americanPayout(wager, price);
+    el.innerHTML = `To win <b>${fmtMoney(toWin)}</b> · Potential return <b>${fmtMoney(totalReturn)}</b>`;
+  } else {
+    el.textContent = '';
+  }
+}
+document.getElementById('parlayWager').addEventListener('input', updateParlayPotential);
+document.getElementById('parlayOdds').addEventListener('input', updateParlayPotential);
+
+function switchParlayType(type){
+  parlayType = type;
+  document.getElementById('parlayTypeParlay').classList.toggle('active', type==='parlay');
+  document.getElementById('parlayTypeTeaser').classList.toggle('active', type==='teaser');
+  document.getElementById('teaserOptions').classList.toggle('hidden', type!=='teaser');
+  document.getElementById('parlaySubmit').textContent = type==='teaser' ? 'Track teaser' : 'Track parlay';
+  document.querySelectorAll('#parlayLegsList .parlay-leg').forEach(legEl=>{
+    const typeSel = legEl.querySelector('.leg-type');
+    const prevVal = typeSel.value;
+    typeSel.innerHTML = legTypeOptionsHtml(type);
+    if([...typeSel.options].some(o=>o.value===prevVal)) typeSel.value = prevVal;
+    updateLegTeasedPreview(legEl);
+  });
+  if(type === 'teaser') syncParlayLegCountToTeaserTeams();
+  updateParlayOddsSuggestion();
+}
+document.getElementById('parlayTypeParlay').addEventListener('click', ()=>switchParlayType('parlay'));
+document.getElementById('parlayTypeTeaser').addEventListener('click', ()=>switchParlayType('teaser'));
+
+function openParlayForm(){
+  document.getElementById('trackBetChooser').classList.add('hidden');
+  document.getElementById('customBetForm').classList.add('hidden');
+  document.getElementById('parlayForm').classList.remove('hidden');
+  document.getElementById('parlayError').textContent = '';
+  document.getElementById('parlayLegsList').innerHTML = '';
+  parlayLegSeq = 0;
+  document.getElementById('teaserTeamCount').value = '2';
+  document.getElementById('teaserTeamCountCustom').value = '';
+  document.getElementById('teaserTeamCountCustom').classList.add('hidden');
+  document.getElementById('teaserPointsSelect').value = '6';
+  document.getElementById('teaserPointsCustom').value = '';
+  document.getElementById('teaserPointsCustom').classList.add('hidden');
+  document.getElementById('parlayOdds').value = '';
+  document.getElementById('parlayWager').value = '';
+  document.getElementById('parlayDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('parlayPotential').textContent = '';
+  switchParlayType('parlay');
+  addParlayLeg();
+  addParlayLeg();
+}
+document.getElementById('parlayBack').addEventListener('click', ()=>{
+  document.getElementById('parlayForm').classList.add('hidden');
+  document.getElementById('trackBetChooser').classList.remove('hidden');
+});
+
+document.getElementById('parlayForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const errEl = document.getElementById('parlayError');
+  errEl.textContent = '';
+
+  const legEls = document.querySelectorAll('#parlayLegsList .parlay-leg');
+  if(legEls.length < 2){ errEl.textContent = 'Add at least 2 legs.'; return; }
+
+  const teaserPoints = parlayType === 'teaser' ? getTeaserPoints() : null;
+  if(parlayType === 'teaser' && !(teaserPoints > 0)){ errEl.textContent = 'Enter the teaser point adjustment.'; return; }
+
+  const legs = [];
+  for(const legEl of legEls){
+    const sport = legEl.querySelector('.leg-sport').value;
+    const event = legEl.querySelector('.leg-event').value.trim();
+    const betType = legEl.querySelector('.leg-type').value;
+    const selection = legEl.querySelector('.leg-selection').value.trim();
+    const lineRaw = legEl.querySelector('.leg-line').value.trim();
+    const oddsRaw = legEl.querySelector('.leg-odds').value.trim();
+    if(!selection){ errEl.textContent = 'Every leg needs a selection (team, side, or player).'; return; }
+    const originalPoint = lineRaw === '' ? null : Number(lineRaw);
+    if(lineRaw !== '' && Number.isNaN(originalPoint)){ errEl.textContent = 'Enter a valid number for a leg line, or leave it blank.'; return; }
+    let point = originalPoint;
+    if(parlayType === 'teaser' && originalPoint !== null){
+      const teased = computeTeasedLine(originalPoint, betType, selection);
+      if(teased !== null) point = teased;
+    }
+    let legPrice = null;
+    if(oddsRaw !== ''){
+      legPrice = Number(oddsRaw);
+      if(!isValidOdds(legPrice)){ errEl.textContent = "Enter valid odds for a leg (e.g. -110), or leave it blank."; return; }
+    }
+    legs.push({
+      sport, market: betType, side: selection,
+      point, originalPoint: parlayType === 'teaser' ? originalPoint : null,
+      price: legPrice,
+      label: `${event ? event + ' — ' : ''}${selection}${lineRaw ? ' ' + lineRaw : ''}`.trim(),
+    });
+  }
+
+  const price = Number(document.getElementById('parlayOdds').value);
+  if(!isValidOdds(price)){ errEl.textContent = 'Enter the combined odds (e.g. +600).'; return; }
+  const wagerAmount = Number(document.getElementById('parlayWager').value);
+  if(!(wagerAmount > 0)){ errEl.textContent = 'Enter a wager amount.'; return; }
+  const betDate = document.getElementById('parlayDate').value || null;
+
+  const btn = document.getElementById('parlaySubmit');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try{
+    const res = await apiFetch('/api/bets', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        betSource: 'parlay',
+        market: parlayType,
+        sport: legs[0].sport,
+        price, wagerAmount, betDate,
+        legs, teaserPoints,
+      })
+    });
+    if(!res.ok) throw new Error((await res.json()).error || 'Failed to save.');
+    closeTrackBetModal();
+    if(document.getElementById('picks').classList.contains('active')) loadPicks();
+  }catch(err){
+    errEl.textContent = err.message;
+  }finally{
+    btn.disabled = false;
+    btn.textContent = parlayType === 'teaser' ? 'Track teaser' : 'Track parlay';
   }
 });
 
@@ -1843,7 +2208,90 @@ function renderPerformanceSection(bets){
   `;
 }
 
+// bet ids (as strings) whose legs are currently expanded in the ledger —
+// UI-only, resets on reload, not worth persisting.
+let picksExpandedLegs = new Set();
+
+function legResultLabel(r){
+  return { pending:'PENDING', win:'WIN', loss:'LOSS', push:'PUSH' }[r] || r;
+}
+
+function renderParlayLegRow(bet, leg){
+  const marketLabels = { moneyline:'ML', spread:'Spread', total:'Total', prop:'Prop', custom:'' };
+  const marketLabel = marketLabels[leg.market] || '';
+  let lineText = '';
+  if(leg.market === 'spread' || leg.market === 'total'){
+    if(leg.original_point != null && leg.point != null && Number(leg.original_point) !== Number(leg.point)){
+      const o = Number(leg.original_point), t = Number(leg.point);
+      lineText = ` ${o>0?'+'+o:o} → ${t>0?'+'+t:t}`;
+    } else if(leg.point != null){
+      lineText = ` ${Number(leg.point)>0?'+'+leg.point:leg.point}`;
+    }
+  }
+  const oddsText = leg.price != null ? ` (${oddsPriceLabel(leg.price)})` : '';
+  const desc = leg.label ? escapeHtml(leg.label) : escapeHtml(`${leg.side||''} ${marketLabel}`.trim());
+
+  const canSettle = leg.result === 'pending' && bet.result === 'pending';
+  const controls = canSettle ? `
+    <div class="parlay-leg-settle">
+      <button type="button" data-action="settle-leg" data-bet-id="${bet.id}" data-leg-id="${leg.id}" data-result="win">W</button>
+      <button type="button" data-action="settle-leg" data-bet-id="${bet.id}" data-leg-id="${leg.id}" data-result="loss">L</button>
+      <button type="button" data-action="settle-leg" data-bet-id="${bet.id}" data-leg-id="${leg.id}" data-result="push">P</button>
+    </div>
+  ` : `<span class="parlay-leg-result ${leg.result}">${legResultLabel(leg.result)}</span>`;
+
+  return `
+    <div class="parlay-leg-row">
+      <div class="parlay-leg-desc">${desc}${lineText}${escapeHtml(oddsText)}</div>
+      ${controls}
+    </div>
+  `;
+}
+
+function renderParlayCard(b){
+  const isTeaser = b.market === 'teaser';
+  const eventLabel = escapeHtml(b.event_label || (isTeaser ? 'Teaser' : 'Parlay'));
+  const legs = b.legs || [];
+  const priceLabel = oddsPriceLabel(b.price);
+  const wager = b.wager_amount != null ? Number(b.wager_amount) : null;
+
+  let detailBlock = '';
+  if(b.result === 'pending'){
+    if(wager != null){
+      const { toWin, totalReturn } = americanPayout(wager, b.price);
+      detailBlock = `<div class="pick-sub">${fmtMoney(wager)} to win ${fmtMoney(toWin)} · return ${fmtMoney(totalReturn)}</div>`;
+    }
+  } else {
+    const pl = betProfit(b);
+    detailBlock = `<div class="pick-pl ${pl>0?'pl-positive':pl<0?'pl-negative':''}">${fmtPL(pl)}${b.result==='cashed_out' && b.cash_out_amount!=null ? ` · cashed out ${fmtMoney(Number(b.cash_out_amount))}` : ''}</div>`;
+  }
+
+  const expanded = picksExpandedLegs.has(String(b.id));
+  const legsBlock = expanded ? `<div class="parlay-legs">${legs.map(l=>renderParlayLegRow(b,l)).join('')}</div>` : '';
+
+  const actions = [];
+  if(b.result === 'pending'){
+    actions.push(`<button class="pick-action-btn" data-action="settle" data-id="${b.id}" data-label="${eventLabel.replace(/"/g,'&quot;')}">Settle whole slip</button>`);
+  }
+  actions.push(`<button class="pick-action-btn danger" data-action="delete" data-id="${b.id}">Remove</button>`);
+
+  return `
+    <div class="pick-card">
+      <div class="pick-top">
+        <span class="pick-event">${eventLabel}</span>
+        <span class="pick-result ${b.result}">${b.result === 'cashed_out' ? 'CASHED OUT' : b.result}</span>
+      </div>
+      <div class="pick-sub">${legs.length} legs (${priceLabel})${isTeaser && b.teaser_points ? ` · +${Number(b.teaser_points)} pts` : ''}</div>
+      ${detailBlock}
+      <button type="button" class="parlay-toggle-legs" data-action="toggle-legs" data-id="${b.id}">${expanded ? 'Hide legs ▲' : 'Show legs ▼'}</button>
+      ${legsBlock}
+      <div class="pick-actions">${actions.join('')}</div>
+    </div>
+  `;
+}
+
 function renderPickCard(b){
+  if(b.market === 'parlay' || b.market === 'teaser') return renderParlayCard(b);
   const isCustom = b.bet_source === 'custom';
   const eventLabel = isCustom
     ? escapeHtml(b.event_label || (b.sport||'').toUpperCase())
@@ -1903,6 +2351,24 @@ function wirePicksBody(){
     if(action === 'settle'){ openSettleModal(el.dataset.id, el.dataset.label || ''); return; }
     if(action === 'add-wager'){ openAddWagerModal(el.dataset.id); return; }
     if(action === 'set-bankroll'){ openBankrollModal(); return; }
+    if(action === 'toggle-legs'){
+      const id = String(el.dataset.id);
+      if(picksExpandedLegs.has(id)) picksExpandedLegs.delete(id); else picksExpandedLegs.add(id);
+      renderPicksScreen();
+      return;
+    }
+    if(action === 'settle-leg'){
+      const { betId, legId, result } = el.dataset;
+      try{
+        await apiFetch(`/api/bets/${betId}/legs/${legId}/settle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ result })
+        });
+      }catch(err){}
+      loadPicks();
+      return;
+    }
     if(action === 'get-insights'){
       picksInsightsLoading = true;
       renderPicksScreen();

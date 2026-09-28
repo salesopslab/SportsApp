@@ -136,6 +136,34 @@ export function ensureSchema() {
       ALTER TABLE bets ADD COLUMN IF NOT EXISTS line_label TEXT;
       ALTER TABLE bets ADD COLUMN IF NOT EXISTS bet_date DATE;
 
+      -- Parlays/teasers: the parent bets row still holds the combined
+      -- odds, wager, and overall result (market = 'parlay' | 'teaser'), same
+      -- as any other bet — everything that already reads bets (record,
+      -- ROI, performance breakdowns) keeps working unchanged. Each leg lives
+      -- in its own row here so it can carry its own game/line/odds and be
+      -- settled independently; the parent's result is then rolled up from
+      -- its legs (any leg loss -> parent loss immediately, matching how a
+      -- real parlay works) rather than stored redundantly.
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS teaser_points NUMERIC; -- teaser point adjustment (e.g. 6, 6.5, 7); null for everything else
+      CREATE TABLE IF NOT EXISTS bet_legs (
+        id BIGSERIAL PRIMARY KEY,
+        bet_id BIGINT NOT NULL REFERENCES bets(id) ON DELETE CASCADE,
+        leg_order INTEGER NOT NULL DEFAULT 0,
+        sport TEXT,
+        game_id TEXT,
+        home_team TEXT,
+        away_team TEXT,
+        market TEXT,              -- 'moneyline' | 'spread' | 'total' | 'prop' | 'custom'
+        side TEXT,
+        point NUMERIC,
+        original_point NUMERIC,   -- teaser only: the line before the adjustment
+        price INTEGER,            -- this leg's own odds, if the user had them
+        label TEXT,               -- freeform display text (e.g. a prop description) when structured fields don't cover it
+        result TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'win' | 'loss' | 'push'
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_bet_legs_bet ON bet_legs (bet_id, leg_order);
+
       CREATE TABLE IF NOT EXISTS odds_api_usage (
         id BIGSERIAL PRIMARY KEY,
         requests_used INTEGER,
