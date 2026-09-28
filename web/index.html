@@ -2843,6 +2843,10 @@ function wirePicksBody(){
 // link), instead of always dumping them back on Board.
 let screenHistory = ['board'];
 function showScreen(id, opts={}){
+  // Leaving the chat screen with the mic still listening would otherwise keep
+  // recognizing in the background and auto-send a stale voice transcript
+  // into whatever screen/game is current by the time it ends.
+  if(id !== 'chat' && window.__cancelVoiceInput) window.__cancelVoiceInput();
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.screen===id));
@@ -3359,18 +3363,52 @@ if(SpeechRec){
   rec.lang = 'en-US';
   let listening = false;
   let finalTranscript = '';
+  let cancelled = false; // set right before an intentional stop (navigation, silence timeout) so 'end' doesn't auto-send a stale transcript
+  let silenceTimer = null;
+
+  // Recognition can otherwise run indefinitely (rec.continuous = true) if the
+  // person taps away instead of tapping the mic again — this bounds it and
+  // resets the UI/input instead of leaving the mic "listening" forever with
+  // an old transcript sitting in the box.
+  const MAX_LISTEN_MS = 20000;
+
+  function resetMicUi(){
+    listening = false;
+    micBtn.classList.remove('listening');
+    micBtn.title = 'Voice input';
+    if(silenceTimer){ clearTimeout(silenceTimer); silenceTimer = null; }
+  }
+
+  // Stops listening without sending whatever was transcribed so far, and
+  // clears it out of the input box. Called when the person navigates away
+  // (a different screen, or a different game) while the mic is still on.
+  function cancelListening(){
+    if(!listening) return;
+    cancelled = true;
+    finalTranscript = '';
+    const input = document.getElementById('chatInput');
+    if(input) input.value = '';
+    try{ rec.abort(); }catch(e){}
+    resetMicUi();
+  }
+  window.__cancelVoiceInput = cancelListening;
 
   micBtn.addEventListener('click', ()=>{
     if(listening){
+      cancelled = false; // manual stop — still send whatever was said
       rec.stop();
       return;
     }
+    cancelled = false;
     finalTranscript = '';
     document.getElementById('chatInput').value = '';
     listening = true;
     micBtn.classList.add('listening');
     micBtn.title = 'Tap to stop and send';
-    try{ rec.start(); }catch(e){ listening=false; micBtn.classList.remove('listening'); }
+    try{
+      rec.start();
+      silenceTimer = setTimeout(()=>{ if(listening){ cancelled = false; rec.stop(); } }, MAX_LISTEN_MS);
+    }catch(e){ resetMicUi(); }
   });
 
   rec.addEventListener('result', (e)=>{
@@ -3384,16 +3422,14 @@ if(SpeechRec){
   });
 
   rec.addEventListener('end', ()=>{
-    listening = false;
-    micBtn.classList.remove('listening');
-    micBtn.title = 'Voice input';
-    if(finalTranscript.trim()) sendChat();
+    const shouldSend = !cancelled && finalTranscript.trim();
+    resetMicUi();
+    cancelled = false;
+    if(shouldSend) sendChat();
   });
 
   rec.addEventListener('error', (e)=>{
-    listening = false;
-    micBtn.classList.remove('listening');
-    micBtn.title = 'Voice input';
+    resetMicUi();
   });
 }else{
   micBtn.title = 'Voice input not supported in this browser';

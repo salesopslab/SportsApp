@@ -106,7 +106,13 @@ ${JSON.stringify(context, null, 2)}`;
       .map((block) => block.text)
       .join("\n");
 
-    res.json({ reply: text });
+    // TEMP DEBUG (voice-chat empty-reply investigation) -- remove once root
+    // cause confirmed. Extra keys are ignored by the current frontend.
+    res.json({
+      reply: text,
+      _debugStopReason: data.stop_reason,
+      _debugBlockTypes: Array.isArray(data.content) ? data.content.map((b) => b.type) : null,
+    });
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "AI chat failed", detail: err.message });
