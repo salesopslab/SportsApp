@@ -1496,21 +1496,22 @@ async function sendChat(){
   try{
     let reply;
     try{
-      // Fast path: server is already warm.
-      reply = await attempt(12000);
+      // Fast path: a normal AI reply typically takes ~10-15s on its own
+      // (real research + a full desk-note response), so this needs real
+      // headroom before we assume something's actually wrong.
+      reply = await attempt(25000);
     }catch(firstErr){
       if(firstErr.paywalled){ showUpgradeInChat(firstErr.requiredTier); return; }
-      // Render's free tier spins the backend down after ~15 min idle, so a cold
-      // server can take up to ~50s to wake up on the first request. Rather than
-      // failing right away, tell the user what's happening and give it one more,
-      // much longer try before giving up.
-      thinking.textContent = 'Server is waking up (this can take up to a minute on the first request)… still trying.';
-      reply = await attempt(60000);
+      // Either a genuinely slow reply, or (rarely, on Render's free tier)
+      // a cold-started backend after ~15 min idle. Either way: don't give
+      // up, just say it's taking longer than usual and try once more.
+      thinking.textContent = 'Still working on it — this one is taking longer than usual… still trying.';
+      reply = await attempt(45000);
     }
     thinking.textContent = reply || "The AI didn't return an answer — try rephrasing the question.";
   }catch(e){
     if(e.paywalled){ showUpgradeInChat(e.requiredTier); return; }
-    thinking.textContent = "Couldn't reach the AI server after waiting. It may still be starting up — wait about a minute and send your message again.";
+    thinking.textContent = "Couldn't reach the AI server after waiting. Please wait a moment and send your message again.";
   }
 }
 document.getElementById('sendBtn').addEventListener('click', sendChat);
