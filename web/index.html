@@ -136,6 +136,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .value-banner-text{ flex:1; font-size:13px; line-height:1.45; color:var(--text); }
 .value-banner-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .value-banner-btn{ padding:9px 16px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.value-banner-demo-btn{ padding:9px 16px; border-radius:20px; border:1px solid var(--line); background:transparent; color:var(--text); font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.demo-modal-card{ max-width:900px; width:92vw; padding:16px; }
+.demo-video-wrap{ position:relative; width:100%; border-radius:12px; overflow:hidden; background:#000; }
+.demo-video-wrap video{ display:block; width:100%; height:auto; }
 .value-banner-close{ background:none; border:none; color:var(--sub); font-size:18px; line-height:1; cursor:pointer; padding:4px 6px; }
 
 .picks-login-cta{ display:block; margin:12px auto 0; padding:10px 20px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; }
@@ -568,6 +572,19 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
     </div>
   </div>
 
+  <!-- DEMO / TUTORIAL VIDEO MODAL -->
+  <div class="modal-overlay hidden" id="demoModal">
+    <div class="modal-card demo-modal-card">
+      <button class="modal-close" id="demoModalClose">×</button>
+      <h2>See BetEdge AI in action</h2>
+      <div class="demo-video-wrap">
+        <video id="demoVideo" controls playsinline preload="none" poster="/og-image.png">
+          <source src="/tutorial-demo.mp4" type="video/mp4">
+        </video>
+      </div>
+    </div>
+  </div>
+
   <!-- ACCOUNT MODAL -->
   <div class="modal-overlay hidden" id="accountModal">
     <div class="modal-card">
@@ -805,6 +822,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <div class="value-banner-text">AI-powered picks, live odds &amp; line-movement tracking for every major sport.</div>
       <div class="value-banner-actions">
         <button class="value-banner-btn" id="valueBannerCta">Start free trial</button>
+        <button class="value-banner-demo-btn" id="valueBannerDemo">▶ Watch demo</button>
         <button class="value-banner-close" id="valueBannerClose" aria-label="Dismiss">×</button>
       </div>
     </div>
@@ -1099,6 +1117,17 @@ async function renderPricingModal(){
   // account worth managing — a never-subscribed visitor has nothing to manage.
   manageBtn.classList.toggle('hidden', !currentUser || currentUser.tier === 'none');
 }
+
+function openDemoModal(){
+  document.getElementById('demoModal').classList.remove('hidden');
+}
+function closeDemoModal(){
+  const v = document.getElementById('demoVideo');
+  v.pause();
+  document.getElementById('demoModal').classList.add('hidden');
+}
+document.getElementById('valueBannerDemo').addEventListener('click', openDemoModal);
+document.getElementById('demoModalClose').addEventListener('click', closeDemoModal);
 
 function openPricingModal(){
   document.getElementById('pricingError').textContent = '';
