@@ -132,7 +132,17 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .sport-tab.active{ color:var(--bg); background:var(--amber); border-color:var(--amber); font-weight:600; }
 .sport-tab.active:hover{ filter:brightness(0.94); }
 
-.value-banner{ margin:14px 20px 0; padding:14px 16px; border-radius:12px; background:var(--surface2); border:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+.value-banner{ margin:14px 20px 0; padding:14px 16px; border-radius:12px; background:var(--surface2); border:1px solid var(--line); display:flex; align-items:center; gap:12px; position:relative; }
+@media (max-width:480px){
+  /* Narrow phones don't have room for text + two pill buttons in one row --
+     without this the buttons squeeze the text into a tall, barely-readable
+     column instead of stacking cleanly. */
+  .value-banner{ flex-direction:column; align-items:stretch; padding:14px 16px 12px; gap:10px; }
+  .value-banner-text{ padding-right:22px; }
+  .value-banner-actions{ flex-wrap:wrap; gap:8px; }
+  .value-banner-btn, .value-banner-demo-btn{ flex:1 1 auto; justify-content:center; }
+  .value-banner-close{ position:absolute; top:8px; right:8px; padding:2px 6px; }
+}
 .value-banner-text{ flex:1; font-size:13px; line-height:1.45; color:var(--text); }
 .value-banner-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .value-banner-btn{ padding:9px 16px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; }
@@ -1252,7 +1262,7 @@ function setAuthMode(mode){
   document.getElementById('authSubmit').dataset.mode = mode;
   document.getElementById('authError').textContent = '';
   document.getElementById('authReferralCode').classList.toggle('hidden', mode !== 'signup');
-  document.getElementById('authDemoLink').classList.toggle('show', mode === 'signup');
+  document.getElementById('authDemoLink').classList.add('show'); // shown on both Login and Sign up now
 }
 
 // A visit via someone's referral link (?ref=CODE) is remembered so the code
