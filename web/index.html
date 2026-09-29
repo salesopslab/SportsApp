@@ -162,6 +162,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .auth-demo-link:hover .play-ic{ background:var(--text); }
 .auth-demo-link .play-ic svg{ width:6px; height:6px; margin-left:1px; }
 .value-banner-close{ background:none; border:none; color:var(--sub); font-size:18px; line-height:1; cursor:pointer; padding:4px 6px; }
+/* Always-available demo entry point in the top bar -- the value-banner one
+   only shows to logged-out visitors who haven't dismissed it, so a returning
+   or logged-in person otherwise has no way to pull the tutorial back up. */
+.topbar-demo-btn{ display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; border:1px solid var(--line); background:var(--surface); color:var(--text); cursor:pointer; flex-shrink:0; }
+.topbar-demo-btn svg{ width:8px; height:8px; margin-left:1px; }
+.topbar-demo-btn:hover{ background:var(--surface2); }
 
 .picks-login-cta{ display:block; margin:12px auto 0; padding:10px 20px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; }
 
@@ -559,6 +565,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
       <div class="status-pill waking" id="apiStatus"><span class="status-dot"></span><span id="apiStatusLabel">Connecting…</span></div>
+      <button class="topbar-demo-btn" id="topbarDemoBtn" aria-label="Watch demo" title="Watch demo"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></button>
       <button class="tier-badge hidden" id="tierBadge"></button>
       <button class="profile-btn" id="profileBtn">Log in</button>
     </div>
@@ -1155,6 +1162,7 @@ function closeDemoModal(){
   document.getElementById('demoModal').classList.add('hidden');
 }
 document.getElementById('valueBannerDemo').addEventListener('click', openDemoModal);
+document.getElementById('topbarDemoBtn').addEventListener('click', openDemoModal);
 document.getElementById('demoModalClose').addEventListener('click', closeDemoModal);
 document.getElementById('authDemoLink').addEventListener('click', ()=>{
   document.getElementById('authModal').classList.add('hidden');
