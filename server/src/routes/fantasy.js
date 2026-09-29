@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { withTier, requireTier } from "../middleware/tier.js";
+import { dailyLimit } from "../middleware/limits.js";
 import {
   getPlayerReport,
   getTeamContext,
@@ -355,7 +356,13 @@ function fail(res, err, what) {
   res.status(502).json({ error: `Fantasy Edge couldn't finish the ${what} right now. Please try again.`, detail: err.message });
 }
 
-const gate = [withTier, requireTier("standard")];
+// Every account (including Free) can use Fantasy Edge, with a daily cap per
+// plan (tierService LIMITS.fantasy). Screenshot reading needs a login but
+// doesn't count against the cap, so a multi-screenshot roster upload doesn't
+// burn a Free user's analyses.
+const gate = [withTier, dailyLimit("fantasy")];
+const loginGate = [withTier, (req, res, next) =>
+  req.user ? next() : res.status(402).json({ error: "Log in or create a free account to use Fantasy Edge.", requiredTier: "standard", loggedIn: false })];
 
 // ---- Start/Sit -------------------------------------------------------------
 
@@ -605,7 +612,7 @@ function parseImageDataUrl(raw) {
   return { mediaType: m[1] === "image/jpg" ? "image/jpeg" : m[1], data: m[2] };
 }
 
-router.post("/screenshot", ...gate, async (req, res) => {
+router.post("/screenshot", ...loginGate, async (req, res) => {
   const img = parseImageDataUrl(req.body?.image);
   if (!img) return res.status(400).json({ error: "Upload a PNG, JPG or WebP screenshot." });
   if (img.data.length > MAX_IMAGE_BASE64_CHARS) return res.status(400).json({ error: "That image is too large — try a tighter crop." });
@@ -675,7 +682,7 @@ router.get("/players/search", async (req, res) => {
 
 // ---- Quick status lookup (for cards) -------------------------------------------
 
-router.get("/player-status", ...gate, async (req, res) => {
+router.get("/player-status", ...loginGate, async (req, res) => {
   const name = String(req.query.name || "").trim();
   if (!name) return res.status(400).json({ error: "name is required" });
   try {

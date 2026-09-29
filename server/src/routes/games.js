@@ -112,7 +112,7 @@ router.get("/:sport", withTier, async (req, res) => {
     // This "opened vs. current" comparison is part of line tracking, which is
     // an Edge+ feature — Standard sees odds/board only, no opening line.
     const upcoming = enriched.filter((g) => g.status === "upcoming");
-    const includeOpeningLines = meetsTier(req.userRow, "edge");
+    const includeOpeningLines = meetsTier(req.userRow, "standard");
     const openingBySide = includeOpeningLines
       ? await getOpeningSpreads(sport, upcoming.map((g) => g.id)).catch(() => ({}))
       : {};

@@ -248,7 +248,7 @@ function fmtDate(d){
   return new Date(d).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
 }
 function tierLabel(t){
-  const map = { trial:'Trial', standard:'Standard', edge:'Edge', edge_pro:'Edge Pro' };
+  const map = { trial:'Trial', standard:'Edge', edge:'Edge+', edge_pro:'Edge Pro', none:'Free', expired:'Free' };
   return map[t] || t || '—';
 }
 
@@ -327,9 +327,22 @@ function renderHealth(health){
   const rows = [
     { name: 'Stripe secret key', ok: health.stripeConfigured },
     { name: 'Webhook signing secret', ok: health.webhookConfigured },
-    ...health.tiers.map(t => ({ name: `${t.name} price`, ok: t.priceConfigured })),
+    ...health.tiers.flatMap(t => [
+      { name: `${t.name} monthly ($${(t.priceCents/100).toFixed(2)})`, ok: t.monthlyConfigured },
+      { name: `${t.name} annual ($${Math.round(t.annualPriceCents/100)})`, ok: t.annualConfigured },
+    ]),
   ];
+  const allPrices = health.tiers.every(t => t.monthlyConfigured && t.annualConfigured);
   el.innerHTML = `
+    <div class="pricing-tools">
+      <div class="note">${allPrices ? 'New 2026 prices are live in Stripe.' : 'The new 2026 prices aren\'t set up in Stripe yet. Step 1 creates them (safe to run again) and stops the old $19.99/$29.99/$49.99 prices from being sold to new customers. Existing subscribers keep billing normally.'}</div>
+      <div class="row-actions" style="margin:8px 0 12px">
+        <button id="setupPricingBtn">1. Set up Stripe pricing</button>
+        <button id="migratePreviewBtn">2. Preview subscriber move</button>
+        <button id="migrateRunBtn" class="danger" disabled>3. Move subscribers to new prices</button>
+      </div>
+      <div id="pricingToolOut" class="note"></div>
+    </div>
     <div class="health-grid">
       ${rows.map(r => `
         <div class="health-row">
@@ -340,6 +353,47 @@ function renderHealth(health){
       `).join('')}
     </div>
   `;
+}
+
+function fmtCents(c){ return c == null ? '?' : `$${(c/100).toFixed(2)}`; }
+document.addEventListener('click', async (e) => {
+  const out = document.getElementById('pricingToolOut');
+  if(!out) return;
+  const id = e.target && e.target.id;
+  if(id === 'setupPricingBtn'){
+    e.target.disabled = true; out.textContent = 'Setting up prices in Stripe…';
+    try{
+      const r = await adminAction('/api/admin/stripe/setup-pricing', 'POST');
+      out.innerHTML = `Done. Created ${r.created.length} price(s), ${r.reused.length} already existed, stopped selling ${r.archived.filter(a => !a.error).length} old price(s).${r.archived.some(a => a.error) ? ' Some old prices couldn\'t be archived — check Stripe.' : ''}`;
+      loadAll();
+    }catch(err){ out.textContent = 'Setup failed: ' + err.message; }
+    finally{ e.target.disabled = false; }
+  }
+  if(id === 'migratePreviewBtn'){
+    e.target.disabled = true; out.textContent = 'Checking subscribers…';
+    try{
+      const r = await adminActionBody('/api/admin/stripe/migrate-subscribers', { dryRun: true });
+      if(r.note){ out.textContent = r.note; return; }
+      const lines = r.moved.map(m => `${m.customer}: ${m.tier} ${m.interval} ${fmtCents(m.from)} → new price at next renewal`);
+      out.innerHTML = `${r.moved.length} subscriber(s) would move${r.skipped.length ? `, ${r.skipped.length} skipped (${r.skipped[0].reason})` : ''}.<br>${lines.slice(0, 20).join('<br>')}${lines.length > 20 ? '<br>…' : ''}`;
+      document.getElementById('migrateRunBtn').disabled = !r.moved.length;
+    }catch(err){ out.textContent = 'Preview failed: ' + err.message; }
+    finally{ e.target.disabled = false; }
+  }
+  if(id === 'migrateRunBtn'){
+    if(!confirm('Move these subscribers to the new lower prices starting at their next renewal? No one is charged now.')) return;
+    e.target.disabled = true; out.textContent = 'Moving subscribers…';
+    try{
+      const r = await adminActionBody('/api/admin/stripe/migrate-subscribers', { dryRun: false });
+      out.textContent = `Moved ${r.moved.length} subscriber(s) to the new prices from their next renewal.${r.errors.length ? ` ${r.errors.length} failed — check Stripe.` : ''}`;
+    }catch(err){ out.textContent = 'Move failed: ' + err.message; e.target.disabled = false; }
+  }
+});
+async function adminActionBody(path, body){
+  const res = await fetch(`${API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': currentKey }, body: JSON.stringify(body || {}) });
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok) throw new Error(data.detail || data.error || `Request failed (${res.status})`);
+  return data;
 }
 
 function renderRevenue(revenue){

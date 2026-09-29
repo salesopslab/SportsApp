@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { withTier, requireTier } from "../middleware/tier.js";
+import { dailyLimit } from "../middleware/limits.js";
 import { SPORT_KEYS, getOddsForSportWithMeta, getScoresForSportWithMeta } from "../services/oddsService.js";
 import { getMatchupInjuries, injuriesNeedRefresh, ageMinutes, INJURY_FRESHNESS_MINUTES } from "../services/injuryService.js";
 import { getLineHistory } from "../services/snapshotService.js";
@@ -205,7 +206,7 @@ function makeToolRunner({ sport, game, userRow, sources, refreshed, state }) {
       const g = (games || []).find((x) => x.id === game.id);
       if (input.force_refresh) refreshed.push("odds");
       let lineMovement = { available: false, reason: "Line movement is an Edge feature." };
-      if (meetsTier(userRow, "edge")) {
+      if (meetsTier(userRow, "standard")) {
         lineMovement = await getLineHistory(game.id, g?.lineTrackingBook || game.lineTrackingBook).catch(() => ({
           available: false,
           reason: "Line history lookup failed.",
@@ -386,7 +387,7 @@ function dedupeSources(sources) {
 }
 
 // POST /api/chat  { message, context, sport? }
-router.post("/", withTier, requireTier("edge_pro"), async (req, res) => {
+router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: "message is required" });
 

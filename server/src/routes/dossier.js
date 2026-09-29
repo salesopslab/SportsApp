@@ -54,7 +54,7 @@ router.get("/:sport/:gameId", withTier, async (req, res) => {
     if (!game) return res.status(404).json({ error: "Game not found" });
 
     const venue = VENUES[game.homeTeam];
-    const includeLineMovement = meetsTier(req.userRow, "edge");
+    const includeLineMovement = meetsTier(req.userRow, "standard");
 
     const [injuries, h2h, h2hResults, weather, lineMovement] = await Promise.all([
       // Both teams, each with its own status + freshness metadata. Never a

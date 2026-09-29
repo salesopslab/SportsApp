@@ -2,7 +2,7 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { getLatestUsage, getUsageHistory } from "../services/usageService.js";
 import { TIERS, TIER_RANK, effectiveTier } from "../services/tierService.js";
-import { stripe, stripeAvailable, priceIdForTier } from "../services/stripeService.js";
+import { stripe, stripeAvailable, tierForPrice, pricingStatus, setupPricing, migrateLegacySubscribers } from "../services/stripeService.js";
 import { REFERRAL_BONUS_DAYS } from "../services/referralService.js";
 import { signToken, toPublicUser } from "../services/authService.js";
 
@@ -319,7 +319,7 @@ router.get("/revenue", requireAdminKey, async (req, res) => {
               ? Math.round((price.unit_amount * (item.quantity || 1)) / 12)
               : price.unit_amount * (item.quantity || 1);
           mrrCents += monthlyCents;
-          const tier = TIERS.find((t) => t.priceCents === price.unit_amount)?.id;
+          const tier = tierForPrice(price);
           if (tier && byTier[tier]) {
             byTier[tier].count += 1;
             byTier[tier].mrrCents += monthlyCents;
@@ -342,17 +342,59 @@ router.get("/revenue", requireAdminKey, async (req, res) => {
 // subscription tier's Price ID. None of these return the actual secret
 // values, just whether each is present, so this is safe to expose behind the
 // existing admin-key gate.
-router.get("/billing-health", requireAdminKey, (req, res) => {
-  res.json({
-    stripeConfigured: stripeAvailable(),
-    webhookConfigured: !!process.env.STRIPE_WEBHOOK_SECRET,
-    tiers: TIERS.map((t) => ({
-      id: t.id,
-      name: t.name,
-      priceCents: t.priceCents,
-      priceConfigured: !!priceIdForTier(t.id),
-    })),
-  });
+router.get("/billing-health", requireAdminKey, async (req, res) => {
+  try {
+    const prices = stripeAvailable() ? await pricingStatus() : [];
+    res.json({
+      stripeConfigured: stripeAvailable(),
+      webhookConfigured: !!process.env.STRIPE_WEBHOOK_SECRET,
+      tiers: TIERS.map((t) => ({
+        id: t.id,
+        name: t.name,
+        priceCents: t.priceCents,
+        annualPriceCents: t.annualPriceCents,
+        monthlyConfigured: prices.some((p) => p.tier === t.id && p.interval === "monthly" && p.configured),
+        annualConfigured: prices.some((p) => p.tier === t.id && p.interval === "annual" && p.configured),
+        priceConfigured: prices.some((p) => p.tier === t.id && p.configured),
+      })),
+      prices,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: "Failed to check Stripe pricing.", detail: err.message });
+  }
+});
+
+// POST /api/admin/stripe/setup-pricing — creates the 2026 monthly + annual
+// prices in Stripe (safe to run again; existing ones are reused) and stops
+// the legacy $19.99/$29.99/$49.99 prices from being sold to NEW customers.
+// Existing subscriptions on legacy prices keep billing until migrated.
+router.post("/stripe/setup-pricing", requireAdminKey, async (req, res) => {
+  try {
+    if (!stripeAvailable()) return res.status(503).json({ error: "Stripe isn't configured yet." });
+    const report = await setupPricing({ archiveLegacy: req.body?.archiveLegacy !== false });
+    console.log("[admin] Stripe pricing setup:", JSON.stringify({ created: report.created.length, reused: report.reused.length, archived: report.archived.length }));
+    res.json(report);
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: "Stripe pricing setup failed.", detail: err.message });
+  }
+});
+
+// POST /api/admin/stripe/migrate-subscribers { dryRun } — moves subscribers on
+// legacy prices to the new lower price for the same plan from their next
+// renewal (no mid-cycle charge or credit). dryRun (default true) only lists them.
+router.post("/stripe/migrate-subscribers", requireAdminKey, async (req, res) => {
+  try {
+    if (!stripeAvailable()) return res.status(503).json({ error: "Stripe isn't configured yet." });
+    const dryRun = req.body?.dryRun !== false;
+    const report = await migrateLegacySubscribers({ dryRun });
+    console.log(`[admin] legacy subscriber migration (${dryRun ? "dry run" : "LIVE"}): ${report.moved.length} moved, ${report.skipped.length} skipped, ${report.errors.length} errors`);
+    res.json(report);
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: "Subscriber migration failed.", detail: err.message });
+  }
 });
 
 // GET /api/admin/hotpicks?days=30 — Hot Picks performance: per-day price,

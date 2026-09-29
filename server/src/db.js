@@ -11,7 +11,8 @@ const DATABASE_URL = process.env.DATABASE_URL;
 export const pool = DATABASE_URL
   ? new Pool({
       connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      // Hosted Postgres (Render) needs SSL; a local database doesn't offer it.
+      ssl: /localhost|127\.0\.0\.1|host=\//.test(DATABASE_URL) || process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
     })
   : null;
 
@@ -52,6 +53,9 @@ export function ensureSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS billing_interval TEXT; -- 'monthly' | 'annual'
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS current_period_end TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users (stripe_customer_id);
 
       -- Referral program: every user gets their own shareable code; signing
@@ -197,6 +201,15 @@ export function ensureSchema() {
       -- guessing usage from anything else. A row is written only for a scan
       -- that actually reached the model, not a request rejected for a bad
       -- image or for being over the cap.
+      -- Daily per-plan usage caps (AI chat questions, Fantasy Edge analyses).
+      CREATE TABLE IF NOT EXISTS feature_usage (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_feature_usage_lookup ON feature_usage (user_id, kind, created_at);
+
       CREATE TABLE IF NOT EXISTS bet_scan_usage (
         id BIGSERIAL PRIMARY KEY,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

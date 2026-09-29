@@ -33,7 +33,7 @@ router.post("/login", async (req, res) => {
 router.get("/me", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, email, created_at, tier, trial_ends_at, subscription_status, referral_code, bonus_access_until, marketing_opt_in FROM users WHERE id = $1",
+      "SELECT id, email, created_at, tier, trial_ends_at, subscription_status, referral_code, bonus_access_until, marketing_opt_in, billing_interval, cancel_at_period_end, current_period_end FROM users WHERE id = $1",
       [req.user.id]
     );
     if (!rows.length) return res.status(404).json({ error: "User not found." });

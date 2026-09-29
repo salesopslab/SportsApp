@@ -2,7 +2,7 @@ import { Router } from "express";
 import { pool, ensureSchema } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { withTier, requireTier } from "../middleware/tier.js";
-import { meetsTier } from "../services/tierService.js";
+import { meetsTier, limitsFor, nextTierUp, effectiveTier, tierById, LIMITS } from "../services/tierService.js";
 import { getScoresForSport } from "../services/oddsService.js";
 
 const router = Router();
@@ -18,14 +18,11 @@ router.use(withTier);
 
 const VALID_SETTLE_RESULTS = new Set(["win", "loss", "push", "cashed_out"]);
 
-// Ledger AI screenshot import is an Edge feature; Edge Pro gets "substantially
-// higher" (spec's words) rather than a separate quality tier -- both caps are
-// generous enough not to bite normal use, just abuse/cost. Calendar-month
+// Ledger AI screenshot import starts on Edge; monthly caps rise per plan
+// (tierService LIMITS: Edge 15, Edge+ 50, Edge Pro 150). Calendar-month
 // window, reset on the 1st.
-const SCAN_LIMIT_EDGE = 5;
-const SCAN_LIMIT_EDGE_PRO = 100;
-function scanLimitForAccess(access) {
-  return access.edgePro ? SCAN_LIMIT_EDGE_PRO : SCAN_LIMIT_EDGE;
+function scanLimitForUser(userRow) {
+  return limitsFor(userRow).scans || 0;
 }
 async function monthlyScanCount(userId) {
   const { rows } = await pool.query(
@@ -308,8 +305,11 @@ router.get("/", async (req, res) => {
   try {
     const access = {
       tier: req.tier || "none",
-      edge: meetsTier(req.userRow, "edge"),
-      edgePro: meetsTier(req.userRow, "edge_pro"),
+      // Field names predate the 2026 plan rename: `edge` = Ledger analytics +
+      // bankroll (Edge plan and up), `edgePro` = AI betting-history insights
+      // (Edge+ and up).
+      edge: meetsTier(req.userRow, "standard"),
+      edgePro: meetsTier(req.userRow, "edge"),
     };
     if (!pool) return res.json({ bets: [], record: emptyRecord(), access, bankroll: null });
     await ensureSchema();
@@ -350,7 +350,7 @@ router.get("/", async (req, res) => {
       // Ledger AI screenshot-import usage this calendar month, so the scan
       // screen can show "3 of 5 left" and gate the upload UI before the
       // person wastes a screenshot on a request that'll just 429.
-      const scanLimit = scanLimitForAccess(access);
+      const scanLimit = scanLimitForUser(req.userRow);
       const scansUsed = await monthlyScanCount(req.user.id);
       access.scanLimit = scanLimit;
       access.scansUsed = scansUsed;
@@ -367,7 +367,7 @@ router.get("/", async (req, res) => {
 // Set (or clear) the starting bankroll bankroll tracking is measured
 // against. Edge feature -- Basic tracking works fine without it.
 // Body: { startingBankroll: number|null }
-router.patch("/bankroll", requireTier("edge"), async (req, res) => {
+router.patch("/bankroll", requireTier("standard"), async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: "Bet tracking isn't available yet." });
     const { startingBankroll } = req.body || {};
@@ -391,7 +391,7 @@ router.patch("/bankroll", requireTier("edge"), async (req, res) => {
 // pregame, CLV) isn't tracked yet rather than guessing, never invent a
 // number. Returns the computed summary too, so the UI has real stat
 // callouts to show even independent of the AI prose.
-router.get("/insights", requireTier("edge_pro"), async (req, res) => {
+router.get("/insights", requireTier("edge"), async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: "Bet tracking isn't available yet." });
     await ensureSchema();
@@ -491,7 +491,7 @@ function parseImageDataUrl(raw) {
   return { mediaType, data: match[2] };
 }
 
-router.post("/scan", requireTier("edge"), async (req, res) => {
+router.post("/scan", requireTier("standard"), async (req, res) => {
   try {
     if (!ANTHROPIC_KEY) {
       return res.status(503).json({ error: "Screenshot import isn't configured yet." });
@@ -504,16 +504,16 @@ router.post("/scan", requireTier("edge"), async (req, res) => {
       return res.status(400).json({ error: "That image is too large -- try a tighter crop or a smaller screenshot." });
     }
 
-    const access = { edge: meetsTier(req.userRow, "edge"), edgePro: meetsTier(req.userRow, "edge_pro") };
-    const scanLimit = scanLimitForAccess(access);
+    const scanLimit = scanLimitForUser(req.userRow);
     const scansUsed = await monthlyScanCount(req.user.id);
     if (scansUsed >= scanLimit) {
+      const up = nextTierUp(effectiveTier(req.userRow));
       return res.status(429).json({
-        error: access.edgePro
-          ? `You've used all ${scanLimit} screenshot imports for this month -- it resets on the 1st.`
-          : `You've used all ${scanLimit} screenshot imports on Edge this month. Edge Pro gets ${SCAN_LIMIT_EDGE_PRO}/month -- or wait for the reset on the 1st.`,
+        error: up
+          ? `You've used all ${scanLimit} screenshot imports on your plan this month. ${tierById(up).name} gets ${LIMITS[up].scans}/month -- or wait for the reset on the 1st.`
+          : `You've used all ${scanLimit} screenshot imports for this month -- it resets on the 1st.`,
         scansUsed, scansLimit: scanLimit,
-        upgradeTier: access.edgePro ? null : "edge_pro",
+        upgradeTier: up,
       });
     }
 

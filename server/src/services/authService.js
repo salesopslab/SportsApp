@@ -26,6 +26,10 @@ export function toPublicUser(row) {
     referralCode: row.referral_code ?? null,
     bonusAccessUntil: row.bonus_access_until ?? null,
     marketingOptIn: !!row.marketing_opt_in,
+    subscriptionStatus: row.subscription_status ?? null,
+    billingInterval: row.billing_interval ?? null,
+    cancelAtPeriodEnd: !!row.cancel_at_period_end,
+    currentPeriodEnd: row.current_period_end ?? null,
   };
 }
 

@@ -38,7 +38,7 @@
     const data = await res.json().catch(() => ({}));
     if(res.status === 402){
       const err = new Error(data.error || 'Upgrade required');
-      err.paywall = { requiredTier: data.requiredTier || 'standard', loggedIn: data.loggedIn };
+      err.paywall = { requiredTier: data.requiredTier || 'standard', loggedIn: data.loggedIn, limitReached: !!data.limitReached, message: data.error || '' };
       throw err;
     }
     if(!res.ok) throw new Error(data.error || `Something went wrong (${res.status}).`);
@@ -46,7 +46,8 @@
   }
 
   function paywallHtml(pw){
-    return upgradePromptHtml(pw.requiredTier, 'Fantasy Edge is included with every paid plan and your free trial.', { signedOut: !pw.loggedIn });
+    if(pw.loggedIn === false) return upgradePromptHtml(pw.requiredTier, 'Create a free account to use Fantasy Edge — the Free plan includes 3 analyses a day.', { signedOut: true });
+    return upgradePromptHtml(pw.requiredTier, pw.message || 'Upgrade for more Fantasy Edge analyses.');
   }
 
   function showError(target, err){

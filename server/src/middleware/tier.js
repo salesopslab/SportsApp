@@ -26,7 +26,7 @@ export async function withTier(req, _res, next) {
   try {
     if (pool) {
       const { rows } = await pool.query(
-        "SELECT id, email, tier, trial_ends_at, subscription_status, archived_at FROM users WHERE id = $1",
+        "SELECT id, email, tier, trial_ends_at, subscription_status, bonus_access_until, archived_at FROM users WHERE id = $1",
         [req.user.id]
       );
       // An archived account falls through exactly like an anonymous visitor

@@ -740,6 +740,44 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
   .fe-players{ grid-template-columns:1fr; }
   .nav-btn{ font-size:10.5px; }
 }
+
+/* ---------- Pricing: Free | Edge | Edge+ | Edge Pro ---------- */
+.pricing-modal-card{ max-width:1120px !important; }
+.pricing-modal-card h2{ text-align:center; }
+.pricing-modal-card .pricing-intro{ text-align:center; }
+.billing-toggle{ display:flex; width:max-content; max-width:100%; margin:4px auto 16px; border:1px solid var(--line); border-radius:22px; overflow:hidden; }
+.billing-toggle button{ border:none; background:var(--surface); color:var(--sub); font:600 13px 'Inter',sans-serif; padding:8px 16px; cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.billing-toggle button + button{ border-left:1px solid var(--line); }
+.billing-toggle button.active{ background:var(--amber); color:var(--bg); }
+.save-pill{ font-size:10.5px; font-weight:700; padding:2px 6px; border-radius:10px; background:rgba(44,138,85,0.15); color:var(--green); }
+.billing-toggle button.active .save-pill{ background:rgba(255,255,255,0.25); color:var(--bg); }
+.pricing-cancel-note{ text-align:center; font-size:12.5px; color:var(--amber); margin-bottom:8px; }
+.pricing-cancel-note:empty{ display:none; }
+.plan-grid{ display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:14px; align-items:stretch; }
+.plan-card{ position:relative; display:flex; flex-direction:column; border:1px solid var(--line); border-radius:14px; padding:18px 16px 16px; background:var(--surface); min-width:0; }
+.plan-card.popular{ border:2px solid var(--amber); box-shadow:0 8px 26px rgba(199,127,29,0.18); padding-top:24px; }
+.plan-card.current{ border-color:var(--green); }
+.plan-badge{ position:absolute; top:-11px; left:50%; transform:translateX(-50%); background:var(--amber); color:var(--bg); font-size:10.5px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase; padding:4px 10px; border-radius:12px; white-space:nowrap; }
+.plan-name{ font-family:'Oswald',sans-serif; font-size:20px; font-weight:600; letter-spacing:0.3px; }
+.plan-price{ font-family:'Oswald',sans-serif; font-size:30px; font-weight:600; margin-top:6px; line-height:1.1; }
+.plan-price span{ font-family:'Inter',sans-serif; font-size:12.5px; font-weight:500; color:var(--sub); margin-left:2px; }
+.plan-price-sub{ font-size:12px; color:var(--sub); margin-top:4px; min-height:32px; line-height:1.4; }
+.plan-price-sub b{ color:var(--green); }
+.plan-cta{ width:100%; margin-top:12px; padding:11px 10px; border-radius:10px; border:1.5px solid var(--amber); background:transparent; color:var(--amber); font:700 14px 'Inter',sans-serif; cursor:pointer; }
+.plan-cta.primary{ background:var(--amber); color:var(--bg); }
+.plan-cta:disabled{ border-color:var(--green); color:var(--green); background:transparent; cursor:default; }
+.plan-cta-note{ font-size:11.5px; color:var(--sub); text-align:center; margin-top:6px; }
+.plan-tagline{ font-size:12.5px; font-weight:700; margin:14px 0 6px; }
+.plan-features{ list-style:none; margin:0; padding:0; font-size:12.5px; line-height:1.45; }
+.plan-features li{ position:relative; padding-left:20px; margin:6px 0; overflow-wrap:anywhere; }
+.plan-features li::before{ content:'✓'; position:absolute; left:0; top:0; color:var(--green); font-weight:700; }
+.plan-card.free .plan-features li::before{ color:var(--sub); }
+.pricing-foot{ font-size:11.5px; color:var(--sub); text-align:center; margin-top:14px; }
+@media (max-width:1000px){ .plan-grid{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
+@media (max-width:600px){
+  .plan-grid{ grid-template-columns:1fr; gap:18px; }
+  .plan-price-sub{ min-height:0; }
+}
 </style>
 <body>
 
@@ -785,11 +823,17 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
   <div class="modal-overlay hidden" id="pricingModal">
     <div class="modal-card pricing-modal-card">
       <button class="modal-close" id="pricingModalClose">×</button>
-      <h2>Upgrade your plan</h2>
-      <div class="pricing-intro">Every plan starts with a 3-day free trial with full Edge Pro access — no charge until it ends.</div>
+      <h2>Choose your plan</h2>
+      <div class="pricing-intro">Every new account gets a 7-day free trial with full Edge Pro access — no card required.</div>
       <button class="auth-demo-link" id="pricingDemoLink"><span class="play-ic"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></span>Not ready to commit? Watch a 2-min demo first</button>
       <div class="pricing-error" id="pricingError"></div>
-      <div id="pricingTiers"><div class="board-msg"><div class="spin"></div></div></div>
+      <div class="billing-toggle" id="billingToggle" role="radiogroup" aria-label="Billing period">
+        <button type="button" role="radio" data-interval="monthly" class="active" aria-checked="true">Monthly</button>
+        <button type="button" role="radio" data-interval="annual" aria-checked="false">Annual <span class="save-pill">Save 17%</span></button>
+      </div>
+      <div class="pricing-cancel-note" id="pricingCancelNote"></div>
+      <div id="pricingTiers" class="plan-grid"><div class="board-msg"><div class="spin"></div></div></div>
+      <div class="pricing-foot">Prices in USD. Cancel anytime from Manage billing — you keep access until the end of the period you paid for.</div>
       <button class="manage-billing-link hidden" id="manageBillingBtn">Manage billing / cancel subscription</button>
     </div>
   </div>
@@ -1287,7 +1331,7 @@ function apiFetch(path, opts = {}) {
 }
 
 let tiersCache = null;
-let trialDaysCache = 3;
+let trialDaysCache = 7;
 
 function tierDisplayName(tierId){
   const t = (tiersCache || []).find(x => x.id === tierId);
@@ -1299,7 +1343,7 @@ function tierDisplayName(tierId){
 // (e.g. the My Picks Edge/Edge Pro analytics) against currentUser.tier.
 // The server is still the real gate on any actual data/route; this just
 // decides what to render without a round trip.
-const CLIENT_TIER_RANK = { none:0, expired:0, standard:1, edge:2, edge_pro:3, trial:3 };
+const CLIENT_TIER_RANK = { none:0, expired:0, standard:1, edge:2, edge_pro:3, trial:3 }; // standard = "Edge", edge = "Edge+"
 function meetsTierClient(minTierId){
   const t = currentUser ? currentUser.tier : 'none';
   return (CLIENT_TIER_RANK[t] ?? 0) >= (CLIENT_TIER_RANK[minTierId] ?? 0);
@@ -1346,7 +1390,7 @@ function updateTierBadge(){
   }
 }
 updateProfileButton();
-// Pre-warm the tier name list so the badge shows "Standard"/"Edge"/"Edge Pro"
+// Pre-warm the tier name list so the badge shows "Edge"/"Edge+"/"Edge Pro"
 // right away instead of the raw tier id until the pricing modal is opened.
 fetchTiers().then(updateTierBadge);
 
@@ -1367,56 +1411,113 @@ async function refreshAccount(){
 }
 
 // ---------------------------------------------------------------------------
-// Pricing / upgrade modal
+// Pricing / upgrade modal — Free | Edge | Edge+ | Edge Pro, Monthly/Annual
 // ---------------------------------------------------------------------------
+let freePlanCache = null;
+let pricingInterval = 'monthly'; // default view is always Monthly
 async function fetchTiers(){
   if(tiersCache) return tiersCache;
   try{
     const res = await fetch(`${API}/api/billing/tiers`);
     const data = await res.json();
     tiersCache = data.tiers || [];
-    trialDaysCache = data.trialDays || 3;
+    freePlanCache = data.free || null;
+    trialDaysCache = data.trialDays || 7;
   }catch(e){ tiersCache = []; }
   return tiersCache;
 }
 
-function renderTierCard(t){
-  const isCurrent = currentUser && currentUser.tier === t.id;
-  const price = `$${(t.priceCents/100).toFixed(2)}<span>/mo</span>`;
+const fmtUsd = (cents) => `$${(cents/100).toFixed(2)}`;
+const fmtUsdShort = (cents) => cents % 100 === 0 ? `$${cents/100}` : fmtUsd(cents);
+function annualSavingsCents(t){ return t.priceCents * 12 - t.annualPriceCents; }
+function annualSavingsPct(t){ return Math.round(annualSavingsCents(t) / (t.priceCents * 12) * 100); }
+
+// What the button on each paid card does for this visitor.
+function planAction(t){
+  const u = currentUser;
+  if(!u) return { label: `Start ${trialDaysCache}-Day Free Trial`, kind: 'signup' };
+  const subscribed = ['standard','edge','edge_pro'].includes(u.rawTier) && ['active','trialing','past_due'].includes(u.subscriptionStatus || 'active');
+  if(subscribed){
+    const sameTier = u.rawTier === t.id;
+    const sameInterval = (u.billingInterval || 'monthly') === pricingInterval;
+    if(sameTier && sameInterval) return { label: '✓ Current plan', kind: 'current' };
+    if(sameTier) return { label: pricingInterval === 'annual' ? 'Switch to annual' : 'Switch to monthly', kind: 'change' };
+    const up = CLIENT_TIER_RANK[t.id] > CLIENT_TIER_RANK[u.rawTier];
+    return { label: `${up ? 'Upgrade' : 'Downgrade'} to ${t.name}`, kind: 'change' };
+  }
+  if(u.tier === 'trial') return { label: `Choose ${t.name}`, kind: 'checkout', note: 'No charge until your free trial ends.' };
+  return { label: `Get ${t.name}`, kind: 'checkout' };
+}
+
+function renderPlanCard(t){
+  const annual = pricingInterval === 'annual';
+  const a = planAction(t);
+  const price = annual
+    ? `<div class="plan-price">${fmtUsdShort(t.annualPriceCents)}<span>/year</span></div>
+       <div class="plan-price-sub">${fmtUsd(Math.round(t.annualPriceCents/12))}/mo billed yearly · <b>Save ${fmtUsd(annualSavingsCents(t))}</b></div>`
+    : `<div class="plan-price">${fmtUsd(t.priceCents)}<span>/month</span></div>
+       <div class="plan-price-sub">or ${fmtUsdShort(t.annualPriceCents)}/year — save ${annualSavingsPct(t)}%</div>`;
   return `
-    <div class="tier-card${isCurrent ? ' current' : ''}">
-      <div class="tier-card-top">
-        <span class="tier-card-name">${t.name}</span>
-        <span class="tier-card-price">${price}</span>
-      </div>
-      <div class="tier-card-blurb">${t.blurb}</div>
-      <button class="tier-card-btn${isCurrent ? ' current-btn' : ''}" data-tier="${t.id}" ${isCurrent ? 'disabled' : ''}>
-        ${isCurrent ? '✓ Current plan' : 'Upgrade'}
-      </button>
-    </div>
-  `;
+    <div class="plan-card${t.popular ? ' popular' : ''}${a.kind === 'current' ? ' current' : ''}">
+      ${t.popular ? '<div class="plan-badge">Most popular</div>' : ''}
+      <div class="plan-name">${escapeHtml(t.name)}</div>
+      ${price}
+      <button class="plan-cta${t.popular ? ' primary' : ''}" data-tier="${t.id}" data-kind="${a.kind}" ${a.kind === 'current' ? 'disabled' : ''}>${escapeHtml(a.label)}</button>
+      ${a.note ? `<div class="plan-cta-note">${escapeHtml(a.note)}</div>` : ''}
+      <div class="plan-tagline">${escapeHtml(t.tagline || '')}</div>
+      <ul class="plan-features">${(t.features || []).map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
+    </div>`;
+}
+function renderFreeCard(){
+  const f = freePlanCache || { name:'Free', priceCents:0, tagline:'', features:[] };
+  const onFree = currentUser && ['none','expired'].includes(currentUser.tier);
+  const btn = !currentUser
+    ? `<button class="plan-cta" data-kind="free-signup">Get Started Free</button>`
+    : onFree ? `<button class="plan-cta" data-kind="current" disabled>✓ Current plan</button>` : '';
+  return `
+    <div class="plan-card free${onFree ? ' current' : ''}">
+      <div class="plan-name">${escapeHtml(f.name)}</div>
+      <div class="plan-price">$0<span>/month</span></div>
+      <div class="plan-price-sub">Free forever</div>
+      ${btn}
+      <div class="plan-tagline">${escapeHtml(f.tagline || '')}</div>
+      <ul class="plan-features">${(f.features || []).map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
+    </div>`;
 }
 
 async function renderPricingModal(){
   const container = document.getElementById('pricingTiers');
   const tiers = await fetchTiers();
   document.querySelector('.pricing-intro').textContent =
-    `Every plan starts with a ${trialDaysCache}-day free trial with full Edge Pro access — no charge until it ends.`;
+    `Every new account gets a ${trialDaysCache}-day free trial with full Edge Pro access — no card required.`;
+  document.querySelectorAll('#billingToggle [data-interval]').forEach(b => {
+    b.classList.toggle('active', b.dataset.interval === pricingInterval);
+    b.setAttribute('aria-checked', String(b.dataset.interval === pricingInterval));
+  });
   if(!tiers.length){
     container.innerHTML = '<div class="board-msg">Couldn\'t load plans right now — try again in a moment.</div>';
     return;
   }
-  container.innerHTML = tiers.map(renderTierCard).join('');
-  container.querySelectorAll('.tier-card-btn:not(:disabled)').forEach(btn=>{
-    btn.addEventListener('click', ()=>startCheckout(btn.dataset.tier, btn));
+  container.innerHTML = renderFreeCard() + tiers.map(renderPlanCard).join('');
+  container.querySelectorAll('.plan-cta:not(:disabled)').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const kind = btn.dataset.kind;
+      if(kind === 'signup' || kind === 'free-signup'){ closePricingModal(); openAuthModal('signup'); return; }
+      if(kind === 'change') return changePlan(btn.dataset.tier, btn);
+      startCheckout(btn.dataset.tier, btn);
+    });
   });
   const manageBtn = document.getElementById('manageBillingBtn');
-  // Only show "manage billing" once someone actually has a paid/trial
-  // account worth managing — a never-subscribed visitor has nothing to manage.
-  manageBtn.classList.toggle('hidden', !currentUser || currentUser.tier === 'none');
-  // The demo link is for people still deciding, not existing subscribers --
-  // most relevant for a logged-out visitor who lands here (e.g. via a "See
-  // plans" upgrade prompt) and hasn't seen the product in action yet.
+  // Only show "manage billing" once someone actually has a subscription.
+  manageBtn.classList.toggle('hidden', !currentUser || !['standard','edge','edge_pro'].includes(currentUser.rawTier));
+  const cancelNote = document.getElementById('pricingCancelNote');
+  if(cancelNote){
+    const u = currentUser;
+    cancelNote.textContent = u && u.cancelAtPeriodEnd && u.currentPeriodEnd
+      ? `Your subscription is set to cancel on ${new Date(u.currentPeriodEnd).toLocaleDateString()} — choose a plan to keep it.`
+      : '';
+  }
+  // The demo link is for people still deciding, not existing subscribers.
   document.getElementById('pricingDemoLink').classList.toggle('show', !currentUser);
 }
 
@@ -1472,18 +1573,53 @@ async function startCheckout(tierId, btnEl){
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         tier: tierId,
+        interval: pricingInterval,
         successUrl: window.location.href.split('?')[0] + '?upgraded=1',
         cancelUrl: window.location.href.split('?')[0]
       })
     });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || 'Failed to start checkout.');
+    if(data.changed){ await refreshAccount(); renderPricingModal(); return; }
     window.location.href = data.url;
   }catch(e){
     errEl.textContent = e.message;
-    if(btnEl){ btnEl.disabled = false; btnEl.textContent = 'Upgrade'; }
+    if(btnEl){ btnEl.disabled = false; btnEl.textContent = 'Try again'; }
   }
 }
+
+// Upgrade / downgrade / monthly<->annual for an existing subscriber. Stripe
+// prorates the difference; access switches right away.
+async function changePlan(tierId, btnEl){
+  const t = (tiersCache || []).find(x => x.id === tierId);
+  const annual = pricingInterval === 'annual';
+  const price = t ? (annual ? `${fmtUsdShort(t.annualPriceCents)}/year` : `${fmtUsd(t.priceCents)}/month`) : '';
+  const up = t && CLIENT_TIER_RANK[tierId] > CLIENT_TIER_RANK[currentUser.rawTier];
+  const msg = `Switch to ${t ? t.name : tierId} (${price})? ${up ? "You'll be charged the prorated difference for the rest of this billing period." : "The unused part of your current plan is credited to your next bill."}`;
+  if(!confirm(msg)) return;
+  const errEl = document.getElementById('pricingError');
+  errEl.textContent = '';
+  if(btnEl){ btnEl.disabled = true; btnEl.textContent = 'Updating…'; }
+  try{
+    const res = await apiFetch('/api/billing/change-plan', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ tier: tierId, interval: pricingInterval })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Could not change your plan.');
+    await refreshAccount();
+    renderPricingModal();
+    showHintToast('Plan updated', `You're now on ${t ? t.name : 'your new plan'}${annual ? ' (annual)' : ''}.`);
+  }catch(e){
+    errEl.textContent = e.message;
+    if(btnEl){ btnEl.disabled = false; btnEl.textContent = 'Try again'; }
+  }
+}
+document.querySelectorAll('#billingToggle [data-interval]').forEach(b => b.addEventListener('click', ()=>{
+  pricingInterval = b.dataset.interval;
+  renderPricingModal();
+}));
 
 document.getElementById('manageBillingBtn').addEventListener('click', async ()=>{
   const errEl = document.getElementById('pricingError');
@@ -2323,12 +2459,13 @@ function renderScanQuotaNote(){
   if(!el) return;
   const acc = picksCache.access;
   if(!acc || acc.scanLimit == null){ el.textContent = ''; return; }
-  el.textContent = `${acc.scansRemaining} of ${acc.scanLimit} screenshot imports left this month${acc.edgePro ? '' : ' on Edge'}.`;
+  el.textContent = `${acc.scansRemaining} of ${acc.scanLimit} screenshot imports left this month.`;
 }
 function scanQuotaGateHtml(access){
-  return access.edgePro
+  const up = { standard:'edge', edge:'edge_pro' }[currentUser && currentUser.tier];
+  return !up
     ? `<div class="upgrade-prompt"><div class="lock">📸</div><div class="headline">Out of screenshot imports</div><div class="sub">You've used all ${access.scanLimit} for this month — it resets on the 1st.</div></div>`
-    : upgradePromptHtml('edge_pro', `You've used all ${access.scanLimit} screenshot imports on Edge this month. Edge Pro gets ${access.scanLimit < 100 ? 'up to 100' : 'substantially more'} per month.`);
+    : upgradePromptHtml(up, `You've used all ${access.scanLimit} screenshot imports on your plan this month. ${tierDisplayName(up)} gets ${up === 'edge' ? 50 : 150} per month.`);
 }
 async function openScanScreen(){
   if(!currentUser){ closeTrackBetModal(); openAuthModal(); return; }
@@ -2343,7 +2480,7 @@ async function openScanScreen(){
   }
   const acc = picksCache.access || {};
   if(!acc.edge){
-    gateEl.innerHTML = upgradePromptHtml('edge', 'Import bet slip screenshots and skip manual entry — Ledger AI reads the odds, wager and payout for you.');
+    gateEl.innerHTML = upgradePromptHtml('standard', 'Import bet slip screenshots and skip manual entry — Ledger AI reads the odds, wager and payout for you.');
     wireUpgradePrompts(gateEl);
     document.getElementById('scanUpload').classList.add('hidden');
   } else if(acc.scanLimit != null && acc.scansRemaining <= 0){
@@ -3018,7 +3155,7 @@ function renderPicksScreen(){
     `;
     analyticsBlock = filters + renderBankrollSection(bankroll) + renderPerformanceSection(filteredBets);
   } else {
-    analyticsBlock = `<div class="picks-upsell">${upgradePromptHtml('edge', 'See your Net P/L, ROI, units won/lost, performance by sport & bet type, bankroll tracking, and history filters.')}</div>`;
+    analyticsBlock = `<div class="picks-upsell">${upgradePromptHtml('standard', 'See your Net P/L, ROI, units won/lost, performance by sport & bet type, bankroll tracking, and history filters.')}</div>`;
   }
 
   const insightsBlock = renderInsightsSection(acc);
@@ -3198,7 +3335,7 @@ function renderBankrollSection(bankroll){
 // picksInsights until the next loadPicks().
 function renderInsightsSection(acc){
   if(!acc.edgePro){
-    return `<div class="picks-upsell">${upgradePromptHtml('edge_pro', 'Get AI analysis of your betting history — your strongest and weakest sports and bet types, favorite vs. underdog, home vs. away, streaks, and personalized suggestions.')}</div>`;
+    return `<div class="picks-upsell">${upgradePromptHtml('edge', 'Get AI analysis of your betting history — your strongest and weakest sports and bet types, favorite vs. underdog, home vs. away, streaks, and personalized suggestions.')}</div>`;
   }
   if(picksInsightsLoading){
     return `<div class="picks-insights"><h4>AI Insights</h4><div class="board-msg" style="padding:12px 0;"><div class="spin"></div><div>Analyzing your betting history…</div></div></div>`;
@@ -4062,7 +4199,7 @@ function renderGameBreakdown(d){
     ${lm.locked ? `
     <div class="section">
       <h3>Original lines &amp; line movement</h3>
-      ${upgradePromptHtml(lm.requiredTier || 'edge', 'See the opening line and every move since, for every game.')}
+      ${upgradePromptHtml(lm.requiredTier || 'standard', 'See the opening line and every move since, for every game.')}
     </div>
     ` : `
     <div class="section">
@@ -4243,7 +4380,9 @@ async function sendChat(){
         const data = await res.json().catch(()=>({}));
         const err = new Error('paywalled');
         err.paywalled = true;
-        err.requiredTier = data.requiredTier || 'edge_pro';
+        err.requiredTier = data.requiredTier || 'standard';
+        err.serverMessage = data.error || '';
+        err.loggedIn = data.loggedIn !== false;
         throw err;
       }
       if(!res.ok) throw new Error('bad status ' + res.status);
@@ -4254,12 +4393,15 @@ async function sendChat(){
     }
   }
 
-  function showUpgradeInChat(requiredTier){
+  function showUpgradeInChat(requiredTier, message, loggedIn){
     thinking.remove();
     const div = document.createElement('div');
     div.className = 'msg upgrade';
     const tierName = tierDisplayName(requiredTier);
-    div.innerHTML = `AI picks advice is ${articleFor(tierName)} ${tierName} feature.<br><button class="upgrade-cta">See plans</button>`;
+    const text = message ? escapeHtml(message) : `AI picks advice is ${articleFor(tierName)} ${tierName} feature.`;
+    div.innerHTML = loggedIn === false
+      ? `${text}<br><button class="upgrade-cta" data-action="signin">Log in / Sign up free</button>`
+      : `${text}<br><button class="upgrade-cta">See plans</button>`;
     document.getElementById('chatLog').appendChild(div);
     document.getElementById('chatLog').scrollTop = document.getElementById('chatLog').scrollHeight;
     wireUpgradePrompts(div);
@@ -4277,7 +4419,7 @@ async function sendChat(){
     try{
       reply = await attempt(75000);
     }catch(firstErr){
-      if(firstErr.paywalled){ showUpgradeInChat(firstErr.requiredTier); return; }
+      if(firstErr.paywalled){ showUpgradeInChat(firstErr.requiredTier, firstErr.serverMessage, firstErr.loggedIn); return; }
       // Either a genuinely slow reply, or (rarely, on Render's free tier)
       // a cold-started backend after ~15 min idle. Either way: don't give
       // up, just say it's taking longer than usual and try once more.
@@ -4290,7 +4432,7 @@ async function sendChat(){
       thinking.textContent = "The AI didn't return an answer — try rephrasing the question.";
     }
   }catch(e){
-    if(e.paywalled){ showUpgradeInChat(e.requiredTier); return; }
+    if(e.paywalled){ showUpgradeInChat(e.requiredTier, e.serverMessage, e.loggedIn); return; }
     thinking.textContent = "Couldn't reach the AI server after waiting. Please wait a moment and send your message again.";
   }finally{
     clearTimeout(progressTimer);
@@ -4518,6 +4660,8 @@ function showMoverAlert(m){
 }
 
 async function checkMovers(){
+  // Pop-up move alerts are an Edge+ feature; the Big Moves list itself is on Edge.
+  if(!meetsTierClient('edge')) return;
   try{
     const res = await apiFetch('/api/movers?limit=3&minutes=60');
     if(!res.ok) return; // includes 402 (not entitled) — toast alerts just stay quiet
@@ -4590,7 +4734,7 @@ async function refreshBigLines(){
     const res = await apiFetch('/api/movers?limit=10&minutes=180');
     if(res.status === 402){
       const data = await res.json().catch(()=>({}));
-      bigLinesPaywalled = data.requiredTier || 'edge';
+      bigLinesPaywalled = data.requiredTier || 'standard';
       bigLinesSignedOut = data.loggedIn === false;
       bigLinesData = [];
       bigMoverKeys = new Set();
