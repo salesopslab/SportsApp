@@ -132,19 +132,23 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .sport-tab.active{ color:var(--bg); background:var(--amber); border-color:var(--amber); font-weight:600; }
 .sport-tab.active:hover{ filter:brightness(0.94); }
 
-.value-banner{ margin:14px 20px 0; padding:14px 16px; border-radius:12px; background:var(--surface2); border:1px solid var(--line); display:flex; align-items:center; gap:12px; position:relative; }
+.value-banner{ margin:14px 20px 0; padding:14px 16px; border-radius:12px; background:var(--surface2); border:1px solid var(--line); display:flex; align-items:center; gap:16px; position:relative; }
+.value-banner-content{ flex:1; min-width:0; }
+.value-banner-headline{ font-family:'Oswald',sans-serif; font-size:16px; font-weight:600; color:var(--text); margin-bottom:3px; }
+.value-banner-text{ font-size:13px; line-height:1.45; color:var(--sub); }
+.value-banner-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+.vb-chip{ display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:20px; background:var(--surface); border:1px solid var(--line); font-size:11.5px; font-weight:600; color:var(--text); white-space:nowrap; }
 @media (max-width:899px){
   /* The .app shell stays capped at 460px wide for any viewport under 900px
      (not just phones -- most tablet and narrow-desktop windows land here
      too), so text + two pill buttons in one row doesn't have room without
-     squeezing the text into a tall, barely-readable column. */
+     squeezing the content into a tall, barely-readable column. */
   .value-banner{ flex-direction:column; align-items:stretch; padding:14px 16px 12px; gap:10px; }
-  .value-banner-text{ padding-right:22px; }
+  .value-banner-content{ padding-right:22px; }
   .value-banner-actions{ flex-wrap:wrap; gap:8px; }
   .value-banner-btn, .value-banner-demo-btn{ flex:1 1 auto; justify-content:center; }
   .value-banner-close{ position:absolute; top:8px; right:8px; padding:2px 6px; }
 }
-.value-banner-text{ flex:1; font-size:13px; line-height:1.45; color:var(--text); }
 .value-banner-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .value-banner-btn{ padding:9px 16px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; }
 .value-banner-demo-btn{ display:inline-flex; align-items:center; gap:6px; padding:9px 16px 9px 13px; border-radius:20px; border:1px solid var(--line); background:var(--surface); color:var(--text); font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; transition:background .15s,border-color .15s; }
@@ -850,7 +854,16 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
   <!-- BOARD -->
   <div class="screen active" id="board">
     <div class="value-banner" id="valueBanner">
-      <div class="value-banner-text">AI-powered picks backed by live odds, weather, injury reports, and line-movement tracking — everything you need to research a game before you bet, for every major sport.</div>
+      <div class="value-banner-content">
+        <div class="value-banner-headline">Know more than the line.</div>
+        <div class="value-banner-text">Real-time weather, injury reports, and line-movement data — AI-powered research on every game, before you bet.</div>
+        <div class="value-banner-chips">
+          <span class="vb-chip">⛅ Live weather</span>
+          <span class="vb-chip">🏥 Injury reports</span>
+          <span class="vb-chip">📈 Line moves</span>
+          <span class="vb-chip">🤖 AI picks</span>
+        </div>
+      </div>
       <div class="value-banner-actions">
         <button class="value-banner-btn" id="valueBannerCta">Start free trial</button>
         <button class="value-banner-demo-btn" id="valueBannerDemo"><span class="play-ic"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></span>Watch demo</button>
