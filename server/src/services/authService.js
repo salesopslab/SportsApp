@@ -86,6 +86,7 @@ export async function login(email, password) {
   const row = rows[0];
   const ok = await bcrypt.compare(password, row.password_hash);
   if (!ok) throw new Error("Invalid email or password.");
+  if (row.archived_at) throw new Error("This account has been archived. Contact support if this is a mistake.");
 
   const user = toPublicUser(row);
   return { user, token: signToken(user) };

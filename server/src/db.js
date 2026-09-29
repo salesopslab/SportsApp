@@ -68,6 +68,15 @@ export function ensureSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_ip TEXT;
       CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users (referral_code);
 
+      -- Soft-delete: an archived account is blocked from logging in (and any
+      -- existing session token stops working immediately -- see
+      -- middleware/auth.js and middleware/tier.js) but keeps its row and all
+      -- related data (bets, referrals, purchases) intact and reversible via
+      -- the admin dashboard's "Restore" action. This is distinct from the
+      -- admin dashboard's hard-delete, which actually removes the row.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_users_archived_at ON users (archived_at);
+
       -- Bankroll tracking is an Edge-tier bet-tracker feature: the user sets
       -- a starting bankroll once, and current bankroll (starting + net P/L)
       -- is derived from it rather than stored, so it always stays correct

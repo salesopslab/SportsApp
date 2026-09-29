@@ -54,36 +54,40 @@ router.get("/usage", requireAdminKey, async (req, res) => {
   }
 });
 
-// GET /api/admin/users?limit=100&offset=0&search=foo — the signups list, most
-// recent first, with each user's tier/trial/subscription state for the
-// "manage subscription tier per user" admin need.
+// GET /api/admin/users?limit=100&offset=0&search=foo&status=active|archived|all
+// — the signups list, most recent first, with each user's tier/trial/
+// subscription/archived state for the admin dashboard. Defaults to hiding
+// archived accounts so the normal list stays clean; pass status=archived or
+// status=all to see them.
 router.get("/users", requireAdminKey, async (req, res) => {
   try {
     if (!pool) return res.json({ available: false, users: [] });
     const limit = Math.min(Number(req.query.limit) || 100, 500);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
     const search = (req.query.search || "").trim();
+    const status = ["active", "archived", "all"].includes(req.query.status) ? req.query.status : "active";
 
     const params = [];
-    let where = "";
+    const conditions = [];
     if (search) {
       params.push(`%${search.toLowerCase()}%`);
-      where = `WHERE LOWER(email) LIKE $${params.length}`;
+      conditions.push(`LOWER(email) LIKE $${params.length}`);
     }
+    if (status === "active") conditions.push("archived_at IS NULL");
+    if (status === "archived") conditions.push("archived_at IS NOT NULL");
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     params.push(limit, offset);
 
     const { rows } = await pool.query(
       `SELECT id, email, created_at, tier, trial_ends_at, subscription_status,
-              stripe_customer_id, stripe_subscription_id
+              stripe_customer_id, stripe_subscription_id, archived_at
        FROM users ${where}
        ORDER BY created_at DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
-    const { rows: countRows } = await pool.query(
-      `SELECT COUNT(*) FROM users ${where}`,
-      search ? [params[0]] : []
-    );
+    const countParams = params.slice(0, params.length - 2);
+    const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM users ${where}`, countParams);
 
     const users = rows.map((r) => ({
       id: r.id,
@@ -94,6 +98,7 @@ router.get("/users", requireAdminKey, async (req, res) => {
       trialEndsAt: r.trial_ends_at,
       subscriptionStatus: r.subscription_status,
       hasStripeCustomer: !!r.stripe_customer_id,
+      archivedAt: r.archived_at,
     }));
 
     res.json({ available: true, total: Number(countRows[0].count), users });
@@ -148,6 +153,82 @@ router.post("/users/:id/tier", requireAdminKey, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update tier.", detail: err.message });
+  }
+});
+
+// POST /api/admin/users/:id/archive — soft-delete: blocks the account from
+// logging in (and cuts off any already-issued session token — see
+// middleware/auth.js and middleware/tier.js) but keeps the row and all
+// related data. Reversible via /unarchive. Does NOT touch their Stripe
+// subscription — cancel that separately in the Stripe dashboard if needed.
+router.post("/users/:id/archive", requireAdminKey, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured." });
+    const { rows } = await pool.query(
+      "UPDATE users SET archived_at = now() WHERE id = $1 AND archived_at IS NULL RETURNING id, email, archived_at",
+      [req.params.id]
+    );
+    if (!rows.length) {
+      const exists = await pool.query("SELECT id FROM users WHERE id = $1", [req.params.id]);
+      if (!exists.rows.length) return res.status(404).json({ error: "User not found." });
+      return res.status(409).json({ error: "User is already archived." });
+    }
+    res.json({ user: rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to archive user.", detail: err.message });
+  }
+});
+
+// POST /api/admin/users/:id/unarchive — restores an archived account to
+// normal (they can log in again immediately with their existing password).
+router.post("/users/:id/unarchive", requireAdminKey, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured." });
+    const { rows } = await pool.query(
+      "UPDATE users SET archived_at = NULL WHERE id = $1 RETURNING id, email, archived_at",
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "User not found." });
+    res.json({ user: rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to restore user.", detail: err.message });
+  }
+});
+
+// DELETE /api/admin/users/:id { confirmEmail } — permanently deletes the user
+// row and, via ON DELETE CASCADE, every bet, hot_pick_purchase, and referral
+// record tied to it. This cannot be undone, so it requires the caller to
+// echo back the user's exact email as a confirmation (the admin dashboard
+// makes the admin type it, not just click a button) — a wrong or missing
+// confirmEmail is rejected before anything is touched. It does NOT cancel
+// their Stripe subscription; do that in the Stripe dashboard first if they
+// have an active one, or they'll keep being billed with no account left to
+// show for it.
+router.delete("/users/:id", requireAdminKey, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured." });
+    const { rows: existing } = await pool.query("SELECT id, email FROM users WHERE id = $1", [req.params.id]);
+    if (!existing.length) return res.status(404).json({ error: "User not found." });
+
+    const confirmEmail = String(req.body?.confirmEmail || "").trim().toLowerCase();
+    if (!confirmEmail || confirmEmail !== existing[0].email.toLowerCase()) {
+      return res.status(400).json({ error: "confirmEmail must exactly match the user's email address." });
+    }
+
+    // referred_by_user_id has no ON DELETE clause (it's a plain FK added via
+    // ALTER TABLE), so deleting a user who referred others would otherwise
+    // fail with a foreign-key violation. Detach those referrals first —
+    // their referred_by_user_id becomes null, their own row is untouched.
+    await pool.query("UPDATE users SET referred_by_user_id = NULL WHERE referred_by_user_id = $1", [
+      req.params.id,
+    ]);
+    await pool.query("DELETE FROM users WHERE id = $1", [req.params.id]);
+    res.json({ deleted: true, id: req.params.id, email: existing[0].email });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete user.", detail: err.message });
   }
 });
 

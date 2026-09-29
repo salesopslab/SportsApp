@@ -69,6 +69,14 @@ select.tier-select.flash-error{ border-color:var(--red); }
 .tier-feedback.error{ color:var(--red); }
 .search-row{ display:flex; gap:8px; margin-bottom:10px; }
 .search-row input{ flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:13px; font-family:inherit; }
+.search-row select{ padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:13px; font-family:inherit; }
+.row-actions{ display:flex; gap:6px; flex-wrap:wrap; }
+.row-actions button{ font-size:11px; padding:4px 8px; border-radius:6px; border:1px solid var(--line); background:none; color:var(--sub); cursor:pointer; font-family:inherit; white-space:nowrap; }
+.row-actions button:hover{ color:var(--text); border-color:var(--sub); }
+.row-actions button.danger{ color:var(--red); border-color:var(--red); }
+.row-actions button.danger:hover{ background:var(--red); color:#fff; }
+.row-actions button:disabled{ opacity:0.5; cursor:default; }
+.archived-badge{ font-size:10px; font-weight:700; color:var(--sub); background:var(--surface2); padding:1px 6px; border-radius:6px; text-transform:uppercase; margin-left:6px; }
 .pager{ display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
 .pager button{ font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid var(--line); background:none; color:var(--sub); cursor:pointer; }
 .pager button:disabled{ opacity:0.4; cursor:default; }
@@ -120,6 +128,9 @@ select.tier-select.flash-error{ border-color:var(--red); }
   .tier-feedback{ font-size:9.5px; }
 
   .search-row input{ padding:7px 9px; font-size:12.5px; }
+  .search-row select{ padding:7px 9px; font-size:12.5px; }
+  .row-actions button{ font-size:10px; padding:3px 7px; }
+  .archived-badge{ font-size:9px; }
   .pager button{ font-size:11px; padding:4px 8px; }
 
   .bars{ height:60px; }
@@ -187,6 +198,11 @@ select.tier-select.flash-error{ border-color:var(--red); }
         <h2>Users <span class="tag" id="usersTag"></span></h2>
         <div class="search-row">
           <input type="text" id="userSearch" placeholder="Search by email…">
+          <select id="userStatusFilter">
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+            <option value="all">All</option>
+          </select>
         </div>
         <div id="usersBody"></div>
         <div class="pager">
@@ -431,9 +447,20 @@ function renderUsage(usage){
   `;
 }
 
+async function adminAction(path, method){
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'x-admin-key': currentKey },
+  });
+  const body = await res.json().catch(() => ({}));
+  if(!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+  return body;
+}
+
 async function loadUsers(){
   const search = document.getElementById('userSearch').value.trim();
-  const data = await adminFetch(`/api/admin/users?limit=${USERS_LIMIT}&offset=${usersOffset}&search=${encodeURIComponent(search)}`);
+  const status = document.getElementById('userStatusFilter').value;
+  const data = await adminFetch(`/api/admin/users?limit=${USERS_LIMIT}&offset=${usersOffset}&search=${encodeURIComponent(search)}&status=${status}`);
   usersTotal = data.total || 0;
   document.getElementById('usersTag').textContent = data.available ? `${usersTotal.toLocaleString()} total` : '';
   const el = document.getElementById('usersBody');
@@ -447,19 +474,27 @@ async function loadUsers(){
     el.innerHTML = `
       <div class="table-scroll">
       <table>
-        <thead><tr><th>Email</th><th>Joined</th><th>Tier</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Email</th><th>Joined</th><th>Tier</th><th>Status</th><th></th><th></th></tr></thead>
         <tbody>
           ${data.users.map(u => `
-            <tr data-id="${u.id}">
-              <td>${u.email}</td>
+            <tr data-id="${u.id}" data-email="${u.email}">
+              <td>${u.email}${u.archivedAt ? '<span class="archived-badge">Archived</span>' : ''}</td>
               <td>${fmtDate(u.createdAt)}</td>
               <td><span class="tier-badge ${u.tier}">${tierLabel(u.tier)}</span></td>
               <td>${u.subscriptionStatus || (u.trialEndsAt ? 'trial' : '—')}</td>
               <td>
-                <select class="tier-select" data-id="${u.id}" data-current-tier="${u.rawTier}">
+                <select class="tier-select" data-id="${u.id}" data-current-tier="${u.rawTier}" ${u.archivedAt ? 'disabled' : ''}>
                   ${['trial','standard','edge','edge_pro'].map(t => `<option value="${t}" ${t===u.rawTier?'selected':''}>${tierLabel(t)}</option>`).join('')}
                 </select>
                 <span class="tier-feedback"></span>
+              </td>
+              <td>
+                <div class="row-actions">
+                  ${u.archivedAt
+                    ? `<button class="restore-btn" data-id="${u.id}">Restore</button>`
+                    : `<button class="archive-btn" data-id="${u.id}">Archive</button>`}
+                  <button class="delete-btn danger" data-id="${u.id}" data-email="${u.email}">Delete</button>
+                </div>
               </td>
             </tr>
           `).join('')}
@@ -511,6 +546,60 @@ async function loadUsers(){
           feedback.className = 'tier-feedback error';
         }finally{
           sel.disabled = false;
+        }
+      });
+    });
+
+    el.querySelectorAll('.archive-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const email = btn.closest('tr').dataset.email;
+        if(!confirm(`Archive ${email}? They'll be blocked from logging in immediately. This is reversible with "Restore".`)) return;
+        btn.disabled = true;
+        try{
+          await adminAction(`/api/admin/users/${btn.dataset.id}/archive`, 'POST');
+          loadUsers();
+        }catch(e){
+          alert('Failed to archive: ' + e.message);
+          btn.disabled = false;
+        }
+      });
+    });
+
+    el.querySelectorAll('.restore-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try{
+          await adminAction(`/api/admin/users/${btn.dataset.id}/unarchive`, 'POST');
+          loadUsers();
+        }catch(e){
+          alert('Failed to restore: ' + e.message);
+          btn.disabled = false;
+        }
+      });
+    });
+
+    el.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const email = btn.dataset.email;
+        const typed = prompt(`This PERMANENTLY deletes ${email} and all their bets, referrals, and purchase history. This cannot be undone.\n\nType the email exactly to confirm:`);
+        if(typed === null) return;
+        if(typed.trim().toLowerCase() !== email.toLowerCase()){
+          alert("That didn't match — nothing was deleted.");
+          return;
+        }
+        btn.disabled = true;
+        try{
+          const res = await fetch(`${API}/api/admin/users/${btn.dataset.id}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': currentKey },
+            body: JSON.stringify({ confirmEmail: typed.trim() }),
+          });
+          const body = await res.json().catch(() => ({}));
+          if(!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+          loadUsers();
+        }catch(e){
+          alert('Failed to delete: ' + e.message);
+          btn.disabled = false;
         }
       });
     });

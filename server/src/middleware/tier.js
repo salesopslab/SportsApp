@@ -26,10 +26,13 @@ export async function withTier(req, _res, next) {
   try {
     if (pool) {
       const { rows } = await pool.query(
-        "SELECT id, email, tier, trial_ends_at, subscription_status FROM users WHERE id = $1",
+        "SELECT id, email, tier, trial_ends_at, subscription_status, archived_at FROM users WHERE id = $1",
         [req.user.id]
       );
-      if (rows.length) {
+      // An archived account falls through exactly like an anonymous visitor
+      // (req.userRow stays null, req.tier stays "none") rather than a 401 --
+      // withTier never fails a request, it just shouldn't grant paid access.
+      if (rows.length && !rows[0].archived_at) {
         req.userRow = rows[0];
         req.tier = effectiveTier(rows[0]);
       }
