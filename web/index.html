@@ -3865,7 +3865,6 @@ function renderInjuryTeam(r, side, fallbackName, gameId){
     ? `<a href="${escapeHtml(r.source_url)}" target="_blank" rel="noopener">${escapeHtml(r.source || 'Source')}</a>`
     : escapeHtml(r.source || 'Unknown source');
   const meta = `<div class="inj-meta">Updated ${escapeHtml(agoLabel(r.retrieved_at) || 'at an unknown time')}${staleNote} • Source: ${src}${r.last_updated ? ` • Latest entry ${escapeHtml(agoLabel(r.last_updated) || '')}` : ''}</div>`;
-  const conflicts = (r.conflicts || []).map(c => `<div class="inj-conflict">Reports conflict for <b>${escapeHtml(c.player)}</b>: ${c.reports.map(x => `${escapeHtml(x.source)} says ${escapeHtml(x.gameDesignation || 'no designation')}${x.updated ? ` (${escapeHtml(agoLabel(x.updated) || '')})` : ''}`).join(' vs. ')}.</div>`).join('');
   const rows = players.map((p, idx) => {
     const desig = p.gameDesignation || 'No designation';
     const bits = [];
@@ -3883,7 +3882,7 @@ function renderInjuryTeam(r, side, fallbackName, gameId){
     : `<div class="empty-note">No players listed on the ${escapeHtml(r.source || '')} report. That isn't confirmation everyone is healthy — check again closer to game time.</div>`;
   return `<div class="inj-team" id="${id}">
     <button class="inj-team-head" type="button" data-inj-toggle="${id}" aria-expanded="true"><span>${teamName}</span><span class="count">${players.length} listed <span class="chev">▾</span></span></button>
-    <div class="inj-team-body">${meta}${conflicts}${body}</div>
+    <div class="inj-team-body">${meta}${body}</div>
   </div>`;
 }
 function renderInjurySection(d){
