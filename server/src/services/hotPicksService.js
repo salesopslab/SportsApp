@@ -79,8 +79,9 @@ export async function generateHotPicksForToday() {
 1. Use ONLY facts present in CANDIDATE_GAMES and INJURIES_BY_SPORT below. Do not invent injuries, records, or narratives not present in this data.
 2. Select ONLY from the games listed in CANDIDATE_GAMES, using their exact gameId.
 3. For each pick, choose exactly one market ("moneyline", "spread", or "total") and one side that is actually priced in that game's data (a real team name for moneyline/spread, or "Over"/"Under" for total), and copy its price (American odds) and point (if any) exactly as given.
-4. Pick fewer than ${PICKS_PER_DAY} if the slate genuinely doesn't have that many picks you'd stand behind -- never pad with weak picks to hit a count.
-5. Never guarantee an outcome. This is a paid product, so it must hold up: back every pick with a specific, checkable reason (a market signal or a listed injury), not vibes or "trust the model."
+4. Every pick must be a DIFFERENT game -- never two picks on the same gameId, and never the same side of the same market twice.
+5. Pick fewer than ${PICKS_PER_DAY} if the slate genuinely doesn't have that many picks you'd stand behind -- never pad with weak picks to hit a count.
+6. Never guarantee an outcome. This is a paid product, so it must hold up: back every pick with a specific, checkable reason (a market signal or a listed injury), not vibes or "trust the model."
 
 ## Output format
 Return ONLY valid JSON, no prose, no markdown fences, matching exactly:
@@ -151,21 +152,34 @@ Return ONLY valid JSON, no prose, no markdown fences, matching exactly:
         Number.isFinite(Number(p.price)) &&
         p.analysis
     )
+    // No duplicates in a bundle: keep only the first pick for each game.
+    .filter((p, i, arr) => arr.findIndex((q) => q.gameId === p.gameId) === i)
     .slice(0, PICKS_PER_DAY)
     .map((p) => ({ ...p, game: byId[p.gameId] }));
 
   return { picks };
 }
 
-// Returns today's hot_pick_days row, generating and persisting it (plus its
-// hot_picks rows) on the first call of the day. Cached in the DB after that
-// -- this app has no cron/scheduler, so "lazy generate on first request,
-// then reuse" is the same pattern db.js's own ensureSchema() uses.
+// A bundle is live for 24 hours from when it was generated. While it's live,
+// every request gets that same bundle -- no new picks are generated until it
+// expires. This app has no cron/scheduler, so the next bundle is generated
+// lazily by the first request after the previous one expires.
+export const BUNDLE_TTL_MS = 24 * 60 * 60 * 1000;
+
+export function bundleExpiresAt(day) {
+  return new Date(new Date(day.generated_at).getTime() + BUNDLE_TTL_MS);
+}
+
+// Only one request at a time may generate a new bundle, so two people
+// opening Hot Picks at the same moment can't create two different sets.
+let generating = null;
+
 export async function getOrCreateTodaysHotPickDay({ priceCents = 2500, maxPurchasers = 30 } = {}) {
   if (!pool) return null;
-  const today = new Date().toISOString().slice(0, 10);
 
-  const existing = await pool.query("SELECT * FROM hot_pick_days WHERE bet_date = $1", [today]);
+  const existing = await pool.query(
+    "SELECT * FROM hot_pick_days WHERE generated_at > now() - interval '24 hours' ORDER BY generated_at DESC LIMIT 1"
+  );
   if (existing.rows.length) {
     const day = existing.rows[0];
     // A code-level price/cap change (an admin dialing the day's numbers in
@@ -189,12 +203,27 @@ export async function getOrCreateTodaysHotPickDay({ priceCents = 2500, maxPurcha
     return day;
   }
 
+  if (!generating) {
+    generating = createBundle({ priceCents, maxPurchasers }).finally(() => { generating = null; });
+  }
+  return generating;
+}
+
+async function createBundle({ priceCents, maxPurchasers }) {
+  // The previous bundle expired at least 24 hours after it was generated, so
+  // this date can't collide with it; ON CONFLICT just guards the edge case.
+  const today = new Date().toISOString().slice(0, 10);
   const { picks } = await generateHotPicksForToday();
 
   const inserted = await pool.query(
-    `INSERT INTO hot_pick_days (bet_date, price_cents, max_purchasers) VALUES ($1, $2, $3) RETURNING *`,
+    `INSERT INTO hot_pick_days (bet_date, price_cents, max_purchasers) VALUES ($1, $2, $3)
+     ON CONFLICT (bet_date) DO NOTHING RETURNING *`,
     [today, priceCents, maxPurchasers]
   );
+  if (!inserted.rows.length) {
+    const again = await pool.query("SELECT * FROM hot_pick_days WHERE bet_date = $1", [today]);
+    return again.rows[0];
+  }
   const day = inserted.rows[0];
 
   for (const p of picks) {
@@ -226,5 +255,8 @@ export async function loadHotPickDayWithPicks(dayId) {
     pool.query("SELECT * FROM hot_pick_days WHERE id = $1", [dayId]),
     pool.query("SELECT * FROM hot_picks WHERE hot_pick_day_id = $1 ORDER BY commence_time ASC", [dayId]),
   ]);
-  return { day: dayRows.rows[0] || null, picks: pickRows.rows };
+  // Also hides duplicates in bundles saved before the one-pick-per-game rule.
+  const seen = new Set();
+  const picks = pickRows.rows.filter((p) => !seen.has(p.game_id) && seen.add(p.game_id));
+  return { day: dayRows.rows[0] || null, picks };
 }

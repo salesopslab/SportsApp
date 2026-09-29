@@ -2,7 +2,7 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { withTier, requireTier } from "../middleware/tier.js";
 import { meetsTier } from "../services/tierService.js";
-import { getOrCreateTodaysHotPickDay, loadHotPickDayWithPicks } from "../services/hotPicksService.js";
+import { getOrCreateTodaysHotPickDay, loadHotPickDayWithPicks, bundleExpiresAt } from "../services/hotPicksService.js";
 import { stripeAvailable, createOneTimeCheckoutSession } from "../services/stripeService.js";
 
 const router = Router();
@@ -78,6 +78,8 @@ router.get("/today", withTier, async (req, res) => {
     res.json({
       available: true,
       betDate: day.bet_date,
+      generatedAt: day.generated_at,
+      expiresAt: bundleExpiresAt(day),
       priceCents: day.price_cents,
       maxPurchasers: day.max_purchasers,
       slotsLeft,
