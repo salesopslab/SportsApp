@@ -171,7 +171,7 @@
       const inp = box.querySelector('[data-ac="roster"]'); if(inp) inp.focus();
     });
     const clr = $('feClearRoster');
-    if(clr) clr.onclick = () => { roster = []; save(); renderRoster(); renderPanel(); };
+    if(clr) clr.onclick = () => { roster = []; save(); renderRoster(); renderPanel(); $('feUploadBtn').textContent = '📷 Upload screenshot'; };
     box.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { roster.splice(Number(b.dataset.remove), 1); save(); renderRoster(); renderPanel(); });
     box.querySelectorAll('[data-move]').forEach(b => b.onclick = () => {
       const p = roster[Number(b.dataset.move)];
@@ -202,31 +202,74 @@
     });
   }
 
-  async function handleScreenshot(file){
-    if(!file || !file.type || !file.type.startsWith('image/')){
+  // Merge newly read players into the roster: never drops existing players.
+  // A player already on the roster keeps his entry, and picks up any detail
+  // the new screenshot adds (position, team, starter/bench slot).
+  function mergeIntoRoster(players){
+    let added = 0, updated = 0;
+    for(const p of players){
+      const existing = roster.find(r => sameName(r.name, p.name));
+      if(existing){
+        let changed = false;
+        for(const k of ['position', 'team', 'slot', 'lineupSlot']){
+          if(p[k] && existing[k] !== p[k]){ existing[k] = p[k]; changed = true; }
+        }
+        if(p.matched && existing.matched === false){ existing.name = p.name; existing.matched = true; changed = true; }
+        if(changed) updated++;
+      }else if(roster.length < 30){
+        roster.push({ name: p.name, position: p.position, team: p.team, slot: p.slot, lineupSlot: p.lineupSlot, matched: p.matched });
+        added++;
+      }
+    }
+    return { added, updated };
+  }
+
+  async function handleScreenshots(fileList){
+    const files = [...(fileList || [])].filter(f => f && f.type && f.type.startsWith('image/')).slice(0, 5);
+    if(!files.length){
       $('feResult').innerHTML = '<div class="fe-card"><div class="fe-error">Upload an image — a screenshot of your fantasy team.</div></div>';
       return;
     }
     const btn = $('feUploadBtn');
-    btn.disabled = true; btn.textContent = 'Reading your screenshot…';
+    btn.disabled = true;
+    let added = 0, updated = 0, platform = null;
+    const failed = [];
     try{
-      const image = await downscale(file);
-      const d = await call('screenshot', { image });
-      if(!d.players || !d.players.length) throw new Error("Couldn't find any players in that screenshot. Try a tighter crop of your roster.");
-      roster = d.players.map(p => ({ name: p.name, position: p.position, team: p.team, slot: p.slot, lineupSlot: p.lineupSlot, matched: p.matched }));
-      save(); renderRoster(); renderPanel(); renderPanel();
+      for(let i = 0; i < files.length; i++){
+        btn.textContent = files.length > 1 ? `Reading screenshot ${i + 1} of ${files.length}…` : 'Reading your screenshot…';
+        try{
+          const image = await downscale(files[i]);
+          const d = await call('screenshot', { image });
+          if(!d.players || !d.players.length){ failed.push(i + 1); continue; }
+          if(d.platform && d.platform !== 'Unknown') platform = d.platform;
+          const r = mergeIntoRoster(d.players);
+          added += r.added; updated += r.updated;
+          save(); renderRoster(); renderPanel();
+        }catch(err){
+          if(err.paywall) throw err;
+          failed.push(i + 1);
+        }
+      }
+      if(!added && !updated && failed.length === files.length){
+        throw new Error(files.length > 1 ? "Couldn't find players in those screenshots. Try tighter crops of your roster." : "Couldn't find any players in that screenshot. Try a tighter crop of your roster.");
+      }
       const unmatched = roster.filter(p => p.matched === false).length;
+      const bits = [];
+      if(added) bits.push(`${added} player${added === 1 ? '' : 's'} added`);
+      if(updated) bits.push(`${updated} updated`);
+      if(!added && !updated) bits.push('no new players — they were already on your roster');
       $('feResult').innerHTML = `<div class="fe-card">
-        <div class="fe-card-title">✅ Found ${roster.length} players${d.platform && d.platform !== 'Unknown' ? ` from ${esc(d.platform)}` : ''}</div>
-        <div class="fe-panel-desc">${unmatched ? `${unmatched} name${unmatched === 1 ? '' : 's'} (dashed) couldn't be matched to a current NFL roster — fix or remove ${unmatched === 1 ? 'it' : 'them'}. ` : ''}Now optimize your lineup, or ask Fantasy Edge below.</div>
-        <div class="fe-actions"><button type="button" class="fe-primary" id="feGoLineup">Optimize my lineup</button><button type="button" class="fe-secondary" id="feGoAsk">Ask a question</button></div>
+        <div class="fe-card-title">✅ Roster now has ${roster.length} players${platform ? ` from ${esc(platform)}` : ''}</div>
+        <div class="fe-panel-desc">${esc(bits.join(', '))}.${failed.length ? ` Couldn't read screenshot ${failed.join(' & ')} — try a tighter crop.` : ''} ${unmatched ? `${unmatched} name${unmatched === 1 ? '' : 's'} (dashed) couldn't be matched to a current NFL roster — fix or remove ${unmatched === 1 ? 'it' : 'them'}. ` : ''}Upload another screenshot to add more (bench, IR), or optimize your lineup.</div>
+        <div class="fe-actions"><button type="button" class="fe-primary" id="feGoLineup">Optimize my lineup</button><button type="button" class="fe-secondary" id="feAddMore">+ Add another screenshot</button></div>
       </div>`;
       $('feGoLineup').onclick = () => { selectTool('lineup'); runTool(); };
-      $('feGoAsk').onclick = () => { $('feChatInput').focus(); $('feChatInput').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+      $('feAddMore').onclick = () => $('feFileInput').click();
     }catch(err){
       showError($('feResult'), err);
     }finally{
-      btn.disabled = false; btn.textContent = '📷 Upload screenshot';
+      btn.disabled = false;
+      btn.textContent = roster.length ? '📷 Add screenshot(s)' : '📷 Upload screenshot';
       $('feFileInput').value = '';
     }
   }
@@ -555,7 +598,8 @@
   });
   document.querySelectorAll('#feTools .fe-tool').forEach(b => b.onclick = () => selectTool(b.dataset.tool));
   $('feUploadBtn').onclick = () => $('feFileInput').click();
-  $('feFileInput').onchange = (e) => handleScreenshot(e.target.files && e.target.files[0]);
+  $('feFileInput').onchange = (e) => handleScreenshots(e.target.files);
+  if(roster.length) $('feUploadBtn').textContent = '📷 Add screenshot(s)';
   $('feChatSend').onclick = () => sendChat();
   $('feChatInput').onkeydown = (e) => { if(e.key === 'Enter') sendChat(); };
   document.querySelectorAll('#feChatChips .fe-chip').forEach(c => c.onclick = () => sendChat(c.textContent));
