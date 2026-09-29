@@ -1407,7 +1407,7 @@ document.getElementById('accountUpgradeBtn').addEventListener('click', ()=>{
 });
 document.getElementById('accountLogoutBtn').addEventListener('click', ()=>{
   authToken = null; currentUser = null;
-  try{ localStorage.removeItem('betedge_token'); localStorage.removeItem('betedge_user'); }catch{}
+  try{ localStorage.removeItem('betedge_token'); localStorage.removeItem('betedge_user'); localStorage.removeItem('betedge_impersonating'); }catch{}
   updateProfileButton();
   closeAccountModal();
   if(document.getElementById('picks').classList.contains('active')) loadPicks();
@@ -4383,6 +4383,26 @@ setInterval(refreshBigLines, 3 * 60 * 1000);
     }catch(e){ err.textContent='Network error — try again.'; }
     finally{ save.disabled = false; }
   });
+})();
+
+// Admin "Log in as" banner — shown while an impersonation session is active.
+(function(){
+  let who = null;
+  try{ who = localStorage.getItem('betedge_impersonating'); }catch{}
+  if(!who || !authToken) { try{ localStorage.removeItem('betedge_impersonating'); }catch{} return; }
+  const bar = document.createElement('div');
+  bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#e8a33d;color:#1a1a1a;font:600 13px/1.4 inherit;padding:8px 16px;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;';
+  const label = document.createElement('span');
+  label.textContent = 'Admin view: logged in as ' + who;
+  const exit = document.createElement('button');
+  exit.textContent = 'Exit';
+  exit.style.cssText = 'border:0;border-radius:6px;padding:4px 12px;background:#1a1a1a;color:#fff;font:inherit;cursor:pointer;';
+  exit.addEventListener('click', () => {
+    try{ ['betedge_token','betedge_user','betedge_impersonating'].forEach(k => localStorage.removeItem(k)); }catch{}
+    location.reload();
+  });
+  bar.append(label, exit);
+  document.body.appendChild(bar);
 })();
 </script>
 

@@ -4,6 +4,7 @@ import { getLatestUsage, getUsageHistory } from "../services/usageService.js";
 import { TIERS, TIER_RANK, effectiveTier } from "../services/tierService.js";
 import { stripe, stripeAvailable, priceIdForTier } from "../services/stripeService.js";
 import { REFERRAL_BONUS_DAYS } from "../services/referralService.js";
+import { signToken, toPublicUser } from "../services/authService.js";
 
 const router = Router();
 
@@ -153,6 +154,25 @@ router.post("/users/:id/tier", requireAdminKey, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update tier.", detail: err.message });
+  }
+});
+
+// POST /api/admin/users/:id/impersonate — issues a short-lived (2h) session
+// token for that user so the owner can see the site exactly as they do,
+// without knowing their password. Archived users can't be impersonated.
+router.post("/users/:id/impersonate", requireAdminKey, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured." });
+    const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: "User not found." });
+    if (rows[0].archived_at) return res.status(409).json({ error: "User is archived — restore them first." });
+    const user = toPublicUser(rows[0]);
+    const token = signToken(user, { expiresIn: "2h", impersonated: true });
+    console.log(`[admin] impersonation session issued for user ${user.id} (${user.email})`);
+    res.json({ user, token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to start impersonation.", detail: err.message });
   }
 });
 

@@ -28,8 +28,10 @@ export function toPublicUser(row) {
   };
 }
 
-export function signToken(user) {
-  return jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: TOKEN_TTL });
+export function signToken(user, { expiresIn = TOKEN_TTL, impersonated = false } = {}) {
+  const payload = { sub: user.id, email: user.email };
+  if (impersonated) payload.imp = true;
+  return jwt.sign(payload, JWT_SECRET, { expiresIn });
 }
 
 export function verifyToken(token) {

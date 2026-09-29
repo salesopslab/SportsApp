@@ -490,6 +490,7 @@ async function loadUsers(){
               </td>
               <td>
                 <div class="row-actions">
+                  ${u.archivedAt ? '' : `<button class="impersonate-btn" data-id="${u.id}" data-email="${u.email}">Log in as</button>`}
                   ${u.archivedAt
                     ? `<button class="restore-btn" data-id="${u.id}">Restore</button>`
                     : `<button class="archive-btn" data-id="${u.id}">Archive</button>`}
@@ -560,6 +561,26 @@ async function loadUsers(){
           loadUsers();
         }catch(e){
           alert('Failed to archive: ' + e.message);
+          btn.disabled = false;
+        }
+      });
+    });
+
+    el.querySelectorAll('.impersonate-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try{
+          const { user, token } = await adminAction(`/api/admin/users/${btn.dataset.id}/impersonate`, 'POST');
+          // Same site as the main app, so hand the session over via storage
+          // and open the app in a new tab. This replaces any login you had
+          // on the main site in this browser; "Exit" in the app logs out.
+          localStorage.setItem('betedge_token', token);
+          localStorage.setItem('betedge_user', JSON.stringify(user));
+          localStorage.setItem('betedge_impersonating', user.email);
+          window.open('/', '_blank');
+        }catch(e){
+          alert('Failed to log in as user: ' + e.message);
+        }finally{
           btn.disabled = false;
         }
       });
