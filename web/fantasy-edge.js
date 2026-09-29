@@ -13,6 +13,8 @@
   let roster = []; // [{name, position, team, slot, lineupSlot, matched}]
   let waiverPos = 'ALL';
   let chatHistory = [];
+  // Players chosen in each tool (kept when switching tools).
+  const picks = { ss: [], inj: [], tradeA: [], tradeB: [], avail: [] };
   let busy = false;
 
   try{
@@ -142,7 +144,7 @@
   function renderRoster(){
     const box = $('feRosterBox');
     if(!roster.length){
-      box.innerHTML = `<div class="fe-add-row"><input class="fe-input" id="feAddPlayer" type="text" placeholder="…or type a player to add"><button type="button" class="fe-secondary" id="feAddBtn">Add</button></div>`;
+      box.innerHTML = `<div class="fe-roster-add">${pickerInputHtml('roster', '…or search a player to add')}</div>`;
     }else{
       const groups = [['starter', 'Starters'], ['bench', 'Bench'], ['ir', 'IR'], [null, 'Roster']];
       const html = groups.map(([slot, label]) => {
@@ -159,17 +161,15 @@
       box.innerHTML = `<div class="fe-roster">
         <div class="fe-roster-head"><span>Your roster (${roster.length})</span><button type="button" id="feClearRoster">Clear</button></div>
         ${html}
-        <div class="fe-add-row"><input class="fe-input" id="feAddPlayer" type="text" placeholder="Add a player"><button type="button" class="fe-secondary" id="feAddBtn">Add</button></div>
+        <div class="fe-roster-add">${pickerInputHtml('roster', 'Search a player to add')}</div>
       </div>`;
     }
-    const add = () => {
-      const v = $('feAddPlayer').value.trim();
-      if(!v) return;
-      roster.push({ name: v, slot: roster.length ? 'bench' : null });
+    wireAutocomplete(box, 'roster', (pl) => {
+      if(roster.some(r => sameName(r.name, pl.name))) return;
+      roster.push({ name: pl.name, position: pl.position || null, team: pl.team || null, slot: roster.length ? 'bench' : null, matched: pl.matched });
       save(); renderRoster(); renderPanel();
-    };
-    $('feAddBtn').onclick = add;
-    $('feAddPlayer').onkeydown = (e) => { if(e.key === 'Enter') add(); };
+      const inp = box.querySelector('[data-ac="roster"]'); if(inp) inp.focus();
+    });
     const clr = $('feClearRoster');
     if(clr) clr.onclick = () => { roster = []; save(); renderRoster(); renderPanel(); };
     box.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { roster.splice(Number(b.dataset.remove), 1); save(); renderRoster(); renderPanel(); });
@@ -232,31 +232,148 @@
   }
 
   // ---- Tool panels -----------------------------------------------------------------
-  const rosterNames = () => roster.map(p => p.name);
-  function datalist(){
-    return `<datalist id="feRosterList">${rosterNames().map(n => `<option value="${esc(n)}">`).join('')}</datalist>`;
+  // ---- Player picker: tap from your roster, or search all NFL players ------------
+  const sameName = (a, b) => String(a || '').toLowerCase().replace(/[^a-z]/g, '') === String(b || '').toLowerCase().replace(/[^a-z]/g, '');
+  const PICKERS = {
+    ss:     { max: 4, fromRoster: true,  placeholder: 'Search any NFL player' },
+    inj:    { max: 1, fromRoster: true,  placeholder: 'Search the injured player' },
+    tradeA: { max: 5, fromRoster: true,  placeholder: 'Search your players' },
+    tradeB: { max: 5, fromRoster: false, placeholder: "Search the other team's players" },
+    avail:  { max: 20, fromRoster: false, placeholder: 'Search free agents in your league' },
+  };
+  function chipLabel(p){
+    return `${p.position ? `<span class="pos">${esc(p.position)}</span>` : ''}<span class="nm">${esc(p.name)}</span>`;
+  }
+  function pickerInputHtml(key, placeholder){
+    return `<div class="fe-ac">
+      <input class="fe-input" type="text" data-ac="${key}" placeholder="${esc(placeholder)}" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">
+      <div class="fe-ac-list hidden" data-ac-list="${key}" role="listbox"></div>
+    </div>`;
+  }
+  function pickerHtml(key, label){
+    const cfg = PICKERS[key];
+    const chosen = picks[key];
+    const full = chosen.length >= cfg.max;
+    const fromRoster = cfg.fromRoster ? roster.filter(r => !chosen.some(c => sameName(c.name, r.name))) : [];
+    return `<div class="fe-picker" data-picker="${key}">
+      ${label ? `<div class="fe-label">${label}</div>` : ''}
+      ${chosen.length ? `<div class="fe-pchips fe-chosen">${chosen.map((p, i) => `<span class="fe-pchip sel">${chipLabel(p)}<button type="button" class="x" data-unpick="${key}:${i}" aria-label="Remove ${esc(p.name)}">✕</button></span>`).join('')}</div>` : ''}
+      ${full ? '' : pickerInputHtml(key, cfg.placeholder)}
+      ${cfg.fromRoster ? (roster.length
+        ? (fromRoster.length && !full ? `<div class="fe-roster-group">Tap from your roster</div><div class="fe-pchips">${fromRoster.map(r => `<button type="button" class="fe-pchip pick" data-pick="${key}" data-name="${esc(r.name)}">${chipLabel(r)}<span class="plus">+</span></button>`).join('')}</div>` : '')
+        : '<div class="fe-hint" style="text-align:left">Upload a screenshot above to tap players from your roster.</div>') : ''}
+    </div>`;
+  }
+  function addPick(key, pl){
+    const cfg = PICKERS[key];
+    if(picks[key].some(c => sameName(c.name, pl.name)) || picks[key].length >= cfg.max) return;
+    picks[key].push({ name: pl.name, position: pl.position || null, team: pl.team || null });
+    refreshPicker(key, true);
+  }
+  function refreshPicker(key, focus){
+    const el = document.querySelector(`[data-picker="${key}"]`);
+    if(!el) return;
+    const label = el.querySelector(':scope > .fe-label');
+    el.outerHTML = pickerHtml(key, label ? label.innerHTML : '');
+    wirePicker(key);
+    if(focus){ const inp = document.querySelector(`[data-ac="${key}"]`); if(inp) inp.focus(); }
+  }
+  function wirePicker(key){
+    const el = document.querySelector(`[data-picker="${key}"]`);
+    if(!el) return;
+    el.querySelectorAll('[data-unpick]').forEach(b => b.onclick = () => {
+      const [k, i] = b.dataset.unpick.split(':');
+      picks[k].splice(Number(i), 1);
+      refreshPicker(k);
+    });
+    el.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
+      const r = roster.find(x => sameName(x.name, b.dataset.name));
+      if(r) addPick(key, r);
+    });
+    wireAutocomplete(el, key, (pl) => addPick(key, pl));
+  }
+
+  // Autocomplete: your roster first, then current NFL rosters from the server.
+  const searchCache = new Map();
+  async function searchNfl(q){
+    const k = q.toLowerCase();
+    if(searchCache.has(k)) return searchCache.get(k);
+    try{
+      const res = await apiFetch(`/api/fantasy/players/search?q=${encodeURIComponent(q)}`);
+      const d = await res.json();
+      const list = Array.isArray(d.players) ? d.players : [];
+      searchCache.set(k, list);
+      return list;
+    }catch{ return []; }
+  }
+  function wireAutocomplete(root, key, onChoose){
+    const inp = root.querySelector(`[data-ac="${key}"]`);
+    const listEl = root.querySelector(`[data-ac-list="${key}"]`);
+    if(!inp || !listEl) return;
+    let items = [];
+    let active = -1;
+    let timer = null;
+    let seq = 0;
+    const close = () => { listEl.classList.add('hidden'); listEl.innerHTML = ''; items = []; active = -1; };
+    const draw = () => {
+      if(!items.length){ close(); return; }
+      listEl.innerHTML = items.map((p, i) => `<button type="button" class="fe-ac-item${i === active ? ' active' : ''}" data-i="${i}" role="option">
+          <span class="nm">${esc(p.name)}</span><span class="meta">${esc([p.position, p.team].filter(Boolean).join(' · '))}${p.onRoster ? ' · <b>Your roster</b>' : ''}</span>
+        </button>`).join('');
+      listEl.classList.remove('hidden');
+      // mousedown (not click) so the input doesn't blur and close the list first
+      listEl.querySelectorAll('[data-i]').forEach(b => b.onmousedown = (e) => { e.preventDefault(); choose(items[Number(b.dataset.i)]); });
+    };
+    const choose = (p) => { if(!p) return; inp.value = ''; close(); onChoose(p); };
+    inp.addEventListener('input', () => {
+      const q = inp.value.trim();
+      clearTimeout(timer);
+      if(q.length < 2){ close(); return; }
+      const lower = q.toLowerCase();
+      const mine = (key === 'roster' || key === 'tradeB' || key === 'avail') ? [] :
+        roster.filter(r => r.name.toLowerCase().includes(lower)).map(r => ({ ...r, onRoster: true }));
+      items = mine.filter(p => !(picks[key] || []).some(c => sameName(c.name, p.name))).slice(0, 5); active = items.length ? 0 : -1; draw();
+      const my = ++seq;
+      timer = setTimeout(async () => {
+        const found = await searchNfl(q);
+        if(my !== seq) return;
+        const merged = [...mine];
+        for(const p of found){
+          if(merged.some(m => sameName(m.name, p.name))) continue;
+          const onRoster = roster.some(r => sameName(r.name, p.name));
+          if(onRoster && (key === 'tradeB' || key === 'avail' || key === 'roster')) continue; // already yours
+          merged.push({ ...p, onRoster, matched: true });
+        }
+        items = merged.filter(p => !(picks[key] || []).some(c => sameName(c.name, p.name))).slice(0, 8);
+        if(active < 0 && items.length) active = 0;
+        draw();
+      }, 180);
+    });
+    inp.addEventListener('keydown', (e) => {
+      if(e.key === 'ArrowDown' && items.length){ e.preventDefault(); active = (active + 1) % items.length; draw(); }
+      else if(e.key === 'ArrowUp' && items.length){ e.preventDefault(); active = (active - 1 + items.length) % items.length; draw(); }
+      else if(e.key === 'Escape'){ close(); }
+      else if(e.key === 'Enter'){
+        e.preventDefault();
+        e.stopPropagation();
+        if(items[active]) choose(items[active]);
+        else if(inp.value.trim().length >= 2) choose({ name: inp.value.trim(), matched: false }); // keep what they typed
+      }
+    });
+    inp.addEventListener('blur', () => setTimeout(close, 150));
   }
   function renderPanel(){
     const panel = $('fePanel');
     if(tool === 'startsit'){
       panel.innerHTML = `<div class="fe-card-title">Start/Sit AI</div>
-        <div class="fe-panel-desc">Compare 2–4 players. Fantasy Edge checks matchup, usage, injuries, depth chart, weather and the betting line.</div>
-        <div class="fe-inputs" id="feSSInputs">
-          ${[0,1].map(i => `<input class="fe-input" list="feRosterList" data-ss placeholder="Player ${i + 1}">`).join('')}
-        </div>${datalist()}
-        <div class="fe-actions"><button type="button" class="fe-secondary" id="feSSMore">+ Add player</button><button type="button" class="fe-primary" id="feRun">Who should I start?</button></div>`;
-      $('feSSMore').onclick = () => {
-        const wrap = $('feSSInputs');
-        if(wrap.querySelectorAll('[data-ss]').length >= 4) return;
-        wrap.insertAdjacentHTML('beforeend', `<input class="fe-input" list="feRosterList" data-ss placeholder="Player ${wrap.children.length + 1}">`);
-        if(wrap.querySelectorAll('[data-ss]').length >= 4) $('feSSMore').remove();
-      };
+        <div class="fe-panel-desc">Pick 2–4 players. Fantasy Edge checks matchup, usage, injuries, depth chart, weather and the betting line.</div>
+        ${pickerHtml('ss', '')}
+        <div class="fe-actions"><button type="button" class="fe-primary" id="feRun">Who should I start?</button></div>`;
     }else if(tool === 'waiver'){
       panel.innerHTML = `<div class="fe-card-title">Waiver Edge</div>
         <div class="fe-panel-desc">Finds pickups from injured starters, rising usage and new roles.</div>
         <div class="fe-poschips">${['ALL','QB','RB','WR','TE','DEF','K'].map(p => `<button type="button" class="fe-poschip${p === waiverPos ? ' active' : ''}" data-pos="${p}">${p === 'ALL' ? 'All' : p}</button>`).join('')}</div>
-        <label class="fe-label" for="feAvail">Players available in your league (optional)</label>
-        <input class="fe-input" id="feAvail" type="text" placeholder="e.g. Noah Brown, Tyler Allgeier">
+        ${pickerHtml('avail', 'Players available in your league (optional)')}
         <div class="fe-actions"><button type="button" class="fe-primary" id="feRun">Find waiver targets</button></div>`;
       panel.querySelectorAll('[data-pos]').forEach(b => b.onclick = () => { waiverPos = b.dataset.pos; renderPanel(); });
     }else if(tool === 'lineup'){
@@ -268,20 +385,20 @@
     }else if(tool === 'injury'){
       panel.innerHTML = `<div class="fe-card-title">Injury Impact AI</div>
         <div class="fe-panel-desc">See who gains or loses fantasy value when a player misses time.</div>
-        <input class="fe-input" id="feInjPlayer" list="feRosterList" type="text" placeholder="Injured player, e.g. Terry McLaurin">${datalist()}
+        ${pickerHtml('inj', '')}
         <div class="fe-actions"><button type="button" class="fe-primary" id="feRun">Show fantasy impact</button></div>`;
     }else if(tool === 'trade'){
       panel.innerHTML = `<div class="fe-card-title">Trade Analyzer</div>
-        <div class="fe-panel-desc">Separate players with commas. Judged on rest-of-season value, not just projections.</div>
+        <div class="fe-panel-desc">Judged on rest-of-season value, not just projections.</div>
         <div class="fe-trade">
-          <div><label class="fe-label" for="feTradeA">Team A (you) gives</label><input class="fe-input" id="feTradeA" type="text" placeholder="Player(s)"></div>
-          <div><label class="fe-label" for="feTradeB">Team B gives</label><input class="fe-input" id="feTradeB" type="text" placeholder="Player(s)"></div>
+          <div>${pickerHtml('tradeA', 'Team A (you) gives')}</div>
+          <div>${pickerHtml('tradeB', 'Team B gives')}</div>
         </div>
         <div class="fe-actions"><button type="button" class="fe-primary" id="feRun">Analyze trade</button></div>`;
     }
     const run = $('feRun');
     if(run) run.onclick = runTool;
-    panel.querySelectorAll('input').forEach(inp => inp.addEventListener('keydown', (e) => { if(e.key === 'Enter' && inp.id !== 'feAddPlayer') runTool(); }));
+    panel.querySelectorAll('[data-picker]').forEach(el => wirePicker(el.dataset.picker));
   }
 
   function selectTool(t){
@@ -290,27 +407,25 @@
     renderPanel();
   }
 
-  const splitNames = (v) => String(v || '').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
-
   async function runTool(){
     if(busy) return;
     const out = $('feResult');
     let path, body, msg, render;
     if(tool === 'startsit'){
-      const players = [...document.querySelectorAll('[data-ss]')].map(i => i.value.trim()).filter(Boolean);
-      if(players.length < 2){ out.innerHTML = '<div class="fe-card"><div class="fe-error">Enter at least 2 players to compare.</div></div>'; return; }
+      const players = picks.ss.map(p => p.name);
+      if(players.length < 2){ out.innerHTML = '<div class="fe-card"><div class="fe-error">Pick at least 2 players to compare.</div></div>'; return; }
       path = 'start-sit'; body = { players, scoring }; msg = 'Checking matchups, usage and the latest injury reports…'; render = renderStartSit;
     }else if(tool === 'waiver'){
-      path = 'waiver'; body = { position: waiverPos, scoring, available: splitNames($('feAvail').value), roster }; msg = 'Scanning injuries and depth charts for opportunities…'; render = renderWaiver;
+      path = 'waiver'; body = { position: waiverPos, scoring, available: picks.avail.map(p => p.name), roster }; msg = 'Scanning injuries and depth charts for opportunities…'; render = renderWaiver;
     }else if(tool === 'lineup'){
       if(roster.length < 3){ out.innerHTML = '<div class="fe-card"><div class="fe-error">Add your roster first — upload a screenshot or type players above.</div></div>'; return; }
       path = 'lineup'; body = { roster, scoring, lineupSlots: $('feSlots').value }; msg = 'Checking every player on your roster…'; render = renderLineup;
     }else if(tool === 'injury'){
-      const player = $('feInjPlayer').value.trim();
-      if(!player){ out.innerHTML = '<div class="fe-card"><div class="fe-error">Enter the injured player.</div></div>'; return; }
+      const player = picks.inj[0] ? picks.inj[0].name : '';
+      if(!player){ out.innerHTML = '<div class="fe-card"><div class="fe-error">Pick the injured player.</div></div>'; return; }
       path = 'injury-impact'; body = { player, scoring }; msg = 'Pulling the injury report and depth chart…'; render = renderInjury;
     }else if(tool === 'trade'){
-      const a = splitNames($('feTradeA').value), b = splitNames($('feTradeB').value);
+      const a = picks.tradeA.map(p => p.name), b = picks.tradeB.map(p => p.name);
       if(!a.length || !b.length){ out.innerHTML = '<div class="fe-card"><div class="fe-error">Add at least one player on each side.</div></div>'; return; }
       path = 'trade'; body = { teamAGives: a, teamBGives: b, scoring, roster }; msg = 'Weighing rest-of-season value on both sides…'; render = renderTrade;
     }

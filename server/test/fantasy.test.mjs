@@ -171,7 +171,7 @@ fantasyMod.__setModelCaller(async (body) => {
 
 // Bypass auth/tier for the test (pretend a Standard subscriber).
 for (const layer of router.stack) {
-  if (!layer.route) continue;
+  if (!layer.route || layer.route.stack.length < 3) continue;
   layer.route.stack[0].handle = (req, _res, next) => { req.userRow = { tier: "standard" }; req.tier = "standard"; next(); };
   layer.route.stack[1].handle = (_req, _res, next) => next();
 }
@@ -342,6 +342,17 @@ await test("unknown player comes back unresolved with STATUS UNCONFIRMED", async
   const nobody = r.json.players.find((p) => p.name === "Nobody Realname");
   assert.equal(nobody.unresolved, true);
   assert.equal(nobody.status.label, "STATUS UNCONFIRMED");
+});
+
+await test("player search: partial names return real players, roster positions only", async () => {
+  const r = await local("GET", "/api/fantasy/players/search?q=jay");
+  assert.equal(r.status, 200);
+  assert.equal(r.json.players[0].name, "Jayden Daniels");
+  assert.equal(r.json.players[0].position, "QB");
+  const last = await local("GET", "/api/fantasy/players/search?q=mcl");
+  assert.equal(last.json.players[0].name, "Terry McLaurin");
+  const none = await local("GET", "/api/fantasy/players/search?q=z");
+  assert.deepEqual(none.json.players, []);
 });
 
 await test("chat returns reply plus live statuses for players it looked up", async () => {

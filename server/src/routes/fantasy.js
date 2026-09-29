@@ -8,6 +8,7 @@ import {
   normalizeScoring,
   SCORING,
   playerInjuryStatus,
+  searchPlayers,
 } from "../services/fantasyDataService.js";
 import { normalizePlayerName } from "../services/injuryService.js";
 
@@ -658,6 +659,17 @@ Only include players on the user's own team when the screenshot shows two teams 
     });
   } catch (err) {
     fail(res, err, "screenshot scan");
+  }
+});
+
+// ---- Player search (autocomplete) --------------------------------------------
+// Public and cheap: served from the cached roster index.
+router.get("/players/search", async (req, res) => {
+  try {
+    res.json({ players: await searchPlayers(String(req.query.q || ""), { limit: 8 }) });
+  } catch (err) {
+    console.error("fantasy player search failed:", err.message);
+    res.json({ players: [], error: "Player search is unavailable right now." });
   }
 });
 

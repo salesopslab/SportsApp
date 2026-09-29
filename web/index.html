@@ -628,6 +628,22 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .fe-pchip .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .fe-pchip .move, .fe-pchip .x{ border:none; background:none; color:var(--sub); cursor:pointer; font-size:12px; padding:0 2px; font-family:inherit; }
 .fe-pchip.unmatched{ border-style:dashed; }
+.fe-ac{ position:relative; margin-top:8px; }
+.fe-ac-list{ position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:40; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.18); overflow:hidden; max-height:320px; overflow-y:auto; }
+.fe-ac-item{ display:flex; justify-content:space-between; align-items:center; gap:10px; width:100%; text-align:left; border:none; background:none; color:var(--text); font:500 14px 'Inter',sans-serif; padding:11px 12px; cursor:pointer; border-bottom:1px solid var(--line); }
+.fe-ac-item:last-child{ border-bottom:none; }
+.fe-ac-item.active, .fe-ac-item:hover{ background:var(--surface2); }
+.fe-ac-item .nm{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fe-ac-item .meta{ flex:none; font-size:11.5px; color:var(--sub); }
+.fe-ac-item .meta b{ color:var(--teal); font-weight:600; }
+.fe-picker{ min-width:0; }
+.fe-picker .fe-roster-group{ margin-top:12px; }
+.fe-chosen{ margin-bottom:2px; }
+.fe-pchip.sel{ background:rgba(199,127,29,0.14); border-color:var(--amber); }
+button.fe-pchip.pick{ cursor:pointer; font-family:inherit; color:var(--text); padding:5px 10px; }
+button.fe-pchip.pick .plus{ color:var(--amber); font-weight:700; }
+button.fe-pchip.pick:hover{ border-color:var(--amber); }
+.fe-roster-add{ margin-top:4px; }
 .fe-add-row{ display:flex; gap:6px; margin-top:10px; }
 .fe-add-row input{ flex:1; min-width:0; }
 .fe-input{ width:100%; box-sizing:border-box; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:16px; font-family:inherit; }

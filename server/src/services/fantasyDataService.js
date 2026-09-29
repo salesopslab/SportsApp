@@ -617,3 +617,26 @@ export async function getOpportunityReport({ position = "ALL", forceRefresh = fa
     retrieved_at: new Date().toISOString(),
   };
 }
+
+// Autocomplete: best-matching current NFL players for a partial name.
+const SEARCH_POSITIONS = new Set(["QB", "RB", "WR", "TE", "PK", "K", "FB"]);
+export async function searchPlayers(q, { limit = 8 } = {}) {
+  const query = norm(q);
+  if (query.length < 2) return [];
+  const { players } = await getPlayerIndex();
+  const words = query.split(" ");
+  const scored = [];
+  for (const p of players) {
+    if (!SEARCH_POSITIONS.has(p.position)) continue;
+    const pn = norm(p.name);
+    let score = 0;
+    if (pn === query) score = 100;
+    else if (pn.startsWith(query)) score = 80;
+    else if (lastName(p.name).startsWith(query)) score = 70;
+    else if (words.every((w) => pn.split(" ").some((part) => part.startsWith(w)))) score = 60;
+    else if (pn.includes(query)) score = 40;
+    if (score) scored.push({ p, score });
+  }
+  scored.sort((a, b) => b.score - a.score || a.p.name.localeCompare(b.p.name));
+  return scored.slice(0, limit).map(({ p }) => ({ name: p.name, team: p.teamAbbr, teamName: p.team, position: p.position === "PK" ? "K" : p.position }));
+}
