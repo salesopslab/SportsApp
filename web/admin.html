@@ -140,6 +140,10 @@ select.tier-select.flash-error{ border-color:var(--red); }
   .health-row{ padding:7px 9px; font-size:11px; }
   .health-row .state{ font-size:9.5px; }
 }
+.export-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 12px; font-size:12px; color:var(--sub); }
+.export-btn{ font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid var(--line); background:none; color:var(--text); cursor:pointer; font-family:inherit; }
+.export-btn:hover{ border-color:var(--sub); }
+.export-btn:disabled{ opacity:0.5; cursor:default; }
 </style>
 </head>
 <body>
@@ -203,6 +207,12 @@ select.tier-select.flash-error{ border-color:var(--red); }
             <option value="archived">Archived</option>
             <option value="all">All</option>
           </select>
+        </div>
+        <div class="export-row">
+          <span class="export-label">Download emails (CSV):</span>
+          <button class="export-btn" data-audience="opted_in">Marketing opt-ins</button>
+          <button class="export-btn" data-audience="all">All active users</button>
+          <span class="export-feedback" id="exportFeedback"></span>
         </div>
         <div id="usersBody"></div>
         <div class="pager">
@@ -668,6 +678,29 @@ if(currentKey){
   showDashboard();
   loadAll();
 }
+
+// Email export (CSV download)
+document.querySelectorAll('.export-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const fb = document.getElementById('exportFeedback');
+    btn.disabled = true; fb.textContent = 'Preparing…';
+    try{
+      const res = await fetch(`${API}/api/admin/users/export.csv?audience=${btn.dataset.audience}`, { headers: { 'x-admin-key': currentKey } });
+      if(!res.ok){ const b = await res.json().catch(() => ({})); throw new Error(b.error || `Request failed (${res.status})`); }
+      const blob = await res.blob();
+      const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'betedge-emails.csv';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const count = (await blob.text()).trim().split('\n').length - 1;
+      fb.textContent = `Downloaded ${count} email${count === 1 ? '' : 's'}.`;
+    }catch(e){
+      fb.textContent = 'Export failed: ' + e.message;
+    }finally{
+      btn.disabled = false;
+    }
+  });
+});
 </script>
 </body>
 </html>

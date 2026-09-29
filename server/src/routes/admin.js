@@ -157,6 +157,42 @@ router.post("/users/:id/tier", requireAdminKey, async (req, res) => {
   }
 });
 
+// GET /api/admin/users/export.csv?audience=opted_in|all — downloads active
+// (non-archived) users' emails as CSV for marketing tools. Default audience is
+// opted_in: only people who agreed to marketing emails.
+function csvCell(v) {
+  if (v === null || v === undefined) return "";
+  const str = v instanceof Date ? v.toISOString() : String(v);
+  // Quote everything; neutralize spreadsheet formula injection.
+  const safe = /^[=+\-@]/.test(str) ? "'" + str : str;
+  return '"' + safe.replace(/"/g, '""') + '"';
+}
+
+router.get("/users/export.csv", requireAdminKey, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: "No database configured." });
+    const audience = req.query.audience === "all" ? "all" : "opted_in";
+    const where = audience === "all" ? "archived_at IS NULL" : "archived_at IS NULL AND marketing_opt_in = true";
+    const { rows } = await pool.query(
+      `SELECT email, created_at, tier, trial_ends_at, subscription_status, bonus_access_until,
+              marketing_opt_in, marketing_opt_in_at
+       FROM users WHERE ${where} ORDER BY created_at DESC`
+    );
+    const header = ["email", "signed_up", "plan", "subscription_status", "marketing_opt_in", "opted_in_at"];
+    const lines = [header.join(",")].concat(rows.map((r) => [
+      r.email, r.created_at, effectiveTier(r), r.subscription_status, r.marketing_opt_in ? "yes" : "no", r.marketing_opt_in_at,
+    ].map(csvCell).join(",")));
+    const date = new Date().toISOString().slice(0, 10);
+    console.log(`[admin] email export (${audience}): ${rows.length} rows`);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="betedge-emails-${audience}-${date}.csv"`);
+    res.send(lines.join("\n") + "\n");
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to export emails.", detail: err.message });
+  }
+});
+
 // POST /api/admin/users/:id/impersonate — issues a short-lived (2h) session
 // token for that user so the owner can see the site exactly as they do,
 // without knowing their password. Archived users can't be impersonated.

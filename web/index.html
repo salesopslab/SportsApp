@@ -592,6 +592,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .parlay-leg-settle-btn.win:hover{ border-color:var(--green); color:var(--green); }
 .parlay-leg-settle-btn.loss:hover{ border-color:var(--red); color:var(--red); }
 .parlay-leg-settle-btn.push:hover{ border-color:var(--sub); color:var(--text); }
+.auth-optin{ display:flex; gap:8px; align-items:flex-start; font-size:12.5px; color:var(--sub); line-height:1.4; margin:2px 0 12px; cursor:pointer; text-align:left; }
+.auth-optin input{ margin-top:2px; flex:none; }
+.auth-legal{ font-size:11.5px; color:var(--sub); line-height:1.45; margin-top:10px; text-align:center; }
+.auth-legal a, .legal-links a{ color:var(--teal); text-decoration:none; }
+.legal-links{ font-size:12px; color:var(--sub); text-align:center; margin-top:10px; }
+.site-footer{ padding:24px 16px 32px; text-align:center; font-size:11.5px; color:var(--sub); line-height:1.5; }
 </style>
 <body>
 
@@ -626,7 +632,9 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <input class="modal-input" id="authEmail" type="email" placeholder="Email" autocomplete="email">
       <input class="modal-input" id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
       <input class="modal-input hidden" id="authReferralCode" type="text" placeholder="Referral code (optional)" autocomplete="off">
+      <label class="auth-optin hidden" id="authOptInRow"><input type="checkbox" id="authMarketingOptIn"> Email me tips, new features and offers. Unsubscribe anytime.</label>
       <button class="modal-submit" id="authSubmit">Log in</button>
+      <div class="auth-legal hidden" id="authLegalNote">By signing up you confirm you're 21+ and agree to our <a href="/terms.html" target="_blank">Terms</a> and <a href="/privacy.html" target="_blank">Privacy Policy</a>.</div>
       <button class="auth-demo-link" id="authDemoLink"><span class="play-ic"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></span>Watch a 2-min demo first</button>
     </div>
   </div>
@@ -674,6 +682,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
         </div>
       </div>
       <button class="modal-submit" id="accountUpgradeBtn">See plans</button>
+      <label class="auth-optin" id="acctOptInRow"><input type="checkbox" id="acctMarketingOptIn"> Email me tips, new features and offers</label>
       <button class="manage-billing-link" id="pwToggleBtn" type="button">Change password</button>
       <div class="hidden" id="pwForm">
         <input class="modal-input" id="pwCurrent" type="password" placeholder="Current password" autocomplete="current-password">
@@ -682,6 +691,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
         <button class="modal-submit" id="pwSaveBtn" type="button">Save new password</button>
       </div>
       <button class="manage-billing-link" id="accountLogoutBtn">Log out</button>
+      <div class="legal-links"><a href="/terms.html" target="_blank">Terms</a> · <a href="/privacy.html" target="_blank">Privacy</a> · <a href="mailto:support@betedgeai.com">support@betedgeai.com</a></div>
     </div>
   </div>
 
@@ -935,6 +945,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <button class="sort-toggle" id="sortToggle">⇅ Soonest first</button>
     </div>
     <div id="boardList"><div class="board-msg"><div class="spin"></div><div>Loading live odds…</div></div></div>
+    <div class="site-footer">
+      <div>BetEdge AI is a research tool, not a sportsbook. 21+ only. Gambling problem? Call 1-800-GAMBLER.</div>
+      <div class="legal-links"><a href="/terms.html">Terms</a> · <a href="/privacy.html">Privacy</a> · <a href="mailto:support@betedgeai.com">support@betedgeai.com</a></div>
+    </div>
   </div>
 
   <!-- CHAT -->
@@ -1340,6 +1354,8 @@ function setAuthMode(mode){
   document.getElementById('authSubmit').dataset.mode = mode;
   document.getElementById('authError').textContent = '';
   document.getElementById('authReferralCode').classList.toggle('hidden', mode !== 'signup');
+  document.getElementById('authOptInRow').classList.toggle('hidden', mode !== 'signup');
+  document.getElementById('authLegalNote').classList.toggle('hidden', mode !== 'signup');
   document.getElementById('authDemoLink').classList.add('show'); // shown on both Login and Sign up now
 }
 
@@ -1449,6 +1465,7 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
   if(mode === 'signup'){
     const referralCode = document.getElementById('authReferralCode').value.trim();
     if(referralCode) body.referralCode = referralCode;
+    body.marketingOptIn = document.getElementById('authMarketingOptIn').checked;
   }
 
   try{
@@ -4403,6 +4420,23 @@ setInterval(refreshBigLines, 3 * 60 * 1000);
   });
   bar.append(label, exit);
   document.body.appendChild(bar);
+})();
+
+// Marketing email toggle (account window)
+(function(){
+  const box = document.getElementById('acctMarketingOptIn');
+  if(!box) return;
+  const sync = () => { box.checked = !!(currentUser && currentUser.marketingOptIn); };
+  new MutationObserver(() => { if(!document.getElementById('accountModal').classList.contains('hidden')) sync(); })
+    .observe(document.getElementById('accountModal'), { attributes:true, attributeFilter:['class'] });
+  box.addEventListener('change', async () => {
+    const want = box.checked;
+    try{
+      const res = await apiFetch('/api/auth/marketing', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ optIn: want }) });
+      if(!res.ok) throw new Error();
+      if(currentUser){ currentUser.marketingOptIn = want; try{ localStorage.setItem('betedge_user', JSON.stringify(currentUser)); }catch{} }
+    }catch{ box.checked = !want; }
+  });
 })();
 </script>
 

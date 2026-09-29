@@ -25,6 +25,7 @@ export function toPublicUser(row) {
     trialMsRemaining: trialMsRemaining(row),
     referralCode: row.referral_code ?? null,
     bonusAccessUntil: row.bonus_access_until ?? null,
+    marketingOptIn: !!row.marketing_opt_in,
   };
 }
 
@@ -38,7 +39,7 @@ export function verifyToken(token) {
   return jwt.verify(token, JWT_SECRET);
 }
 
-export async function signup(email, password, referralCode, signupIp) {
+export async function signup(email, password, referralCode, signupIp, marketingOptIn = false) {
   if (!pool) throw new Error("Accounts aren't available yet — no database configured.");
   if (!email || !password) throw new Error("Email and password are required.");
   if (password.length < 8) throw new Error("Password must be at least 8 characters.");
@@ -61,10 +62,10 @@ export async function signup(email, password, referralCode, signupIp) {
   const passwordHash = await bcrypt.hash(password, 10);
   const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
   const { rows } = await pool.query(
-    `INSERT INTO users (email, password_hash, tier, trial_ends_at, referred_by_user_id, signup_ip)
-     VALUES ($1, $2, 'trial', $3, $4, $5)
-     RETURNING id, email, created_at, tier, trial_ends_at, subscription_status, referred_by_user_id`,
-    [normalizedEmail, passwordHash, trialEndsAt, referrerId, signupIp || null]
+    `INSERT INTO users (email, password_hash, tier, trial_ends_at, referred_by_user_id, signup_ip, marketing_opt_in, marketing_opt_in_at)
+     VALUES ($1, $2, 'trial', $3, $4, $5, $6, CASE WHEN $6 THEN now() ELSE NULL END)
+     RETURNING id, email, created_at, tier, trial_ends_at, subscription_status, referred_by_user_id, marketing_opt_in`,
+    [normalizedEmail, passwordHash, trialEndsAt, referrerId, signupIp || null, !!marketingOptIn]
   );
   const row = rows[0];
   row.referral_code = await assignReferralCodeOnSignup(row.id);
@@ -109,4 +110,13 @@ export async function changePassword(userId, currentPassword, newPassword) {
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
   await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, userId]);
+}
+
+export async function setMarketingOptIn(userId, optIn) {
+  if (!pool) throw new Error("Accounts aren't available yet — no database configured.");
+  await ensureSchema();
+  await pool.query(
+    "UPDATE users SET marketing_opt_in = $1, marketing_opt_in_at = CASE WHEN $1 THEN now() ELSE NULL END WHERE id = $2",
+    [!!optIn, userId]
+  );
 }

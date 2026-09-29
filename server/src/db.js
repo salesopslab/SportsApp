@@ -66,6 +66,10 @@ export function ensureSchema() {
       -- Captured at signup for referral self-abuse checks (see referralService.js
       -- isSelfReferral) — not used for anything else, and never shown to users.
       ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_ip TEXT;
+      -- Marketing email consent. Off by default; set by the signup checkbox or
+      -- the account window toggle. The admin email export uses it.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_opt_in BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_opt_in_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users (referral_code);
 
       -- Soft-delete: an archived account is blocked from logging in (and any

@@ -19,7 +19,7 @@ const app = express();
 // X-Forwarded-For header the proxy sets, which the referral program's
 // same-IP self-referral check (referralService.js) depends on being correct.
 app.set("trust proxy", true);
-app.use(cors());
+app.use(cors({ exposedHeaders: ["Content-Disposition"] }));
 
 // The Stripe webhook needs the RAW request body to verify its signature, so
 // it's registered here — before the app-wide express.json() below — with its
