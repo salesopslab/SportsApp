@@ -91,3 +91,20 @@ export async function login(email, password) {
   const user = toPublicUser(row);
   return { user, token: signToken(user) };
 }
+
+// Changes a logged-in user's password. Requires the current password so a
+// stolen session token alone can't lock the real owner out.
+export async function changePassword(userId, currentPassword, newPassword) {
+  if (!pool) throw new Error("Accounts aren't available yet — no database configured.");
+  if (!currentPassword || !newPassword) throw new Error("Current and new password are required.");
+  if (newPassword.length < 8) throw new Error("Password must be at least 8 characters.");
+
+  await ensureSchema();
+  const { rows } = await pool.query("SELECT password_hash FROM users WHERE id = $1", [userId]);
+  if (!rows.length) throw new Error("User not found.");
+  const ok = await bcrypt.compare(currentPassword, rows[0].password_hash);
+  if (!ok) throw new Error("Current password is incorrect.");
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, userId]);
+}

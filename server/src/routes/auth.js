@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { signup, login, accountsAvailable, toPublicUser } from "../services/authService.js";
+import { signup, login, changePassword, accountsAvailable, toPublicUser } from "../services/authService.js";
 import { requireAuth } from "../middleware/auth.js";
 import { pool } from "../db.js";
 import { ensureReferralCode } from "../services/referralService.js";
@@ -44,6 +44,16 @@ router.get("/me", requireAuth, async (req, res) => {
     res.json({ user: toPublicUser(row) });
   } catch (err) {
     res.status(500).json({ error: "Failed to load account." });
+  }
+});
+
+router.post("/change-password", requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    await changePassword(req.user.id, currentPassword, newPassword);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
