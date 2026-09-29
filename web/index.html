@@ -674,6 +674,13 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
         </div>
       </div>
       <button class="modal-submit" id="accountUpgradeBtn">See plans</button>
+      <button class="manage-billing-link" id="pwToggleBtn" type="button">Change password</button>
+      <div class="hidden" id="pwForm">
+        <input class="modal-input" id="pwCurrent" type="password" placeholder="Current password" autocomplete="current-password">
+        <input class="modal-input" id="pwNew" type="password" placeholder="New password (8+ characters)" autocomplete="new-password">
+        <div class="modal-error" id="pwError"></div>
+        <button class="modal-submit" id="pwSaveBtn" type="button">Save new password</button>
+      </div>
       <button class="manage-billing-link" id="accountLogoutBtn">Log out</button>
     </div>
   </div>
@@ -4351,6 +4358,32 @@ checkMovers();
 refreshBigLines();
 setInterval(checkMovers, 3 * 60 * 1000); // re-check every 3 minutes
 setInterval(refreshBigLines, 3 * 60 * 1000);
+
+// Change password (account modal)
+(function(){
+  const toggle = document.getElementById('pwToggleBtn');
+  const form = document.getElementById('pwForm');
+  const cur = document.getElementById('pwCurrent');
+  const nw = document.getElementById('pwNew');
+  const err = document.getElementById('pwError');
+  const save = document.getElementById('pwSaveBtn');
+  if(!toggle) return;
+  toggle.addEventListener('click', () => { form.classList.toggle('hidden'); err.textContent=''; err.style.color=''; });
+  save.addEventListener('click', async () => {
+    err.style.color=''; err.textContent='';
+    if(!cur.value || !nw.value){ err.textContent='Enter your current and new password.'; return; }
+    if(nw.value.length < 8){ err.textContent='New password must be at least 8 characters.'; return; }
+    save.disabled = true;
+    try{
+      const res = await apiFetch('/api/auth/change-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ currentPassword: cur.value, newPassword: nw.value }) });
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok){ err.textContent = data.error || 'Could not change password.'; return; }
+      cur.value=''; nw.value='';
+      err.style.color='var(--teal)'; err.textContent='Password updated.';
+    }catch(e){ err.textContent='Network error — try again.'; }
+    finally{ save.disabled = false; }
+  });
+})();
 </script>
 
 </body>
