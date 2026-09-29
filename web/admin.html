@@ -48,15 +48,16 @@ body{
 .card .note{ font-size:11.5px; color:var(--sub); margin-top:4px; }
 
 .section{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:18px; }
-.section h2{ font-size:14px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; }
+.section h2{ font-size:14px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
 .section h2 .tag{ font-size:11px; color:var(--sub); font-weight:500; }
 .empty-note{ color:var(--sub); font-size:13px; padding:8px 0; }
 
 table{ width:100%; border-collapse:collapse; font-size:13px; }
-th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.3px; color:var(--sub); padding:6px 8px; border-bottom:1px solid var(--line); }
+th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.3px; color:var(--sub); padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
 td{ padding:8px 8px; border-bottom:1px solid var(--line); vertical-align:middle; }
 tr:last-child td{ border-bottom:none; }
-.tier-badge{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:8px; text-transform:uppercase; background:var(--surface2); color:var(--sub); }
+.table-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.tier-badge{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:8px; text-transform:uppercase; background:var(--surface2); color:var(--sub); white-space:nowrap; }
 .tier-badge.standard{ color:var(--teal); }
 .tier-badge.edge{ color:var(--amber); }
 .tier-badge.edge_pro{ color:var(--red); }
@@ -79,6 +80,55 @@ select.tier-select.flash-error{ border-color:var(--red); }
 .spin{ width:22px; height:22px; border:2.5px solid var(--line); border-top-color:var(--amber); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto; }
 @keyframes spin{ to{ transform:rotate(360deg); } }
 .loading{ text-align:center; padding:40px 0; color:var(--sub); font-size:13px; }
+
+/* --- health checklist (billing health section) --- */
+.health-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:10px; }
+.health-row{ display:flex; align-items:center; gap:8px; background:var(--surface2); border-radius:9px; padding:9px 11px; font-size:12.5px; }
+.health-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.health-dot.ok{ background:var(--green); }
+.health-dot.bad{ background:var(--red); }
+.health-row .name{ flex:1; }
+.health-row .state{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; }
+.health-row .state.ok{ color:var(--green); }
+.health-row .state.bad{ color:var(--red); }
+
+/* --- mobile: shrink everything down so it doesn't feel like a desktop
+   dashboard stretched onto a phone --- */
+@media (max-width:640px){
+  .wrap{ padding:14px 12px 40px; }
+  .topbar{ padding:2px 0 12px; margin-bottom:14px; }
+  .brand{ font-size:16px; }
+  .brand .sub{ font-size:10.5px; margin-left:6px; }
+  .logout-btn{ font-size:11px; padding:5px 10px; }
+
+  .cards{ grid-template-columns:repeat(2, 1fr); gap:8px; margin-bottom:16px; }
+  .card{ padding:10px 11px; border-radius:10px; }
+  .card .label{ font-size:9.5px; margin-bottom:4px; }
+  .card .value{ font-size:17px; }
+  .card .note{ font-size:10px; margin-top:2px; }
+
+  .section{ padding:12px; margin-bottom:12px; border-radius:10px; }
+  .section h2{ font-size:12.5px; margin-bottom:9px; }
+  .section h2 .tag{ font-size:10px; }
+  .empty-note{ font-size:12px; padding:6px 0; }
+
+  table{ font-size:11.5px; }
+  th{ font-size:9.5px; padding:5px 6px; }
+  td{ padding:6px 6px; }
+  .tier-badge{ font-size:9.5px; padding:1px 6px; }
+  select.tier-select{ font-size:11px; padding:3px 5px; }
+  .tier-feedback{ font-size:9.5px; }
+
+  .search-row input{ padding:7px 9px; font-size:12.5px; }
+  .pager button{ font-size:11px; padding:4px 8px; }
+
+  .bars{ height:60px; }
+  .bar-labels{ font-size:9px; }
+
+  .health-grid{ grid-template-columns:repeat(2, 1fr); gap:7px; }
+  .health-row{ padding:7px 9px; font-size:11px; }
+  .health-row .state{ font-size:9.5px; }
+}
 </style>
 </head>
 <body>
@@ -103,9 +153,24 @@ select.tier-select.flash-error{ border-color:var(--red); }
     <div id="dashContent" class="hidden">
       <div class="cards" id="overviewCards"></div>
 
+      <div class="section" id="healthSection">
+        <h2>Billing health</h2>
+        <div id="healthBody"></div>
+      </div>
+
       <div class="section" id="revenueSection">
-        <h2>Revenue <span class="tag">live from Stripe</span></h2>
+        <h2>Subscription revenue <span class="tag">live from Stripe</span></h2>
         <div id="revenueBody"></div>
+      </div>
+
+      <div class="section" id="hotpicksSection">
+        <h2>Hot Picks <span class="tag" id="hotpicksTag"></span></h2>
+        <div id="hotpicksBody"></div>
+      </div>
+
+      <div class="section" id="referralsSection">
+        <h2>Referral program</h2>
+        <div id="referralsBody"></div>
       </div>
 
       <div class="section">
@@ -206,7 +271,7 @@ async function tryKey(){
   }
 }
 
-function renderOverview(usage, revenue){
+function renderOverview(usage, revenue, hotpicks){
   const stats = usage.stats || {};
   const cards = [];
   cards.push({ label: 'Total users', value: stats.available ? stats.totalUsers.toLocaleString() : '—' });
@@ -217,6 +282,11 @@ function renderOverview(usage, revenue){
     value: revenue.available ? fmtMoney(revenue.mrrCents) : '—',
     note: revenue.available ? null : (revenue.reason || 'Stripe not configured')
   });
+  cards.push({
+    label: 'Hot Picks revenue',
+    value: hotpicks.available ? fmtMoney(hotpicks.totalRevenueCents) : '—',
+    note: hotpicks.available ? `${hotpicks.totalPurchases} purchase${hotpicks.totalPurchases === 1 ? '' : 's'}` : null
+  });
   document.getElementById('overviewCards').innerHTML = cards.map(c => `
     <div class="card">
       <div class="label">${c.label}</div>
@@ -224,6 +294,26 @@ function renderOverview(usage, revenue){
       ${c.note ? `<div class="note">${c.note}</div>` : ''}
     </div>
   `).join('');
+}
+
+function renderHealth(health){
+  const el = document.getElementById('healthBody');
+  const rows = [
+    { name: 'Stripe secret key', ok: health.stripeConfigured },
+    { name: 'Webhook signing secret', ok: health.webhookConfigured },
+    ...health.tiers.map(t => ({ name: `${t.name} price`, ok: t.priceConfigured })),
+  ];
+  el.innerHTML = `
+    <div class="health-grid">
+      ${rows.map(r => `
+        <div class="health-row">
+          <span class="health-dot ${r.ok ? 'ok' : 'bad'}"></span>
+          <span class="name">${r.name}</span>
+          <span class="state ${r.ok ? 'ok' : 'bad'}">${r.ok ? 'Live' : 'Missing'}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 function renderRevenue(revenue){
@@ -238,12 +328,63 @@ function renderRevenue(revenue){
     return;
   }
   el.innerHTML = `
+    <div class="table-scroll">
     <table>
       <thead><tr><th>Tier</th><th>Subscribers</th><th>MRR</th></tr></thead>
       <tbody>
         ${rows.map(([tier, v]) => `<tr><td>${tierLabel(tier)}</td><td>${v.count}</td><td>${fmtMoney(v.mrrCents)}</td></tr>`).join('')}
       </tbody>
     </table>
+    </div>
+  `;
+}
+
+function renderHotPicks(hotpicks){
+  const tagEl = document.getElementById('hotpicksTag');
+  const el = document.getElementById('hotpicksBody');
+  if(!hotpicks.available){
+    tagEl.textContent = '';
+    el.innerHTML = '<div class="empty-note">No database connected.</div>';
+    return;
+  }
+  if(!hotpicks.days.length){
+    tagEl.textContent = '';
+    el.innerHTML = '<div class="empty-note">No Hot Picks days generated yet.</div>';
+    return;
+  }
+  tagEl.textContent = `${fmtMoney(hotpicks.totalRevenueCents)} total · ${hotpicks.totalPurchases} purchases`;
+  el.innerHTML = `
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Date</th><th>Price</th><th>Picks</th><th>Sold</th><th>Slots left</th><th>Revenue</th></tr></thead>
+      <tbody>
+        ${hotpicks.days.map(d => `
+          <tr>
+            <td>${fmtDate(d.betDate)}</td>
+            <td>${fmtMoney(d.priceCents)}</td>
+            <td>${d.pickCount}</td>
+            <td>${d.purchased} / ${d.maxPurchasers}</td>
+            <td>${d.slotsLeft}</td>
+            <td>${fmtMoney(d.revenueCents)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    </div>
+  `;
+}
+
+function renderReferrals(referrals){
+  const el = document.getElementById('referralsBody');
+  if(!referrals.available){
+    el.innerHTML = '<div class="empty-note">No database connected.</div>';
+    return;
+  }
+  el.innerHTML = `
+    <div class="cards" style="margin-bottom:0;">
+      <div class="card"><div class="label">Completed referrals</div><div class="value">${referrals.totalRewarded.toLocaleString()}</div><div class="note">${referrals.bonusDays} bonus days each side</div></div>
+      <div class="card"><div class="label">Blocked as abuse</div><div class="value">${referrals.totalBlocked.toLocaleString()}</div></div>
+    </div>
   `;
 }
 
@@ -304,6 +445,7 @@ async function loadUsers(){
     el.innerHTML = '<div class="empty-note">No users found.</div>';
   } else {
     el.innerHTML = `
+      <div class="table-scroll">
       <table>
         <thead><tr><th>Email</th><th>Joined</th><th>Tier</th><th>Status</th><th></th></tr></thead>
         <tbody>
@@ -323,6 +465,7 @@ async function loadUsers(){
           `).join('')}
         </tbody>
       </table>
+      </div>
     `;
     el.querySelectorAll('.tier-select').forEach(sel => {
       sel.addEventListener('change', async () => {
@@ -387,13 +530,19 @@ async function loadAll(){
   loadingMsg.classList.remove('hidden');
   dashContent.classList.add('hidden');
   try{
-    const [usage, revenue, growth] = await Promise.all([
+    const [usage, revenue, growth, health, hotpicks, referrals] = await Promise.all([
       adminFetch('/api/admin/usage'),
       adminFetch('/api/admin/revenue'),
       adminFetch('/api/admin/growth?days=30'),
+      adminFetch('/api/admin/billing-health'),
+      adminFetch('/api/admin/hotpicks?days=30'),
+      adminFetch('/api/admin/referrals'),
     ]);
-    renderOverview(usage, revenue);
+    renderOverview(usage, revenue, hotpicks);
+    renderHealth(health);
     renderRevenue(revenue);
+    renderHotPicks(hotpicks);
+    renderReferrals(referrals);
     renderGrowth(growth);
     renderUsage(usage);
     await loadUsers();

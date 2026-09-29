@@ -2,7 +2,8 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { getLatestUsage, getUsageHistory } from "../services/usageService.js";
 import { TIERS, TIER_RANK, effectiveTier } from "../services/tierService.js";
-import { stripe, stripeAvailable } from "../services/stripeService.js";
+import { stripe, stripeAvailable, priceIdForTier } from "../services/stripeService.js";
+import { REFERRAL_BONUS_DAYS } from "../services/referralService.js";
 
 const router = Router();
 
@@ -196,6 +197,85 @@ router.get("/revenue", requireAdminKey, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "Failed to load revenue from Stripe.", detail: err.message });
+  }
+});
+
+// GET /api/admin/billing-health — a quick "is Stripe actually wired up"
+// checklist: the secret key, the webhook signing secret, and each
+// subscription tier's Price ID. None of these return the actual secret
+// values, just whether each is present, so this is safe to expose behind the
+// existing admin-key gate.
+router.get("/billing-health", requireAdminKey, (req, res) => {
+  res.json({
+    stripeConfigured: stripeAvailable(),
+    webhookConfigured: !!process.env.STRIPE_WEBHOOK_SECRET,
+    tiers: TIERS.map((t) => ({
+      id: t.id,
+      name: t.name,
+      priceCents: t.priceCents,
+      priceConfigured: !!priceIdForTier(t.id),
+    })),
+  });
+});
+
+// GET /api/admin/hotpicks?days=30 — Hot Picks performance: per-day price,
+// cap, purchases and revenue, most recent first, plus running totals. Pulled
+// from our own DB (purchases are recorded there by the Stripe webhook),
+// unlike /revenue which reads live from Stripe.
+router.get("/hotpicks", requireAdminKey, async (req, res) => {
+  try {
+    if (!pool) return res.json({ available: false, days: [] });
+    const days = Math.min(Number(req.query.days) || 30, 365);
+    const { rows } = await pool.query(
+      `SELECT
+         d.id, d.bet_date, d.price_cents, d.max_purchasers,
+         (SELECT COUNT(*) FROM hot_picks hp WHERE hp.hot_pick_day_id = d.id) AS pick_count,
+         COUNT(pu.id) AS purchased,
+         COALESCE(SUM(pu.amount_cents), 0) AS revenue_cents
+       FROM hot_pick_days d
+       LEFT JOIN hot_pick_purchases pu ON pu.hot_pick_day_id = d.id
+       WHERE d.bet_date >= (now() - ($1 * interval '1 day'))::date
+       GROUP BY d.id
+       ORDER BY d.bet_date DESC`,
+      [days]
+    );
+    const mapped = rows.map((r) => ({
+      betDate: r.bet_date,
+      priceCents: r.price_cents,
+      maxPurchasers: r.max_purchasers,
+      pickCount: Number(r.pick_count),
+      purchased: Number(r.purchased),
+      slotsLeft: Math.max(0, r.max_purchasers - Number(r.purchased)),
+      revenueCents: Number(r.revenue_cents),
+    }));
+    const totalRevenueCents = mapped.reduce((sum, d) => sum + d.revenueCents, 0);
+    const totalPurchases = mapped.reduce((sum, d) => sum + d.purchased, 0);
+    res.json({ available: true, days: mapped, totalRevenueCents, totalPurchases });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load Hot Picks data.", detail: err.message });
+  }
+});
+
+// GET /api/admin/referrals — how the referral program is performing:
+// completed (rewarded) referrals, bonus days each is worth, and how many
+// attempts got blocked as likely self-referral abuse.
+router.get("/referrals", requireAdminKey, async (req, res) => {
+  try {
+    if (!pool) return res.json({ available: false });
+    const [rewarded, blocked] = await Promise.all([
+      pool.query("SELECT COUNT(*)::int AS n FROM referral_rewards"),
+      pool.query("SELECT COUNT(*)::int AS n FROM referral_rewards_blocked"),
+    ]);
+    res.json({
+      available: true,
+      totalRewarded: rewarded.rows[0].n,
+      totalBlocked: blocked.rows[0].n,
+      bonusDays: REFERRAL_BONUS_DAYS,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load referral data.", detail: err.message });
   }
 });
 
