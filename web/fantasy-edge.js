@@ -214,7 +214,7 @@
       const d = await call('screenshot', { image });
       if(!d.players || !d.players.length) throw new Error("Couldn't find any players in that screenshot. Try a tighter crop of your roster.");
       roster = d.players.map(p => ({ name: p.name, position: p.position, team: p.team, slot: p.slot, lineupSlot: p.lineupSlot, matched: p.matched }));
-      save(); renderRoster();
+      save(); renderRoster(); renderPanel(); renderPanel();
       const unmatched = roster.filter(p => p.matched === false).length;
       $('feResult').innerHTML = `<div class="fe-card">
         <div class="fe-card-title">✅ Found ${roster.length} players${d.platform && d.platform !== 'Unknown' ? ` from ${esc(d.platform)}` : ''}</div>
