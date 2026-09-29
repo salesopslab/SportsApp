@@ -2769,7 +2769,7 @@ function renderHotPicksPromo(){
         <div class="hotpicks-promo-title">🔥 Today's Hot Picks</div>
         <span class="hotpicks-promo-price">${price}</span>
       </div>
-      <div class="hotpicks-promo-sub">${t.pickCount} AI-selected pick${t.pickCount===1?'':'s'} kicking off in the next 24 hours${t.eligible ? ` — ${t.slotsLeft} of ${t.maxPurchasers} slots left today` : ' — Edge Pro exclusive'}.</div>
+      <div class="hotpicks-promo-sub">${t.pickCount} AI-selected pick${t.pickCount===1?'':'s'} kicking off in the next 24 hours${t.eligible ? ` — ${t.slotsLeft} of ${t.maxPurchasers} slots left today` : ' — subscriber exclusive'}.</div>
     </div>
   `;
 }
@@ -2788,7 +2788,9 @@ function renderHotPicksModalBody(){
 
   if(!t.eligible){
     body.innerHTML = `<div class="hotpicks-promo-sub" style="margin-bottom:10px;">${t.pickCount} AI-selected pick${t.pickCount===1?'':'s'} today, each kicking off within 24 hours of game time.</div>` +
-      upgradePromptHtml('edge_pro', 'Hot Picks is an Edge Pro add-on — upgrade to unlock purchasing.');
+      (t.loggedIn
+        ? upgradePromptHtml('standard', 'Hot Picks is available on any paid plan, including your free trial — start a plan to unlock purchasing.')
+        : upgradePromptHtml('standard', 'Log in or start a plan (or your free trial) to unlock Hot Picks.', { signedOut: true }));
     wireUpgradePrompts(body);
     return;
   }

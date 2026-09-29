@@ -84,7 +84,9 @@ router.get("/today", withTier, async (req, res) => {
       soldOut: slotsLeft <= 0 && !owned,
       pickCount: visiblePicks.length,
       owned,
-      eligible: meetsTier(req.userRow, "edge_pro"),
+      // Hot Picks is a paid-plan add-on, not Edge-Pro-only: any subscriber
+      // (Standard, Edge, Edge Pro) or trial account can buy in.
+      eligible: meetsTier(req.userRow, "standard"),
       loggedIn: !!req.user,
       picks: visiblePicks.map((p) => pickPublicFields(p, now, owned)),
     });
@@ -95,9 +97,10 @@ router.get("/today", withTier, async (req, res) => {
 });
 
 // POST /api/hot-picks/purchase { successUrl, cancelUrl } — one-time
-// Checkout session for today's bundle. Edge Pro gated; the webhook in
-// billing.js records the purchase once Stripe confirms payment.
-router.post("/purchase", withTier, requireTier("edge_pro"), async (req, res) => {
+// Checkout session for today's bundle. Gated to any active paid plan
+// (Standard/Edge/Edge Pro) or an active trial, not just Edge Pro; the
+// webhook in billing.js records the purchase once Stripe confirms payment.
+router.post("/purchase", withTier, requireTier("standard"), async (req, res) => {
   try {
     if (!stripeAvailable()) return res.status(503).json({ error: "Billing isn't configured yet." });
     if (!pool) return res.status(503).json({ error: "Hot Picks isn't configured yet." });
