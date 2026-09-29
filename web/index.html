@@ -587,6 +587,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <button class="modal-close" id="pricingModalClose">×</button>
       <h2>Upgrade your plan</h2>
       <div class="pricing-intro">Every plan starts with a 3-day free trial with full Edge Pro access — no charge until it ends.</div>
+      <button class="auth-demo-link" id="pricingDemoLink"><span class="play-ic"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></span>Not ready to commit? Watch a 2-min demo first</button>
       <div class="pricing-error" id="pricingError"></div>
       <div id="pricingTiers"><div class="board-msg"><div class="spin"></div></div></div>
       <button class="manage-billing-link hidden" id="manageBillingBtn">Manage billing / cancel subscription</button>
@@ -1138,6 +1139,10 @@ async function renderPricingModal(){
   // Only show "manage billing" once someone actually has a paid/trial
   // account worth managing — a never-subscribed visitor has nothing to manage.
   manageBtn.classList.toggle('hidden', !currentUser || currentUser.tier === 'none');
+  // The demo link is for people still deciding, not existing subscribers --
+  // most relevant for a logged-out visitor who lands here (e.g. via a "See
+  // plans" upgrade prompt) and hasn't seen the product in action yet.
+  document.getElementById('pricingDemoLink').classList.toggle('show', !currentUser);
 }
 
 function openDemoModal(){
@@ -1152,6 +1157,10 @@ document.getElementById('valueBannerDemo').addEventListener('click', openDemoMod
 document.getElementById('demoModalClose').addEventListener('click', closeDemoModal);
 document.getElementById('authDemoLink').addEventListener('click', ()=>{
   document.getElementById('authModal').classList.add('hidden');
+  openDemoModal();
+});
+document.getElementById('pricingDemoLink').addEventListener('click', ()=>{
+  closePricingModal();
   openDemoModal();
 });
 document.getElementById('demoExpandBtn').addEventListener('click', ()=>{
