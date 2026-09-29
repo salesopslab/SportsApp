@@ -816,6 +816,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
       <button class="modal-submit" id="authSubmit">Log in</button>
       <div class="auth-legal hidden" id="authLegalNote">By signing up you confirm you're 21+ and agree to our <a href="/terms.html" target="_blank">Terms</a> and <a href="/privacy.html" target="_blank">Privacy Policy</a>.</div>
       <button class="auth-demo-link" id="authDemoLink"><span class="play-ic"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></span>Watch a 2-min demo first</button>
+      <button class="auth-demo-link show hidden" id="authPricingLink" type="button">💳 See plans &amp; pricing</button>
     </div>
   </div>
 
@@ -1532,6 +1533,10 @@ function closeDemoModal(){
 document.getElementById('valueBannerDemo').addEventListener('click', openDemoModal);
 document.getElementById('topbarDemoBtn').addEventListener('click', openDemoModal);
 document.getElementById('demoModalClose').addEventListener('click', closeDemoModal);
+document.getElementById('authPricingLink').addEventListener('click', ()=>{
+  closeAuthModal();
+  openPricingModal();
+});
 document.getElementById('authDemoLink').addEventListener('click', ()=>{
   document.getElementById('authModal').classList.add('hidden');
   openDemoModal();
@@ -1685,6 +1690,7 @@ function setAuthMode(mode){
   document.getElementById('authReferralCode').classList.toggle('hidden', mode !== 'signup');
   document.getElementById('authOptInRow').classList.toggle('hidden', mode !== 'signup');
   document.getElementById('authLegalNote').classList.toggle('hidden', mode !== 'signup');
+  document.getElementById('authPricingLink').classList.toggle('hidden', mode !== 'signup');
   document.getElementById('authDemoLink').classList.add('show'); // shown on both Login and Sign up now
 }
 
