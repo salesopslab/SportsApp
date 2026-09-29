@@ -305,6 +305,63 @@ await test("web search disabled at org level → chat degrades to data tools ins
   assert.ok(!anthropicRequests[0].tools.some((t) => t.name === "web_search"));
 });
 
+await test("chat can use X + other AIs when configured; replies label them as unverified/second opinions", async () => {
+  scenario = "normal";
+  cache.flushAll();
+  Object.assign(process.env, { X_BEARER_TOKEN: "xb", PERPLEXITY_API_KEY: "pk" });
+  const origFetch = globalThis.fetch;
+  const reqs = [];
+  globalThis.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.includes("api.x.com")) {
+      return new Response(JSON.stringify({
+        data: [{ id: "9", text: "Daniels limited again today", author_id: "a", created_at: new Date().toISOString() }],
+        includes: { users: [{ id: "a", username: "CmdrsBeat", name: "Beat" }] },
+      }), { status: 200 });
+    }
+    if (u.includes("api.perplexity.ai")) {
+      return new Response(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: "Questionable, trending toward playing." }] }] }), { status: 200 });
+    }
+    if (u.includes("api.anthropic.com")) {
+      const body = JSON.parse(opts.body);
+      reqs.push(body);
+      if (reqs.length === 1) {
+        return new Response(JSON.stringify({ stop_reason: "tool_use", content: [
+          { type: "tool_use", id: "s1", name: "search_social_posts", input: { query: "Jayden Daniels practice" } },
+          { type: "tool_use", id: "s2", name: "ask_other_ais", input: { question: "Is Jayden Daniels playing vs Colts?" } },
+        ] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: "Questionable (elbow) per ESPN; per @CmdrsBeat on X he was limited again today (unverified)." }] }), { status: 200 });
+    }
+    return origFetch(url, opts);
+  };
+  const r = await local("POST", "/api/chat", { message: "Is Jayden Daniels playing Sunday?", context: dossier, sport: "nfl" });
+  globalThis.fetch = origFetch;
+  delete process.env.X_BEARER_TOKEN;
+  delete process.env.PERPLEXITY_API_KEY;
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const names = reqs[0].tools.map((t) => t.name);
+  assert.ok(names.includes("search_social_posts") && names.includes("ask_other_ais"), names.join(","));
+  assert.match(reqs[0].system, /UNVERIFIED/);
+  assert.match(reqs[0].system, /personal lives/);
+  const results = reqs[1].messages[2].content.map((c) => JSON.parse(c.content));
+  assert.equal(results[0].posts[0].author, "@CmdrsBeat");
+  assert.equal(results[1].opinions[0].status, "ok");
+  const social = r.json.sources.find((s) => s.kind === "social");
+  assert.equal(social.url, "https://x.com/CmdrsBeat/status/9");
+  assert.equal(social.cited, true);
+  assert.ok(r.json.sources.some((s) => s.kind === "ai" && s.label === "Perplexity"));
+});
+
+await test("no external keys → social/AI tools are not offered", async () => {
+  anthropicRequests.length = 0;
+  cache.flushAll();
+  const r = await local("POST", "/api/chat", { message: "What's the total?", context: dossier, sport: "nfl" });
+  assert.equal(r.status, 200);
+  const names = anthropicRequests[0].tools.map((t) => t.name);
+  assert.ok(!names.includes("search_social_posts") && !names.includes("ask_other_ais"));
+});
+
 server.close();
 console.log(failures ? `\n${failures} test(s) failed` : "\nAll tests passed");
 process.exit(failures ? 1 : 0);

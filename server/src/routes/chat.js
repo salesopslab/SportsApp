@@ -7,6 +7,7 @@ import { getGameWeather } from "../services/weatherService.js";
 import { getLiveGameState, lookupLiveState } from "../services/statsService.js";
 import { VENUES } from "../data/venues.js";
 import { meetsTier } from "../services/tierService.js";
+import { searchSocialPosts, askOtherAis, configuredSocialProviders, configuredAiProviders } from "../services/insightsService.js";
 
 // ---------------------------------------------------------------------------
 // AI chat, grounded in live data.
@@ -137,6 +138,52 @@ const DATA_TOOLS = [
     input_schema: { type: "object", properties: {} },
   },
 ];
+
+// Optional external-insight tools — only offered when their API keys are set
+// (see insightsService.js; official APIs only, no scraping).
+const MAX_SOCIAL_SEARCHES = Number(process.env.MAX_SOCIAL_SEARCHES_PER_QUESTION || 2);
+const MAX_AI_OPINIONS = Number(process.env.MAX_AI_OPINIONS_PER_QUESTION || 1);
+
+export function externalTools() {
+  const tools = [];
+  const social = configuredSocialProviders();
+  if (social.length) {
+    tools.push({
+      name: "search_social_posts",
+      description: `Search recent public posts on ${social.map((p) => (p === "x" ? "X (Twitter)" : "Threads")).join(" and ")} via the official API. Best for breaking news that hasn't reached articles yet: beat reporters' practice/injury observations, inactives, coach quotes, line-move chatter, weather at the stadium. Posts are UNVERIFIED — attribute each one (handle + time) and never state a post as confirmed fact. Use specific queries, e.g. "Jayden Daniels practice" or "Commanders injury report". At most ${MAX_SOCIAL_SEARCHES} searches per question.`,
+      input_schema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Keywords: player/team names plus the topic. No personal-life or gossip topics." },
+          platforms: { type: "array", items: { type: "string", enum: social }, description: "Defaults to all configured." },
+          accounts: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional handles to limit to (official team/league accounts, established beat reporters). Only use handles you are confident exist.",
+          },
+        },
+        required: ["query"],
+      },
+    });
+  }
+  const ais = configuredAiProviders();
+  if (ais.length) {
+    const names = { gemini: "Google Gemini (with Google Search)", perplexity: "Perplexity", openai: "OpenAI" };
+    tools.push({
+      name: "ask_other_ais",
+      description: `Get a second opinion from other AI platforms (${ais.map((a) => names[a]).join(", ")}) that search the web themselves. Returns each one's answer and the URLs it cited. Use for broader analysis or lean questions, or to cross-check news you found. Their answers are OPINIONS, not sources: re-state facts only with the URL they cited, and say where they agree or disagree with BetEdge data. At most ${MAX_AI_OPINIONS} call per question.`,
+      input_schema: {
+        type: "object",
+        properties: {
+          question: { type: "string", description: "A self-contained question including both teams, the sport and the game date." },
+          providers: { type: "array", items: { type: "string", enum: ais }, description: "Defaults to all configured." },
+        },
+        required: ["question"],
+      },
+    });
+  }
+  return tools;
+}
 
 function webSearchTool() {
   return { type: WEB_SEARCH_TOOL_TYPE, name: "web_search", max_uses: WEB_SEARCH_MAX_USES };
@@ -269,11 +316,47 @@ function makeToolRunner({ sport, game, userRow, sources, refreshed, state }) {
       return { status: "ok", ...w, retrieved: minutesAgoLabel(w?.retrieved_at) };
     }
 
+    if (name === "search_social_posts") {
+      state.socialSearches = (state.socialSearches || 0) + 1;
+      if (state.socialSearches > MAX_SOCIAL_SEARCHES) {
+        return { status: "limit_reached", note: `Social search limit (${MAX_SOCIAL_SEARCHES}) reached for this question. Answer with what you have.` };
+      }
+      const out = await searchSocialPosts(input.query, { platforms: input.platforms, accounts: input.accounts });
+      for (const p of out.posts || []) {
+        sources.push({ label: `${p.platform} post by ${p.author || "unknown"}`, url: p.url, published_at: p.posted_at, kind: "social", cited: false });
+      }
+      return {
+        ...out,
+        posts: (out.posts || []).map((p) => ({ ...p, posted: p.posted_at ? minutesAgoLabel(p.posted_at) : null })),
+        reminder:
+          "Posts are unverified. Attribute each claim (\"per @handle on X, 20 min ago\"). Treat official team/league accounts and established reporters as stronger than fans or touts. Do not repeat rumors about players' personal lives.",
+      };
+    }
+
+    if (name === "ask_other_ais") {
+      state.aiOpinions = (state.aiOpinions || 0) + 1;
+      if (state.aiOpinions > MAX_AI_OPINIONS) {
+        return { status: "limit_reached", note: "Already asked other AIs for this question. Use that answer." };
+      }
+      const out = await askOtherAis(input.question, { providers: input.providers });
+      for (const o of out.opinions || []) {
+        if (o.status !== "ok") continue;
+        sources.push({ label: o.provider, url: null, retrieved_at: o.retrieved_at, kind: "ai" });
+      }
+      return {
+        ...out,
+        reminder:
+          "These are other models' opinions. Only re-state a fact if it comes with a cited URL, and attribute it (\"Perplexity, citing ESPN\"). Report disagreements with BetEdge data rather than resolving them silently.",
+      };
+    }
+
     return { status: "error", error: `Unknown tool ${name}` };
   };
 }
 
-function buildSystemPrompt({ context, freshness, nowIso, webSearchOn }) {
+function buildSystemPrompt({ context, freshness, nowIso, webSearchOn, extTools = [] }) {
+  const hasSocial = extTools.some((t) => t.name === "search_social_posts");
+  const hasAis = extTools.some((t) => t.name === "ask_other_ais");
   return `You are BetEdge AI, a professional sports betting desk analyst inside the BetEdge AI product.
 
 Current date/time: ${nowIso} (UTC). Treat anything older than today's practice/injury news as potentially outdated.
@@ -285,7 +368,9 @@ Help the user reason about ONE selected matchup. Sound like a calm, precise bett
 A. BetEdge live data tools (run on BetEdge's servers): get_injury_report, get_odds_and_line_movement, get_game_status, get_weather. These are the primary source for injuries, practice participation, game designations, odds, line movement, scores and game status.
 B. ${webSearchOn ? "web_search: current reporting that may be newer than the structured feeds (e.g. today's practice reports, a starter being ruled out, a QB change). Prefer, in order: official team sites and team beat accounts' published articles, NFL/league sources (nfl.com, league injury reports), then established sports outlets (ESPN, The Athletic, AP, CBS Sports, NBC Sports, Yahoo Sports, Pro Football Talk). Avoid unsourced rumor, fantasy-content farms and betting-tout sites." : "Web search is currently unavailable on this server — rely on the data tools, and say plainly when something could not be verified."}
 C. MATCHUP_CONTEXT: the Breakdown snapshot the user was viewing. Useful, but it may be stale — check DATA_FRESHNESS.
-
+${hasSocial ? `D. search_social_posts: recent public posts on X / Threads. Fastest signal for breaking news (practice observations, inactives, coach quotes), but UNVERIFIED. Weight: official team/league accounts > established beat reporters > everyone else. Never state a post as confirmed; say "per @handle on X, <time>". If a post conflicts with a structured feed, report both with times. Ignore touts' picks and anything about players' personal lives (nightlife, relationships, off-field rumors).
+` : ""}${hasAis ? `E. ask_other_ais: second opinions from other AI platforms that search the web. Use for lean/analysis questions or to cross-check. They are opinions, not sources — only carry over facts that come with a cited URL, and say when they disagree with BetEdge data or with each other. Never present their lean as yours without your own reasoning.
+` : ""}
 You DO have live retrieval through these tools. Never say you "can't browse the web", "only have MATCHUP_CONTEXT", or "don't have real-time data" — fetch it instead. If a tool or search genuinely fails, say exactly what could not be retrieved.
 
 ## Data-quality rules (non-negotiable)
@@ -382,7 +467,12 @@ function dedupeSources(sources) {
   const data = all.filter((s) => s.kind === "data");
   const cited = all.filter((s) => s.kind === "web" && s.cited);
   const other = all.filter((s) => s.kind === "web" && !s.cited);
-  return [...data, ...cited, ...other.slice(0, Math.max(0, 3 - cited.length))];
+  const ai = all.filter((s) => s.kind === "ai");
+  // Social posts: the ones the answer linked to first, then the most recent.
+  const social = all
+    .filter((s) => s.kind === "social")
+    .sort((a, b) => Number(!!b.cited) - Number(!!a.cited) || String(b.published_at || "").localeCompare(String(a.published_at || "")));
+  return [...data, ...cited, ...other.slice(0, Math.max(0, 3 - cited.length)), ...ai, ...social.slice(0, 3)];
 }
 
 // POST /api/chat  { message, context, sport? }
@@ -420,6 +510,7 @@ router.post("/", withTier, requireTier("edge_pro"), async (req, res) => {
 
     const freshness = buildFreshness(context);
     let webSearchOn = WEB_SEARCH_ENABLED;
+    const extTools = externalTools();
     const nowIso = new Date().toISOString();
 
     const messages = [{ role: "user", content: message }];
@@ -434,8 +525,8 @@ router.post("/", withTier, requireTier("edge_pro"), async (req, res) => {
         // Covers thinking + tool calls + the reply; see git history for why
         // this can't be small (an empty reply at max_tokens was a real bug).
         max_tokens: 4096,
-        system: buildSystemPrompt({ context, freshness, nowIso, webSearchOn }),
-        tools: webSearchOn ? [...DATA_TOOLS, webSearchTool()] : DATA_TOOLS,
+        system: buildSystemPrompt({ context, freshness, nowIso, webSearchOn, extTools }),
+        tools: webSearchOn ? [...DATA_TOOLS, ...extTools, webSearchTool()] : [...DATA_TOOLS, ...extTools],
         messages,
       };
       try {
@@ -499,11 +590,19 @@ router.post("/", withTier, requireTier("edge_pro"), async (req, res) => {
       throw new Error(`Empty response from model (stop_reason: ${data?.stop_reason}, rounds: ${rounds})`);
     }
 
+    // Mark social posts the reply actually refers to (by handle or URL).
+    for (const s of sources) {
+      if (s.kind !== "social") continue;
+      const handle = s.label.split(" by ")[1];
+      if ((handle && handle !== "unknown" && text.includes(handle)) || (s.url && text.includes(s.url))) s.cited = true;
+    }
+
     res.json({
       reply: text,
       sources: dedupeSources(sources),
       refreshed: [...new Set(refreshed)],
       usedWebSearch,
+      externalSources: extTools.map((t) => t.name),
       webSearchAvailable: webSearchOn,
       injuriesRetrievedAt: state.injuries?.retrieved_at || null,
       answeredAt: new Date().toISOString(),
