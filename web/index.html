@@ -136,10 +136,19 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .value-banner-text{ flex:1; font-size:13px; line-height:1.45; color:var(--text); }
 .value-banner-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .value-banner-btn{ padding:9px 16px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; }
-.value-banner-demo-btn{ padding:9px 16px; border-radius:20px; border:1px solid var(--line); background:transparent; color:var(--text); font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.value-banner-demo-btn{ display:inline-flex; align-items:center; gap:6px; padding:9px 16px 9px 13px; border-radius:20px; border:1px solid var(--line); background:var(--surface); color:var(--text); font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; transition:background .15s,border-color .15s; }
+.value-banner-demo-btn:hover{ background:var(--surface2); border-color:var(--sub); }
+.value-banner-demo-btn .play-ic{ display:inline-flex; width:16px; height:16px; align-items:center; justify-content:center; border-radius:50%; background:var(--text); color:var(--bg); flex-shrink:0; }
+.value-banner-demo-btn .play-ic svg{ width:7px; height:7px; margin-left:1px; }
 .demo-modal-card{ max-width:900px; width:92vw; padding:16px; }
-.demo-video-wrap{ position:relative; width:100%; border-radius:12px; overflow:hidden; background:#000; }
+.demo-video-wrap{ position:relative; width:100%; border-radius:12px; overflow:hidden; background:#000; box-shadow:0 8px 30px rgba(0,0,0,.35); }
 .demo-video-wrap video{ display:block; width:100%; height:auto; }
+.auth-demo-link{ display:none; align-items:center; justify-content:center; gap:6px; width:100%; margin-top:2px; padding:10px 0 2px; background:none; border:none; color:var(--sub); font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit; }
+.auth-demo-link:hover{ color:var(--text); }
+.auth-demo-link.show{ display:flex; }
+.auth-demo-link .play-ic{ display:inline-flex; width:14px; height:14px; align-items:center; justify-content:center; border-radius:50%; background:var(--sub); color:var(--bg); flex-shrink:0; }
+.auth-demo-link:hover .play-ic{ background:var(--text); }
+.auth-demo-link .play-ic svg{ width:6px; height:6px; margin-left:1px; }
 .value-banner-close{ background:none; border:none; color:var(--sub); font-size:18px; line-height:1; cursor:pointer; padding:4px 6px; }
 
 .picks-login-cta{ display:block; margin:12px auto 0; padding:10px 20px; border-radius:20px; border:none; background:var(--amber); color:var(--bg); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit; }
@@ -557,6 +566,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <input class="modal-input" id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
       <input class="modal-input hidden" id="authReferralCode" type="text" placeholder="Referral code (optional)" autocomplete="off">
       <button class="modal-submit" id="authSubmit">Log in</button>
+      <button class="auth-demo-link" id="authDemoLink"><span class="play-ic"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></span>Watch a 2-min demo first</button>
     </div>
   </div>
 
@@ -822,7 +832,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
       <div class="value-banner-text">AI-powered picks, live odds &amp; line-movement tracking for every major sport.</div>
       <div class="value-banner-actions">
         <button class="value-banner-btn" id="valueBannerCta">Start free trial</button>
-        <button class="value-banner-demo-btn" id="valueBannerDemo">▶ Watch demo</button>
+        <button class="value-banner-demo-btn" id="valueBannerDemo"><span class="play-ic"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></span>Watch demo</button>
         <button class="value-banner-close" id="valueBannerClose" aria-label="Dismiss">×</button>
       </div>
     </div>
@@ -1128,6 +1138,10 @@ function closeDemoModal(){
 }
 document.getElementById('valueBannerDemo').addEventListener('click', openDemoModal);
 document.getElementById('demoModalClose').addEventListener('click', closeDemoModal);
+document.getElementById('authDemoLink').addEventListener('click', ()=>{
+  document.getElementById('authModal').classList.add('hidden');
+  openDemoModal();
+});
 
 function openPricingModal(){
   document.getElementById('pricingError').textContent = '';
@@ -1226,6 +1240,7 @@ function setAuthMode(mode){
   document.getElementById('authSubmit').dataset.mode = mode;
   document.getElementById('authError').textContent = '';
   document.getElementById('authReferralCode').classList.toggle('hidden', mode !== 'signup');
+  document.getElementById('authDemoLink').classList.toggle('show', mode === 'signup');
 }
 
 // A visit via someone's referral link (?ref=CODE) is remembered so the code
