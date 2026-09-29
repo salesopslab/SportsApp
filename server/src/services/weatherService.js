@@ -33,6 +33,9 @@ export async function getGameWeather(lat, lon, kickoffIso) {
       windMph: closest.wind.speed,
       precipChance: closest.pop, // 0-1
       conditions: closest.weather[0]?.main,
+      forecastFor: new Date(closest.dt * 1000).toISOString(),
+      source: "OpenWeatherMap",
+      retrieved_at: new Date().toISOString(),
     };
   });
 }

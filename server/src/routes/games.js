@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getOddsForSport, getScoresForSport } from "../services/oddsService.js";
+import { getOddsForSport, getScoresForSport, oddsRetrievedAt } from "../services/oddsService.js";
 import { getOpeningSpreads } from "../services/snapshotService.js";
 import { getTeamRankings, lookupRankLabel, isDivisionGame, getProbablePitchers, lookupPitchers, getLiveGameState, lookupLiveState } from "../services/statsService.js";
 import { withTier } from "../middleware/tier.js";
@@ -148,7 +148,9 @@ router.get("/:sport", withTier, async (req, res) => {
       };
     });
 
-    res.json({ sport, games: withRanks });
+    // When these odds were actually pulled from the provider (they're cached
+    // up to ~30 min) — powers the Board's "● Live • Updated 3m ago" pill.
+    res.json({ sport, games: withRanks, oddsRetrievedAt: oddsRetrievedAt(sport), servedAt: new Date().toISOString() });
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "Failed to fetch odds", detail: err.message });

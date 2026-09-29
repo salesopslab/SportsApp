@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { getOddsForSport, getScoresForSport } from "../services/oddsService.js";
-import { getInjuries, getHeadToHead } from "../services/statsService.js";
+import { getOddsForSport, getScoresForSport, oddsRetrievedAt } from "../services/oddsService.js";
+import { getHeadToHead } from "../services/statsService.js";
+import { getMatchupInjuries } from "../services/injuryService.js";
 import { getGameWeather } from "../services/weatherService.js";
 import { getHeadToHeadResults } from "../services/espnService.js";
 import { getLineHistory } from "../services/snapshotService.js";
@@ -56,7 +57,12 @@ router.get("/:sport/:gameId", withTier, async (req, res) => {
     const includeLineMovement = meetsTier(req.userRow, "edge");
 
     const [injuries, h2h, h2hResults, weather, lineMovement] = await Promise.all([
-      getInjuries(sport).catch(() => null),
+      // Both teams, each with its own status + freshness metadata. Never a
+      // silent empty list on failure — see services/injuryService.js.
+      getMatchupInjuries(sport, game.homeTeam, game.awayTeam).catch((err) => {
+        console.error(`getMatchupInjuries failed for dossier ${gameId}:`, err.message);
+        return null;
+      }),
       getHeadToHead(
         sport,
         season,
@@ -87,15 +93,32 @@ router.get("/:sport/:gameId", withTier, async (req, res) => {
         : Promise.resolve(LINE_MOVEMENT_LOCKED),
     ]);
 
+    const now = new Date().toISOString();
     res.json({
+      // Short sport slug ("nfl") — game.sport is the odds provider's long key.
+      // The chat needs this to re-fetch fresh data for the same game.
+      sport,
       game,
+      generatedAt: now,
+      // Per-section freshness so the UI and the AI can tell live from stale.
+      dataFreshness: {
+        odds: { source: "The Odds API (consensus of US books)", retrieved_at: oddsRetrievedAt(sport) },
+        injuries: {
+          home: injuries?.homeTeam ? { source: injuries.homeTeam.source, retrieved_at: injuries.homeTeam.retrieved_at, status: injuries.homeTeam.status } : null,
+          away: injuries?.awayTeam ? { source: injuries.awayTeam.source, retrieved_at: injuries.awayTeam.retrieved_at, status: injuries.awayTeam.status } : null,
+        },
+        weather: weather?.retrieved_at ? { source: weather.source, retrieved_at: weather.retrieved_at } : null,
+      },
       finalScore: finalScoreFallback,
       weather,
-      injuries: (injuries || []).filter(
-        (i) =>
-          i.Team === toTeamCode(sport, game.homeTeam) ||
-          i.Team === toTeamCode(sport, game.awayTeam)
-      ),
+      // { homeTeam: {...}, awayTeam: {...} } — each with players, status
+      // ("ok" | "unavailable"), source, source_url, retrieved_at,
+      // published_at, last_updated. `null` only if the whole lookup threw.
+      injuries: injuries || {
+        homeTeam: { team: game.homeTeam, status: "unavailable", players: [], absenceMeansHealthy: false, note: "Current injury status unavailable." },
+        awayTeam: { team: game.awayTeam, status: "unavailable", players: [], absenceMeansHealthy: false, note: "Current injury status unavailable." },
+        retrieved_at: null,
+      },
       headToHead: h2h || [],
       // Real final scores for past meetings, from ESPN — our stats provider's
       // trial tier doesn't include final scores in its schedule data.

@@ -123,7 +123,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .status-pill.down .status-dot{ background:var(--red); }
 .status-pill.waking .status-dot{ background:var(--amber); }
 
-.screen{ display:none; flex:1; overflow-y:auto; padding-bottom:90px; min-height:0; }
+.screen{ display:none; flex:1; overflow-y:auto; padding-bottom:90px; padding-bottom:calc(90px + env(safe-area-inset-bottom)); min-height:0; -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain; }
 .screen.active{ display:block; }
 
 .sport-tabs{ display:flex; gap:8px; padding:14px 20px 4px; overflow-x:auto; }
@@ -278,6 +278,44 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .tag{ display:inline-block; font-size:11px; padding:3px 8px; border-radius:5px; background:rgba(217,97,79,0.15); color:var(--red); margin-right:6px; }
 .tag.ok{ background:rgba(63,166,107,0.15); color:var(--green); }
 .empty-note{ font-size:13px; color:var(--sub); }
+/* ---- Injury report: one block per team, never height-capped ----
+   No max-height / overflow on anything in here: the list grows with its
+   content and the screen itself scrolls, so no player can end up clipped
+   off the bottom on a phone. Long lists collapse behind an explicit
+   "Show all injuries (X)" button instead of a fixed-height box. */
+.inj-team{ margin-top:12px; border:1px solid var(--line); border-radius:12px; overflow:visible; }
+.inj-team:first-of-type{ margin-top:0; }
+.inj-team-head{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 12px; background:var(--surface); border:none; border-radius:12px 12px 0 0; color:var(--text); font-family:inherit; font-size:14px; font-weight:600; text-align:left; cursor:pointer; }
+.inj-team.collapsed .inj-team-head{ border-radius:12px; }
+.inj-team-head .count{ font-size:12px; font-weight:500; color:var(--sub); white-space:nowrap; }
+.inj-team-head .chev{ color:var(--sub); transition:transform .15s ease; }
+.inj-team.collapsed .inj-team-head .chev{ transform:rotate(-90deg); }
+.inj-team.collapsed .inj-team-body{ display:none; }
+.inj-team-body{ padding:4px 12px 10px; }
+.inj-meta{ font-size:11.5px; color:var(--sub); padding:6px 0 4px; line-height:1.45; }
+.inj-meta a{ color:var(--teal); text-decoration:none; }
+.inj-meta .stale{ color:var(--amber); }
+.inj-row{ padding:9px 0; border-bottom:1px dashed var(--line); }
+.inj-row:last-child{ border-bottom:none; }
+.inj-row.extra{ display:none; }
+.inj-team.expanded .inj-row.extra{ display:block; }
+.inj-top{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:13.5px; }
+.inj-name{ font-weight:600; min-width:0; overflow-wrap:anywhere; }
+.inj-pos{ color:var(--sub); font-weight:500; margin-left:4px; font-size:12px; }
+.inj-desig{ flex-shrink:0; font-size:11px; padding:3px 8px; border-radius:5px; background:rgba(217,97,79,0.15); color:var(--red); font-weight:600; }
+.inj-desig.q{ background:rgba(232,163,61,0.15); color:var(--amber); }
+.inj-desig.unk{ background:var(--surface2); color:var(--sub); }
+.inj-detail{ font-size:12.5px; color:var(--sub); margin-top:3px; line-height:1.45; overflow-wrap:anywhere; }
+.inj-detail b{ color:var(--text); font-weight:500; }
+.inj-showall{ width:100%; margin-top:8px; padding:9px; border-radius:9px; border:1px solid var(--line); background:transparent; color:var(--text); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; }
+.inj-unavailable{ font-size:13px; color:var(--amber); padding:8px 0; line-height:1.5; }
+.inj-conflict{ font-size:12px; color:var(--amber); background:rgba(232,163,61,0.08); border-radius:8px; padding:8px 10px; margin:6px 0; line-height:1.45; }
+/* Chat answer provenance: "Updated 8 min ago • Source: ESPN" */
+.msg.ai .msg-sources{ display:block; margin-top:10px; padding-top:8px; border-top:1px dashed var(--line); font-size:11.5px; color:var(--sub); white-space:normal; line-height:1.5; }
+.msg.ai .msg-sources a{ color:var(--teal); text-decoration:none; overflow-wrap:anywhere; }
+.msg.ai .msg-sources .fresh{ color:var(--green); }
+.status-pill .status-age{ color:var(--sub); }
+.status-pill.stale .status-dot{ background:var(--amber); }
 .ask-ai-btn{ margin:16px 20px 0; padding:11px; border-radius:10px; background:var(--teal); color:var(--bg); border:none; font-size:13.5px; font-weight:600; width:calc(100% - 40px); cursor:pointer; }
 .scan-shortcut-btn{ margin:14px 20px 0; padding:10px; border-radius:10px; background:none; border:1px solid var(--amber); color:var(--amber); font-size:13px; font-weight:600; width:calc(100% - 40px); cursor:pointer; font-family:inherit; }
 .scan-shortcut-btn:hover{ background:color-mix(in srgb, currentColor 10%, transparent); }
@@ -3305,6 +3343,32 @@ function setStatus(state, label){
   document.getElementById('apiStatusLabel').textContent = label;
 }
 
+// "● Live • Updated 3m ago" — based on when the odds on screen were actually
+// pulled from the provider (the server caches them), not just on whether
+// the server answered. Goes amber when the data is older than
+// LIVE_STALE_MINUTES so users can tell today's data from a stale cache.
+const LIVE_STALE_MINUTES = 35;
+let dataUpdatedAt = null;
+function noteDataFreshness(payloads){
+  const times = (payloads || []).map(p => p && (p.oddsRetrievedAt || p.servedAt)).filter(Boolean);
+  if(!times.length){ dataUpdatedAt = new Date().toISOString(); }
+  // For a multi-sport board, report the OLDEST data on screen — the honest number.
+  else dataUpdatedAt = times.sort()[0];
+  renderLivePill();
+}
+function renderLivePill(){
+  if(!dataUpdatedAt) return;
+  const pill = document.getElementById('apiStatus');
+  if(!pill || pill.classList.contains('down')) return;
+  const age = minutesSince(dataUpdatedAt);
+  const stale = age !== null && age > LIVE_STALE_MINUTES;
+  const short = age === null ? '' : age < 1 ? 'just now' : age < 60 ? `${Math.round(age)}m ago` : `${Math.round(age/60)}h ago`;
+  pill.className = 'status-pill' + (stale ? ' stale' : '');
+  document.getElementById('apiStatusLabel').innerHTML = `${stale ? 'Delayed' : 'Live'} <span class="status-age">• Updated ${short}</span>`;
+  pill.title = `Odds last pulled from the provider ${new Date(dataUpdatedAt).toLocaleTimeString()}`;
+}
+setInterval(renderLivePill, 30000);
+
 function fmtOdds(n){
   if(n===undefined || n===null) return '—';
   return n > 0 ? '+'+n : String(n);
@@ -3366,7 +3430,7 @@ async function checkHealth(){
   try{
     setStatus('waking','Connecting…');
     const res = await fetch(API + '/health');
-    if(res.ok){ setStatus('', 'Live'); return true; }
+    if(res.ok){ setStatus('', 'Live'); renderLivePill(); return true; }
     setStatus('down','Offline'); return false;
   }catch(e){
     setStatus('down','Unreachable'); return false;
@@ -3486,6 +3550,7 @@ async function loadBoard(sport){
         throw new Error(results[0].reason?.message || 'failed to load');
       }
       setStatus('', 'Live');
+      noteDataFreshness(results.filter(r => r.status === 'fulfilled').map(r => r.value.data));
       lastGames = merged;
       renderBoardList();
     }catch(e){
@@ -3500,6 +3565,7 @@ async function loadBoard(sport){
     if(!res.ok) throw new Error('bad status ' + res.status);
     const data = await res.json();
     setStatus('', 'Live');
+    noteDataFreshness([data]);
     // Tag every game with the short sport slug it was fetched under -- the
     // API's own per-game "sport" field (when present) is the odds
     // provider's long-form key (e.g. "americanfootball_nfl"), not the short
@@ -3648,6 +3714,7 @@ async function openGameBreakdown(sport, game){
     const gameBreakdown = await res.json();
     currentGameBreakdown = gameBreakdown;
     body.innerHTML = renderGameBreakdown(gameBreakdown);
+    wireInjurySection(body);
     wireTrackButtons();
     wireUpgradePrompts(body);
     const btn = document.getElementById('askAiBtn');
@@ -3693,7 +3760,6 @@ function originalLineRow(m){
 function renderGameBreakdown(d){
   const g = d.game;
   const w = d.weather;
-  const inj = d.injuries || [];
   const h2h = d.headToHead || [];
   const h2hResults = d.headToHeadResults || [];
   const lm = d.lineMovement || {};
@@ -3747,14 +3813,112 @@ function renderGameBreakdown(d){
              <div class="fact-row"><span>Conditions</span><span class="v">${w.conditions ?? '—'}</span></div>`)
         : '<div class="empty-note">No venue coordinates on file for this matchup yet.</div>'}
     </div>
-    <div class="section">
-      <h3>Injury report</h3>
-      ${inj.length ? inj.slice(0,6).map(i=>`<div class="fact-row"><span><span class="tag${(i.Status||'').toLowerCase()==='active'?' ok':''}">${i.Status||'Unknown'}</span>${i.Name || i.Player || 'Player'} — ${i.BodyPart || i.Injury || 'undisclosed'}</span><span class="v">${i.Team||''}</span></div>`).join('')
-        : '<div class="empty-note">No injuries currently reported for either team.</div>'}
-    </div>
+    ${renderInjurySection(d)}
     <button class="ask-ai-btn" id="askAiBtn">Ask the AI about this game →</button>
   `;
   return html;
+}
+
+// ---- Freshness helpers (shared by the Breakdown, chat and Live pill) ----
+function agoLabel(iso){
+  if(!iso) return null;
+  const t = Date.parse(iso);
+  if(!Number.isFinite(t)) return null;
+  const m = (Date.now() - t) / 60000;
+  if(m < 1) return 'just now';
+  if(m < 60) return `${Math.round(m)} min ago`;
+  const h = m / 60;
+  if(h < 48) return `${Math.round(h)} hr ago`;
+  return `${Math.round(h/24)} days ago`;
+}
+function minutesSince(iso){
+  const t = Date.parse(iso || '');
+  return Number.isFinite(t) ? (Date.now() - t) / 60000 : null;
+}
+
+// Injury report — BOTH teams, each in its own block. Away team first to
+// match the "Away @ Home" order used everywhere else on the page.
+// Rules: never a fixed-height box; a failed lookup says "unavailable"
+// (not "no injuries"); an empty report says players aren't listed, which is
+// not the same as healthy.
+const INJ_PREVIEW_COUNT = 8;
+function designationClass(d){
+  const s = String(d||'').toLowerCase();
+  if(!s) return 'unk';
+  if(/questionable|probable|day-to-day|day to day/.test(s)) return 'q';
+  if(/out|doubtful|injured reserve|\bir\b|inactive|suspend|pup|nfi/.test(s)) return '';
+  return 'unk';
+}
+function renderInjuryTeam(r, side, fallbackName, gameId){
+  const teamName = escapeHtml((r && r.team) || fallbackName || (side === 'home' ? 'Home team' : 'Away team'));
+  const id = `inj-${side}`;
+  if(!r || r.status !== 'ok'){
+    return `<div class="inj-team" id="${id}">
+      <button class="inj-team-head" type="button" data-inj-toggle="${id}" aria-expanded="true"><span>${teamName}</span><span class="count">Status unavailable <span class="chev">▾</span></span></button>
+      <div class="inj-team-body"><div class="inj-unavailable">Current injury status unavailable — we couldn't retrieve ${teamName}'s injury report right now. This does <b>not</b> mean the team has no injuries. Try reopening the breakdown in a moment, or ask the AI, which will re-check live sources.</div></div>
+    </div>`;
+  }
+  const players = r.players || [];
+  const age = minutesSince(r.retrieved_at);
+  const staleNote = age !== null && age > 60 ? ' <span class="stale">(may be outdated)</span>' : '';
+  const src = r.source_url
+    ? `<a href="${escapeHtml(r.source_url)}" target="_blank" rel="noopener">${escapeHtml(r.source || 'Source')}</a>`
+    : escapeHtml(r.source || 'Unknown source');
+  const meta = `<div class="inj-meta">Updated ${escapeHtml(agoLabel(r.retrieved_at) || 'at an unknown time')}${staleNote} • Source: ${src}${r.last_updated ? ` • Latest entry ${escapeHtml(agoLabel(r.last_updated) || '')}` : ''}</div>`;
+  const conflicts = (r.conflicts || []).map(c => `<div class="inj-conflict">Reports conflict for <b>${escapeHtml(c.player)}</b>: ${c.reports.map(x => `${escapeHtml(x.source)} says ${escapeHtml(x.gameDesignation || 'no designation')}${x.updated ? ` (${escapeHtml(agoLabel(x.updated) || '')})` : ''}`).join(' vs. ')}.</div>`).join('');
+  const rows = players.map((p, idx) => {
+    const desig = p.gameDesignation || 'No designation';
+    const bits = [];
+    if(p.injury) bits.push(`<b>Injury:</b> ${escapeHtml(p.injury)}`);
+    bits.push(`<b>Practice:</b> ${escapeHtml(p.practiceStatus || 'Not reported')}`);
+    if(p.returnDate) bits.push(`<b>Est. return:</b> ${escapeHtml(new Date(p.returnDate).toLocaleDateString())}`);
+    return `<div class="inj-row${idx >= INJ_PREVIEW_COUNT ? ' extra' : ''}">
+      <div class="inj-top"><span class="inj-name">${escapeHtml(p.name || 'Unnamed player')}<span class="inj-pos">${escapeHtml(p.position || '')}</span></span><span class="inj-desig ${designationClass(p.gameDesignation)}">${escapeHtml(desig)}</span></div>
+      <div class="inj-detail">${bits.join(' · ')}</div>
+      ${p.note ? `<div class="inj-detail">${escapeHtml(p.note)}</div>` : ''}
+    </div>`;
+  }).join('');
+  const body = players.length
+    ? rows + (players.length > INJ_PREVIEW_COUNT ? `<button class="inj-showall" type="button" data-inj-showall="${id}">Show all injuries (${players.length})</button>` : '')
+    : `<div class="empty-note">No players listed on the ${escapeHtml(r.source || '')} report. That isn't confirmation everyone is healthy — check again closer to game time.</div>`;
+  return `<div class="inj-team" id="${id}">
+    <button class="inj-team-head" type="button" data-inj-toggle="${id}" aria-expanded="true"><span>${teamName}</span><span class="count">${players.length} listed <span class="chev">▾</span></span></button>
+    <div class="inj-team-body">${meta}${conflicts}${body}</div>
+  </div>`;
+}
+function renderInjurySection(d){
+  const inj = d.injuries;
+  const g = d.game || {};
+  // Old array-shaped responses (a backend that hasn't been redeployed yet):
+  // split by team rather than showing a mixed, truncated list.
+  if(Array.isArray(inj)){
+    const legacy = (team) => ({ team, status:'ok', source:'SportsDataIO', players: inj.filter(i => i.Team && team && (i.Team === team || team.includes(i.Team))).map(i => ({ name:i.Name, position:i.Position, injury:i.BodyPart, gameDesignation:i.InjuryStatus || i.Status, practiceStatus:i.PracticeDescription || null })) });
+    return `<div class="section"><h3>Injuries</h3>${renderInjuryTeam(legacy(g.awayTeam), 'away', g.awayTeam, g.id)}${renderInjuryTeam(legacy(g.homeTeam), 'home', g.homeTeam, g.id)}</div>`;
+  }
+  return `<div class="section">
+    <h3>Injuries</h3>
+    ${renderInjuryTeam(inj && inj.awayTeam, 'away', g.awayTeam, g.id)}
+    ${renderInjuryTeam(inj && inj.homeTeam, 'home', g.homeTeam, g.id)}
+  </div>`;
+}
+function wireInjurySection(root){
+  root.querySelectorAll('[data-inj-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const box = document.getElementById(btn.dataset.injToggle);
+      if(!box) return;
+      const collapsed = box.classList.toggle('collapsed');
+      btn.setAttribute('aria-expanded', String(!collapsed));
+    });
+  });
+  root.querySelectorAll('[data-inj-showall]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const box = document.getElementById(btn.dataset.injShowall);
+      if(!box) return;
+      const expanded = box.classList.toggle('expanded');
+      const total = box.querySelectorAll('.inj-row').length;
+      btn.textContent = expanded ? 'Show fewer' : `Show all injuries (${total})`;
+    });
+  });
 }
 
 function addMsg(text, who){
@@ -3788,7 +3952,7 @@ async function sendChat(){
       const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ message, context: currentGameBreakdown }),
+        body: JSON.stringify({ message, context: currentGameBreakdown, sport: currentGameSport }),
         signal: controller.signal
       });
       if(res.status === 402){
@@ -3800,7 +3964,7 @@ async function sendChat(){
       }
       if(!res.ok) throw new Error('bad status ' + res.status);
       const data = await res.json();
-      return data.reply || null;
+      return data.reply ? data : null;
     } finally {
       clearTimeout(timer);
     }
@@ -3817,26 +3981,60 @@ async function sendChat(){
     wireUpgradePrompts(div);
   }
 
+  // The AI may now pull fresh injury reports, odds and current news before
+  // answering, which takes longer than answering from the snapshot alone —
+  // show what it's doing so a 20-30s answer doesn't look stuck.
+  const progressTimer = setTimeout(() => {
+    if(thinking.textContent === 'Thinking…') thinking.textContent = 'Checking the latest injury reports, odds and news…';
+  }, 4000);
+
   try{
     let reply;
     try{
-      // Fast path: a normal AI reply typically takes ~10-15s on its own
-      // (real research + a full desk-note response), so this needs real
-      // headroom before we assume something's actually wrong.
-      reply = await attempt(25000);
+      reply = await attempt(75000);
     }catch(firstErr){
       if(firstErr.paywalled){ showUpgradeInChat(firstErr.requiredTier); return; }
       // Either a genuinely slow reply, or (rarely, on Render's free tier)
       // a cold-started backend after ~15 min idle. Either way: don't give
       // up, just say it's taking longer than usual and try once more.
       thinking.textContent = 'Still working on it — this one is taking longer than usual… still trying.';
-      reply = await attempt(45000);
+      reply = await attempt(75000);
     }
-    thinking.textContent = reply || "The AI didn't return an answer — try rephrasing the question.";
+    if(reply){
+      renderAiReply(thinking, reply);
+    } else {
+      thinking.textContent = "The AI didn't return an answer — try rephrasing the question.";
+    }
   }catch(e){
     if(e.paywalled){ showUpgradeInChat(e.requiredTier); return; }
     thinking.textContent = "Couldn't reach the AI server after waiting. Please wait a moment and send your message again.";
+  }finally{
+    clearTimeout(progressTimer);
   }
+}
+
+// Reply text + a provenance line: "Updated 8 min ago • Source: ESPN injury
+// report — Washington Commanders", plus any news articles the answer cited.
+function renderAiReply(el, data){
+  el.textContent = data.reply;
+  const sources = Array.isArray(data.sources) ? data.sources : [];
+  if(!sources.length && !data.refreshed?.length) return;
+  const line = document.createElement('span');
+  line.className = 'msg-sources';
+  const parts = [];
+  const dataSrc = sources.filter(s => s.kind === 'data');
+  const webSrc = sources.filter(s => s.kind === 'web');
+  const newest = dataSrc.map(s => s.retrieved_at).filter(Boolean).sort().pop();
+  if(newest) parts.push(`<span class="fresh">●</span> Updated ${escapeHtml(agoLabel(newest) || '')}`);
+  const link = (s) => s.url
+    ? `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.label)}</a>`
+    : escapeHtml(s.label);
+  if(dataSrc.length) parts.push('Source: ' + dataSrc.map(link).join(', '));
+  if(webSrc.length) parts.push('News: ' + webSrc.slice(0, 4).map(s => link(s) + (s.published_at ? ` (${escapeHtml(s.published_at)})` : '')).join(', '));
+  line.innerHTML = parts.join(' • ');
+  el.appendChild(line);
+  const log = document.getElementById('chatLog');
+  if(log) log.scrollTop = log.scrollHeight;
 }
 document.getElementById('sendBtn').addEventListener('click', sendChat);
 document.getElementById('chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChat(); });

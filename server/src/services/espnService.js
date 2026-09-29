@@ -85,6 +85,33 @@ async function getTeamSchedule(sportSlug, teamCode, season) {
   return data;
 }
 
+// League-wide injury report from ESPN's public site API, grouped by team.
+// Unlike our SportsData.io trial feed (which anonymizes player names on this
+// account), ESPN returns real names, positions, game designations and the
+// latest practice notes — which is what lets the Breakdown and the AI chat
+// say "Jayden Daniels — Questionable (elbow), limited in practice" instead of
+// silently missing him. Throws on failure; callers decide how to degrade.
+export function isEspnSupported(sportSlug) {
+  return !!ESPN_SPORT_PATHS[sportSlug];
+}
+
+export async function getLeagueInjuries(sportSlug) {
+  if (!ESPN_SPORT_PATHS[sportSlug]) throw new Error(`ESPN injuries not available for ${sportSlug}`);
+  const data = await withRetry(() => espnGet(sportSlug, "/injuries"));
+  if (!data || !Array.isArray(data.injuries)) {
+    throw new Error("ESPN injuries response had no injuries array");
+  }
+  return data;
+}
+
+// Public, human-readable page for a team's injury report — used as the
+// source_url shown next to injury data so users can check it themselves.
+export function espnInjuryPageUrl(sportSlug, teamFullName) {
+  const code = toEspnCode(sportSlug, teamFullName);
+  if (!code || !ESPN_SPORT_PATHS[sportSlug]) return null;
+  return `https://www.espn.com/${sportSlug}/team/injuries/_/name/${String(code).toLowerCase()}`;
+}
+
 // Returns past meetings between two teams (by full name) with final scores,
 // looking back across the current season plus the previous 3. Works for any
 // sport listed in ESPN_SPORT_PATHS above.

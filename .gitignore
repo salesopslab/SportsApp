@@ -1,0 +1,7 @@
+# Secrets — API keys live in Render environment variables, never in git.
+.env
+*.env
+!.env.example
+
+# Dependencies are installed on deploy.
+node_modules/

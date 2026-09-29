@@ -1,4 +1,4 @@
-import { cached } from "./cache.js";
+import { cached, cachedWithMeta, cachedAt, invalidate } from "./cache.js";
 import { recordSnapshot } from "./snapshotService.js";
 import { recordApiUsage } from "./usageService.js";
 
@@ -36,10 +36,35 @@ export const SPORT_KEYS = {
  * Cached briefly since odds are metered per-request and change frequently.
  */
 export async function getOddsForSport(sportSlug) {
+  return (await getOddsForSportWithMeta(sportSlug)).value;
+}
+
+// When the odds for this sport were last pulled from the provider (null if
+// not cached). The Board's "Updated Xm ago" indicator reads this.
+export function oddsRetrievedAt(sportSlug) {
+  return cachedAt(`odds:${sportSlug}`);
+}
+
+// Minimum age before a forced odds refresh is allowed. Every refresh costs an
+// Odds API credit, so the AI chat can't burn credits refreshing data that's
+// only a minute or two old.
+const ODDS_MIN_REFRESH_AGE_SECONDS = Number(process.env.ODDS_MIN_REFRESH_AGE_SECONDS || 300);
+
+// Same as getOddsForSport, plus { retrievedAt }. With forceRefresh, bypasses
+// the 30-minute cache — but only when the cached copy is older than
+// ODDS_MIN_REFRESH_AGE_SECONDS.
+export async function getOddsForSportWithMeta(sportSlug, { forceRefresh = false } = {}) {
   const sportKey = SPORT_KEYS[sportSlug];
   if (!sportKey) throw new Error(`Unknown sport: ${sportSlug}`);
 
-  return cached(
+  if (forceRefresh) {
+    const at = cachedAt(`odds:${sportSlug}`);
+    if (at && (Date.now() - Date.parse(at)) / 1000 > ODDS_MIN_REFRESH_AGE_SECONDS) {
+      invalidate(`odds:${sportSlug}`);
+    }
+  }
+
+  return cachedWithMeta(
     `odds:${sportSlug}`,
     async () => {
       const url = new URL(`${BASE}/sports/${sportKey}/odds`);
@@ -75,7 +100,15 @@ export async function getScoresForSport(sportSlug, daysFrom = 3) {
   const sportKey = SPORT_KEYS[sportSlug];
   if (!sportKey) throw new Error(`Unknown sport: ${sportSlug}`);
 
-  return cached(`scores:${sportSlug}:${daysFrom}`, async () => {
+  return (await getScoresForSportWithMeta(sportSlug, daysFrom)).value;
+}
+
+export async function getScoresForSportWithMeta(sportSlug, daysFrom = 3, { forceRefresh = false } = {}) {
+  const sportKey = SPORT_KEYS[sportSlug];
+  if (!sportKey) throw new Error(`Unknown sport: ${sportSlug}`);
+  if (forceRefresh) invalidate(`scores:${sportSlug}:${daysFrom}`);
+
+  return cachedWithMeta(`scores:${sportSlug}:${daysFrom}`, async () => {
     const url = new URL(`${BASE}/sports/${sportKey}/scores`);
     url.searchParams.set("daysFrom", String(daysFrom));
     url.searchParams.set("apiKey", KEY);
