@@ -3508,6 +3508,7 @@ function showScreen(id, opts={}){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   setActiveNav(navForScreen(id));
+  if(!opts.noUrl) syncUrlForScreen(id);
   document.querySelector('.screen.active').scrollTop = 0;
   positionMoverAlerts(); // sport tabs only show on Board — re-measure so alerts never sit over the header/tabs on other screens
   if(opts.resetHistory){
@@ -3545,21 +3546,63 @@ function setBoardFilter(filter){
   const btn = document.querySelector(`#statusFilters .status-filter[data-filter="${filter}"]`);
   if(btn && statusFilter !== filter) btn.click();
 }
+// Shareable URLs for each product: betedgeai.com/fantasy-edge etc.
+// (The host rewrites unknown paths to index.html; real files like
+// /terms.html are still served as-is.)
+const NAV_PATHS = { games:'/games', ai:'/betedge-ai', fantasy:'/fantasy-edge', ledger:'/ledger-ai', live:'/live', bigMoves:'/big-moves' };
+const PATH_ALIASES = {
+  '/games':'games', '/board':'games',
+  '/betedge-ai':'ai', '/ai':'ai', '/chat':'ai',
+  '/fantasy-edge':'fantasy', '/fantasy':'fantasy',
+  '/ledger-ai':'ledger', '/ledger':'ledger', '/my-picks':'ledger', '/picks':'ledger',
+  '/live':'live',
+  '/big-moves':'bigMoves',
+};
+const NAV_TITLES = { games:'Games', ai:'BetEdge AI Chat', fantasy:'Fantasy Edge', ledger:'Ledger AI', live:'Live Games', bigMoves:'Big Moves' };
+const NAV_SCREENS = { games:'board', ai:'chat', fantasy:'fantasy', ledger:'picks', live:'board', bigMoves:'bigLines' };
+function syncUrlForScreen(id){
+  let key = navForScreen(id);
+  if(id === 'bigLines') key = 'bigMoves';
+  if(id === 'gameBreakdown' || !key) return; // Breakdown keeps the tab's URL
+  const path = NAV_PATHS[key];
+  document.title = `${NAV_TITLES[key]} · BetEdge AI`;
+  if(location.pathname === path) return;
+  if(location.pathname === '/' && key === 'games') return; // home stays "/"
+  try{ history.pushState({ nav:key }, '', path + location.hash); }catch{}
+}
+function goToNav(nav, opts={}){
+  if(nav === 'live'){ liveNavMode = true; setBoardFilter('live'); }
+  else if(nav === 'games'){ if(liveNavMode) setBoardFilter('all'); liveNavMode = false; }
+  const screen = NAV_SCREENS[nav] || 'board';
+  showScreen(screen, { resetHistory: true, noUrl: opts.noUrl });
+  if(screen === 'picks') loadPicks();
+  if(screen === 'bigLines') renderBigLines();
+  if(nav === 'fantasy' && window.__feOnShow) window.__feOnShow();
+  if(opts.noUrl) document.title = nav === 'games' && location.pathname === '/' ? 'BetEdge AI' : `${NAV_TITLES[nav]} · BetEdge AI`;
+}
+function navFromPath(pathname){
+  const p = (pathname || '/').toLowerCase().replace(/\/+$/, '') || '/';
+  return PATH_ALIASES[p] || null;
+}
 document.querySelectorAll('.nav-btn').forEach(b=>{
   // Tapping a bottom-nav tab is a fresh jump, not a "back" step — reset the stack.
-  b.addEventListener('click', ()=>{
-    const nav = b.dataset.nav;
-    if(nav === 'live'){ liveNavMode = true; setBoardFilter('live'); }
-    else if(nav === 'games'){ if(liveNavMode) setBoardFilter('all'); liveNavMode = false; }
-    showScreen(b.dataset.screen, { resetHistory: true });
-    if(b.dataset.screen === 'picks') loadPicks();
-    if(nav === 'fantasy' && window.__feOnShow) window.__feOnShow();
-  });
+  b.addEventListener('click', ()=> goToNav(b.dataset.nav));
 });
 document.getElementById('bigMovesBtn').addEventListener('click', ()=>{
   showScreen('bigLines');
   renderBigLines();
 });
+window.addEventListener('popstate', ()=>{
+  const nav = navFromPath(location.pathname) || 'games';
+  goToNav(nav, { noUrl: true });
+});
+// Open the tab named in the URL on first load (after the rest of this
+// script has run, so every screen's state is initialized).
+setTimeout(()=>{
+  const nav = navFromPath(location.pathname);
+  if(nav && nav !== 'games') goToNav(nav, { noUrl: true });
+  else if(nav === 'games') document.title = 'Games · BetEdge AI';
+}, 0);
 
 function setStatus(state, label){
   const pill = document.getElementById('apiStatus');
