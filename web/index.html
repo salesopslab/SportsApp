@@ -4031,6 +4031,10 @@ function renderAiReply(el, data){
     : escapeHtml(s.label);
   if(dataSrc.length) parts.push('Source: ' + dataSrc.map(link).join(', '));
   if(webSrc.length) parts.push('News: ' + webSrc.slice(0, 4).map(s => link(s) + (s.published_at ? ` (${escapeHtml(s.published_at)})` : '')).join(', '));
+  const socialSrc = sources.filter(s => s.kind === 'social');
+  const aiSrc = sources.filter(s => s.kind === 'ai');
+  if(socialSrc.length) parts.push('Social (unverified): ' + socialSrc.slice(0, 3).map(s => link(s) + (s.published_at ? ` (${escapeHtml(agoLabel(s.published_at) || '')})` : '')).join(', '));
+  if(aiSrc.length) parts.push('Cross-checked with: ' + aiSrc.map(link).join(', '));
   line.innerHTML = parts.join(' • ');
   el.appendChild(line);
   const log = document.getElementById('chatLog');
