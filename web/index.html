@@ -598,6 +598,132 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .auth-legal a, .legal-links a{ color:var(--teal); text-decoration:none; }
 .legal-links{ font-size:12px; color:var(--sub); text-align:center; margin-top:10px; }
 .site-footer{ padding:24px 16px 32px; text-align:center; font-size:11.5px; color:var(--sub); line-height:1.5; }
+
+/* ---------- Fantasy Edge ---------- */
+.fe-wrap{ max-width:760px; margin:0 auto; padding:12px 16px 24px; }
+.fe-head{ padding:6px 0 12px; }
+.fe-title{ font-family:'Oswald',sans-serif; font-size:24px; font-weight:600; letter-spacing:0.3px; }
+.fe-title span{ color:var(--amber); }
+.fe-sub{ font-size:13px; color:var(--sub); margin:2px 0 12px; line-height:1.45; }
+.fe-scoring{ display:inline-flex; border:1px solid var(--line); border-radius:20px; overflow:hidden; max-width:100%; }
+.fe-seg{ border:none; background:var(--surface); color:var(--sub); font:600 12.5px 'Inter',sans-serif; padding:7px 12px; cursor:pointer; }
+.fe-seg + .fe-seg{ border-left:1px solid var(--line); }
+.fe-seg.active{ background:var(--amber); color:var(--bg); }
+.fe-card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; min-width:0; }
+.fe-card-title{ font-weight:700; font-size:14px; margin-bottom:8px; }
+.fe-upload{ text-align:center; }
+.fe-flow{ display:flex; flex-wrap:wrap; justify-content:center; gap:6px; font-size:11.5px; color:var(--sub); font-weight:600; margin-bottom:10px; }
+.fe-flow .arr{ color:var(--amber); }
+.fe-primary{ width:100%; padding:13px; border:none; border-radius:12px; background:var(--amber); color:var(--bg); font:700 15px 'Inter',sans-serif; cursor:pointer; }
+.fe-primary:disabled{ opacity:0.6; cursor:default; }
+.fe-secondary{ padding:9px 14px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--text); font:600 13px 'Inter',sans-serif; cursor:pointer; }
+.fe-hint{ font-size:11.5px; color:var(--sub); margin-top:8px; line-height:1.4; }
+.fe-roster{ text-align:left; margin-top:12px; border-top:1px solid var(--line); padding-top:10px; }
+.fe-roster-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12.5px; font-weight:700; margin-bottom:8px; }
+.fe-roster-head button{ font-size:12px; color:var(--sub); background:none; border:none; cursor:pointer; font-family:inherit; }
+.fe-roster-group{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; color:var(--sub); margin:8px 0 4px; }
+.fe-pchips{ display:flex; flex-wrap:wrap; gap:6px; }
+.fe-pchip{ display:inline-flex; align-items:center; gap:6px; max-width:100%; font-size:12.5px; background:var(--surface2); border:1px solid var(--line); border-radius:16px; padding:4px 6px 4px 10px; }
+.fe-pchip .pos{ font-size:10px; font-weight:700; color:var(--sub); }
+.fe-pchip .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fe-pchip .move, .fe-pchip .x{ border:none; background:none; color:var(--sub); cursor:pointer; font-size:12px; padding:0 2px; font-family:inherit; }
+.fe-pchip.unmatched{ border-style:dashed; }
+.fe-add-row{ display:flex; gap:6px; margin-top:10px; }
+.fe-add-row input{ flex:1; min-width:0; }
+.fe-input{ width:100%; box-sizing:border-box; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:16px; font-family:inherit; }
+.fe-label{ display:block; font-size:12px; font-weight:600; color:var(--sub); margin:10px 0 5px; }
+.fe-tools{ display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 10px; }
+.fe-tool{ font:600 12.5px 'Inter',sans-serif; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:7px 12px; border-radius:16px; cursor:pointer; }
+.fe-tool.active{ color:var(--bg); background:var(--amber); border-color:var(--amber); }
+.fe-panel-desc{ font-size:12.5px; color:var(--sub); line-height:1.45; margin-bottom:6px; }
+.fe-inputs{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.fe-actions{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+.fe-actions .fe-primary{ flex:1; min-width:160px; }
+.fe-poschips{ display:flex; flex-wrap:wrap; gap:6px; }
+.fe-poschip{ font:600 12px 'Inter',sans-serif; padding:6px 11px; border-radius:14px; border:1px solid var(--line); background:transparent; color:var(--sub); cursor:pointer; }
+.fe-poschip.active{ background:var(--teal); border-color:var(--teal); color:var(--bg); }
+.fe-trade{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.fe-error{ color:var(--red); font-size:13px; margin-top:8px; }
+.fe-loading{ display:flex; align-items:center; gap:10px; font-size:13px; color:var(--sub); padding:10px 2px; }
+.fe-loading .spin{ width:16px; height:16px; border:2px solid var(--line); border-top-color:var(--amber); border-radius:50%; animation:spin 0.8s linear infinite; flex:none; }
+.fe-verdict{ border:1px solid var(--amber); border-left:4px solid var(--amber); }
+.fe-verdict-label{ font-size:11px; font-weight:700; letter-spacing:0.6px; color:var(--amber); text-transform:uppercase; }
+.fe-verdict-name{ font-family:'Oswald',sans-serif; font-size:22px; font-weight:600; margin:2px 0 6px; overflow-wrap:anywhere; }
+.fe-why{ font-size:13.5px; line-height:1.55; }
+.fe-players{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px; margin-bottom:12px; }
+.fe-player{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; min-width:0; }
+.fe-player.is-pick{ border-color:var(--amber); }
+.fe-player-top{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.fe-player-name{ font-family:'Oswald',sans-serif; font-size:17px; font-weight:600; letter-spacing:0.2px; text-transform:uppercase; overflow-wrap:anywhere; }
+.fe-player-meta{ font-size:12px; color:var(--sub); margin-top:2px; }
+.fe-score{ text-align:center; flex:none; min-width:64px; }
+.fe-score-num{ font-family:'Oswald',sans-serif; font-size:30px; font-weight:700; line-height:1; }
+.fe-score-cap{ font-size:9.5px; font-weight:700; letter-spacing:0.5px; color:var(--sub); text-transform:uppercase; }
+.fe-score-tier{ display:inline-block; margin-top:4px; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:10px; white-space:nowrap; }
+.tier-elite .fe-score-num{ color:var(--amber); } .tier-elite .fe-score-tier{ background:rgba(199,127,29,0.15); color:var(--amber); }
+.tier-strong .fe-score-num{ color:var(--green); } .tier-strong .fe-score-tier{ background:rgba(44,138,85,0.14); color:var(--green); }
+.tier-solid .fe-score-num{ color:var(--teal); } .tier-solid .fe-score-tier{ background:rgba(31,132,120,0.14); color:var(--teal); }
+.tier-risky .fe-score-num{ color:var(--amber); } .tier-risky .fe-score-tier{ background:rgba(199,127,29,0.10); color:var(--amber); }
+.tier-avoid .fe-score-num, .tier-out .fe-score-num{ color:var(--red); } .tier-avoid .fe-score-tier, .tier-out .fe-score-tier{ background:rgba(184,67,50,0.12); color:var(--red); }
+.fe-tags{ display:flex; flex-wrap:wrap; gap:5px; margin:10px 0 0; }
+.fe-tag{ font-size:11px; font-weight:600; background:var(--surface2); border-radius:10px; padding:3px 8px; }
+.fe-status{ margin-top:10px; padding:8px 10px; border-radius:10px; background:var(--surface2); font-size:12px; line-height:1.45; }
+.fe-status-label{ font-size:10px; font-weight:700; letter-spacing:0.5px; color:var(--sub); text-transform:uppercase; }
+.fe-status-val{ font-weight:700; font-size:13px; }
+.fe-status-val.bad{ color:var(--red); } .fe-status-val.warn{ color:var(--amber); } .fe-status-val.unk{ color:var(--sub); }
+.fe-status-meta{ color:var(--sub); font-size:11.5px; }
+.fe-status a{ color:var(--teal); text-decoration:none; }
+.fe-status-conflict{ color:var(--sub); font-size:11.5px; margin-top:3px; }
+.fe-details{ margin-top:10px; font-size:12.5px; line-height:1.5; }
+.fe-details dt{ font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--sub); margin-top:8px; }
+.fe-details dd{ margin:2px 0 0; }
+.fe-details ul{ margin:2px 0 0; padding-left:18px; }
+.fe-lastgames{ font-size:11.5px; color:var(--sub); margin-top:8px; }
+.fe-lineups{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+.fe-lineup h4{ margin:0 0 8px; font-size:11px; letter-spacing:0.6px; text-transform:uppercase; color:var(--sub); }
+.fe-lineup.opt h4{ color:var(--amber); }
+.fe-slot{ display:flex; gap:8px; align-items:center; font-size:13px; padding:6px 0; border-bottom:1px solid var(--line); min-width:0; }
+.fe-slot:last-child{ border-bottom:none; }
+.fe-slot .s{ width:44px; flex:none; font-size:10.5px; font-weight:700; color:var(--sub); }
+.fe-slot .n{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fe-slot .sc{ font-family:'Oswald',sans-serif; font-weight:600; flex:none; }
+.fe-slot.changed{ background:rgba(199,127,29,0.10); border-radius:6px; padding-left:4px; }
+.fe-change{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:10px 0; border-bottom:1px solid var(--line); }
+.fe-change:last-child{ border-bottom:none; }
+.fe-change .lbl{ font-size:10.5px; font-weight:700; letter-spacing:0.5px; color:var(--sub); }
+.fe-change .bench{ color:var(--red); font-weight:700; } .fe-change .start{ color:var(--green); font-weight:700; }
+.fe-change .why{ font-size:12.5px; color:var(--sub); margin-top:4px; line-height:1.45; }
+.fe-impact{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; padding:10px 0; border-bottom:1px solid var(--line); }
+.fe-impact:last-child{ border-bottom:none; }
+.fe-impact .who{ min-width:0; } .fe-impact .who b{ overflow-wrap:anywhere; }
+.fe-impact .why{ font-size:12.5px; color:var(--sub); margin-top:3px; line-height:1.45; }
+.fe-impact .lvl{ flex:none; font-weight:700; font-size:12px; white-space:nowrap; }
+.fe-impact .lvl.up{ color:var(--green); } .fe-impact .lvl.down{ color:var(--red); }
+.fe-effects{ display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; font-size:12.5px; line-height:1.45; }
+.fe-effects b{ display:block; font-size:10.5px; letter-spacing:0.4px; text-transform:uppercase; color:var(--sub); }
+.fe-sides{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+.fe-side.win{ border-color:var(--green); }
+.fe-side .v{ font-family:'Oswald',sans-serif; font-size:26px; font-weight:700; }
+.fe-sources{ font-size:11.5px; color:var(--sub); line-height:1.5; margin:4px 2px 12px; overflow-wrap:anywhere; }
+.fe-sources a{ color:var(--teal); text-decoration:none; }
+.fe-waiver-row{ display:flex; gap:12px; align-items:flex-start; }
+.fe-waiver-row .body{ flex:1; min-width:0; }
+.fe-faab{ font-size:12px; font-weight:700; color:var(--teal); margin-top:6px; }
+.fe-chat-log{ display:flex; flex-direction:column; gap:8px; max-height:420px; overflow-y:auto; margin-bottom:8px; }
+.fe-chat-log:empty{ display:none; }
+.fe-chat-log .msg{ max-width:92%; }
+.fe-chat-log .msg.user{ align-self:flex-end; background:var(--amber); color:var(--bg); border-bottom-right-radius:4px; }
+.fe-chat-log .msg.ai{ background:var(--surface2); }
+.fe-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.fe-chip{ font:500 12px 'Inter',sans-serif; background:transparent; border:1px solid var(--line); color:var(--text); border-radius:14px; padding:6px 10px; cursor:pointer; text-align:left; }
+.fe-chat-row{ display:flex; gap:8px; align-items:center; }
+.fe-chat-row .chat-input{ min-width:0; }
+.fe-foot{ font-size:11px; color:var(--sub); text-align:center; line-height:1.5; padding:4px 8px 8px; }
+@media (max-width:560px){
+  .fe-inputs, .fe-lineups, .fe-sides, .fe-trade, .fe-effects{ grid-template-columns:1fr; }
+  .fe-players{ grid-template-columns:1fr; }
+  .nav-btn{ font-size:10.5px; }
+}
 </style>
 <body>
 
@@ -942,6 +1068,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
         <button class="status-filter" data-filter="live">Live</button>
         <button class="status-filter" data-filter="final">Final</button>
       </div>
+      <button class="sort-toggle" id="bigMovesBtn" type="button">🔥 Big Moves</button>
       <button class="sort-toggle" id="sortToggle">⇅ Soonest first</button>
     </div>
     <div id="boardList"><div class="board-msg"><div class="spin"></div><div>Loading live odds…</div></div></div>
@@ -984,32 +1111,82 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
     </div>
   </div>
 
+  <!-- FANTASY EDGE -->
+  <div class="screen" id="fantasy">
+    <div class="fe-wrap">
+      <div class="fe-head">
+        <div class="fe-title">Fantasy <span>Edge</span></div>
+        <div class="fe-sub">AI start/sit, waivers, lineups and trades for the league you already play in. NFL.</div>
+        <div class="fe-scoring" role="radiogroup" aria-label="League scoring">
+          <button type="button" class="fe-seg active" data-scoring="ppr">PPR</button>
+          <button type="button" class="fe-seg" data-scoring="half">Half PPR</button>
+          <button type="button" class="fe-seg" data-scoring="standard">Standard</button>
+        </div>
+      </div>
+
+      <div class="fe-card fe-upload">
+        <div class="fe-flow"><span>1 Upload screenshot</span><span class="arr">→</span><span>2 Analyze</span><span class="arr">→</span><span>3 Ask Fantasy Edge</span></div>
+        <button type="button" class="fe-primary" id="feUploadBtn">📷 Upload screenshot</button>
+        <input type="file" id="feFileInput" accept="image/*" class="hidden">
+        <div class="fe-hint">Works with ESPN, Yahoo, Sleeper, CBS and NFL Fantasy roster or matchup screens.</div>
+        <div id="feRosterBox"></div>
+      </div>
+
+      <div class="fe-tools" id="feTools">
+        <button type="button" class="fe-tool active" data-tool="startsit">Start/Sit</button>
+        <button type="button" class="fe-tool" data-tool="waiver">Waiver Edge</button>
+        <button type="button" class="fe-tool" data-tool="lineup">Lineup</button>
+        <button type="button" class="fe-tool" data-tool="injury">Injury Impact</button>
+        <button type="button" class="fe-tool" data-tool="trade">Trade</button>
+      </div>
+      <div class="fe-card" id="fePanel"></div>
+      <div id="feResult"></div>
+
+      <div class="fe-card fe-chat">
+        <div class="fe-card-title">Ask Fantasy Edge</div>
+        <div class="fe-chat-log" id="feChatLog"></div>
+        <div class="fe-chips" id="feChatChips">
+          <button type="button" class="fe-chip">Who should I start this week?</button>
+          <button type="button" class="fe-chip">Fix my lineup</button>
+          <button type="button" class="fe-chip">Who should I drop?</button>
+          <button type="button" class="fe-chip">Best waiver RB this week?</button>
+        </div>
+        <div class="fe-chat-row">
+          <input class="chat-input" id="feChatInput" type="text" placeholder="Ask Fantasy Edge anything…" enterkeyhint="send">
+          <button class="send-btn" id="feChatSend" title="Send">➤</button>
+        </div>
+      </div>
+      <div class="fe-foot">Fantasy Edge is analysis, not a guarantee. Injury status shows its source and time; "Status unconfirmed" means it couldn't be verified.</div>
+    </div>
+  </div>
+
   <!-- BIG LINES -->
   <div class="screen" id="bigLines">
+    <button class="back-btn" id="bigLinesBackBtn">‹ Back</button>
     <div class="board-msg" style="text-align:left; padding:16px 20px 4px;">Games with the sharpest recent line moves — tap one for the full breakdown.</div>
     <div id="bigLinesList"><div class="board-msg"><div class="spin"></div><div>Loading…</div></div></div>
   </div>
 
   <div class="navbar">
-    <button class="nav-btn active" data-screen="board">
+    <button class="nav-btn active" data-nav="games" data-screen="board">
       <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="13" y2="18"/></svg></span>
-      Board
+      Games
     </button>
-    <button class="nav-btn" data-screen="chat">
+    <button class="nav-btn" data-nav="ai" data-screen="chat">
       <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4V4z"/></svg></span>
-      AI Chat
+      BetEdge AI
     </button>
-    <button class="nav-btn" data-screen="gameBreakdown">
-      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></span>
-      Breakdown
+    <button class="nav-btn" data-nav="fantasy" data-screen="fantasy">
+      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3"/><path d="M7 5H4v2a3 3 0 0 0 3 3"/></svg></span>
+      Fantasy Edge
     </button>
-    <button class="nav-btn" data-screen="picks">
+    <button class="nav-btn" data-nav="ledger" data-screen="picks">
       <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
-      My Picks
+      Ledger AI
     </button>
-    <button class="nav-btn" data-screen="bigLines">
-      <span class="ic" style="font-size:17px; line-height:1;">🔥</span>
-      Big Moves
+    <button class="nav-btn" data-nav="live" data-screen="board">
+      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M5 5a10 10 0 0 0 0 14"/><path d="M19 5a10 10 0 0 1 0 14"/></svg></span>
+      Live
     </button>
   </div>
 </div>
@@ -3330,7 +3507,7 @@ function showScreen(id, opts={}){
   if(id !== 'chat' && window.__cancelVoiceInput) window.__cancelVoiceInput();
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.screen===id));
+  setActiveNav(navForScreen(id));
   document.querySelector('.screen.active').scrollTop = 0;
   positionMoverAlerts(); // sport tabs only show on Board — re-measure so alerts never sit over the header/tabs on other screens
   if(opts.resetHistory){
@@ -3346,19 +3523,42 @@ function goBack(){
   showScreen(prev);
 }
 document.getElementById('gameBreakdownBackBtn').addEventListener('click', goBack);
+document.getElementById('bigLinesBackBtn').addEventListener('click', goBack);
 document.getElementById('clearChatBtn').addEventListener('click', ()=>{
   const chatLog = document.getElementById('chatLog');
   if(chatLog){
     chatLog.innerHTML = '<div class="msg hint">Tap a game on the Board, then ask about it here — the AI answers using that game\'s real odds, weather, injuries and history.</div>';
   }
 });
+// Bottom nav: Games | BetEdge AI | Fantasy Edge | Ledger AI | Live.
+// "Live" is the Games board filtered to games in progress; Breakdown and Big
+// Moves live under Games (a game tap / the Big Moves button).
+let liveNavMode = false;
+function navForScreen(id){
+  if(id === 'board') return liveNavMode ? 'live' : 'games';
+  return { chat:'ai', fantasy:'fantasy', picks:'ledger', gameBreakdown:'games', bigLines:'games' }[id] || null;
+}
+function setActiveNav(key){
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.nav===key));
+}
+function setBoardFilter(filter){
+  const btn = document.querySelector(`#statusFilters .status-filter[data-filter="${filter}"]`);
+  if(btn && statusFilter !== filter) btn.click();
+}
 document.querySelectorAll('.nav-btn').forEach(b=>{
   // Tapping a bottom-nav tab is a fresh jump, not a "back" step — reset the stack.
   b.addEventListener('click', ()=>{
+    const nav = b.dataset.nav;
+    if(nav === 'live'){ liveNavMode = true; setBoardFilter('live'); }
+    else if(nav === 'games'){ if(liveNavMode) setBoardFilter('all'); liveNavMode = false; }
     showScreen(b.dataset.screen, { resetHistory: true });
     if(b.dataset.screen === 'picks') loadPicks();
-    if(b.dataset.screen === 'bigLines') renderBigLines();
+    if(nav === 'fantasy' && window.__feOnShow) window.__feOnShow();
   });
+});
+document.getElementById('bigMovesBtn').addEventListener('click', ()=>{
+  showScreen('bigLines');
+  renderBigLines();
 });
 
 function setStatus(state, label){
@@ -3535,6 +3735,8 @@ document.getElementById('sortToggle').addEventListener('click', ()=>{
 document.querySelectorAll('#statusFilters .status-filter').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     statusFilter = btn.dataset.filter;
+    liveNavMode = statusFilter === 'live';
+    if(document.getElementById('board').classList.contains('active')) setActiveNav(navForScreen('board'));
     document.querySelectorAll('#statusFilters .status-filter').forEach(b=>{
       b.classList.toggle('active', b === btn);
     });
@@ -4440,5 +4642,6 @@ setInterval(refreshBigLines, 3 * 60 * 1000);
 })();
 </script>
 
+<script src="/fantasy-edge.js" defer></script>
 </body>
 </html>

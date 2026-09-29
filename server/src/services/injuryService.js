@@ -290,3 +290,21 @@ export function injuriesNeedRefresh(injuries) {
   }
   return false;
 }
+
+/**
+ * Injury reports for any list of teams (Fantasy Edge needs single teams and
+ * league-wide sweeps, not just matchups). Same rules as getMatchupInjuries:
+ * each team carries its own status, and a failed lookup is "unavailable".
+ * Returns { [teamFullName]: report }.
+ */
+export async function getTeamInjuryReports(sport, teamFullNames, { forceRefresh = false } = {}) {
+  const [espnRes, sdioRes] = await Promise.all([
+    isEspnSupported(sport) ? settle(espnLeague(sport, forceRefresh)) : Promise.resolve(null),
+    settle(sdioLeague(sport, forceRefresh)),
+  ]);
+  const unique = [...new Set(teamFullNames.filter(Boolean))];
+  const reports = await Promise.all(unique.map((t) => buildTeamReport(sport, t, espnRes, sdioRes)));
+  return Object.fromEntries(unique.map((t, i) => [t, reports[i]]));
+}
+
+export { normName as normalizePlayerName };
