@@ -457,6 +457,56 @@ await test("chat returns reply plus live statuses for players it looked up", asy
   assert.equal(r.json.players[0].status.label, "QUESTIONABLE");
 });
 
+const lineupRoster = [
+  { name: "Jayden Daniels", position: "QB", slot: "starter" },
+  { name: "Terry McLaurin", position: "WR", slot: "starter" },
+  { name: "Noah Brown", position: "WR", slot: "bench" },
+  { name: "Saints", position: "DEF", slot: "starter" },
+];
+const lineupJson = {
+  current: [{ slot: "QB", name: "Jayden Daniels" }],
+  optimized: [{ slot: "QB", name: "Jayden Daniels", components: comps(8) }, { slot: "WR", name: "Terry McLaurin", components: comps(7) }],
+  changes: [],
+  summary: "Keep it.",
+};
+
+await test("lineup: roster reports are prefetched and sent with the prompt, no tool round needed", async () => {
+  modelCalls.length = 0;
+  modelScript = () => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(lineupJson) }] });
+  const r = await local("POST", "/api/fantasy/lineup", { roster: lineupRoster });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(modelCalls.length, 1);
+  const prompt = modelCalls[0].messages[0].content;
+  assert.match(prompt, /Jayden Daniels \(QB, WSH\)/);
+  assert.match(prompt, /QUESTIONABLE/i);
+  assert.equal(r.json.optimized[0].status.label, "QUESTIONABLE");
+  assert.ok(r.json.optimized[0].edge.score > 0);
+});
+
+await test("lineup: model that keeps calling tools gets a final no-tools turn instead of an error", async () => {
+  modelCalls.length = 0;
+  modelScript = (body) => {
+    if (body.tool_choice?.type === "none") return { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(lineupJson) }] };
+    return { stop_reason: "tool_use", content: [{ type: "tool_use", id: `x${modelCalls.length}`, name: "get_player_report", input: { name: "Noah Brown" } }] };
+  };
+  const r = await local("POST", "/api/fantasy/lineup", { roster: lineupRoster });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(modelCalls.at(-1).tool_choice?.type, "none");
+  assert.equal(r.json.optimized.length, 2);
+});
+
+await test("lineup: invalid or cut-off JSON is retried once", async () => {
+  let n = 0;
+  modelScript = () => {
+    n++;
+    if (n === 1) return { stop_reason: "max_tokens", content: [{ type: "text", text: '{"current":[{"slot":"QB","name":"Jay' }] };
+    return { stop_reason: "end_turn", content: [{ type: "text", text: "```json\n" + JSON.stringify(lineupJson) + "\n```" }] };
+  };
+  const r = await local("POST", "/api/fantasy/lineup", { roster: lineupRoster });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(n, 2);
+});
+
 server.close();
 if (failures) {
   console.log(`\n${failures} test(s) failed`);

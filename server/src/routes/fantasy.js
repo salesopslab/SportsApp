@@ -233,15 +233,62 @@ async function runFantasyAI({ system, userContent, state, expectJson = true, max
     );
     messages.push({ role: "user", content: results });
   }
-  const content = data?.content || [];
-  let lastToolIdx = -1;
-  content.forEach((b, i) => {
-    if (["tool_use", "server_tool_use", "web_search_tool_result"].includes(b.type)) lastToolIdx = i;
-  });
-  const text = content.slice(lastToolIdx + 1).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+
+  const finalText = (d) => {
+    const content = d?.content || [];
+    let lastToolIdx = -1;
+    content.forEach((b, i) => {
+      if (["tool_use", "server_tool_use", "web_search_tool_result"].includes(b.type)) lastToolIdx = i;
+    });
+    return content.slice(lastToolIdx + 1).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+  };
+  // One follow-up call with tools switched off, used when the model ran out of
+  // tool rounds, got cut off, or returned text that isn't valid JSON.
+  const wrapUp = async (instruction) => {
+    const last = messages[messages.length - 1];
+    if (last?.role === "user" && Array.isArray(last.content)) last.content = [...last.content, { type: "text", text: instruction }];
+    else messages.push({ role: "user", content: instruction });
+    data = await callModelImpl({
+      model: MODEL,
+      max_tokens: Math.max(maxTokens, 8000),
+      system: system(webSearchOn),
+      tools: webSearchOn ? [...TOOLS, { type: WEB_SEARCH_TOOL_TYPE, name: "web_search", max_uses: 4 }] : TOOLS,
+      tool_choice: { type: "none" },
+      messages,
+    });
+    messages.push({ role: "assistant", content: data.content });
+    return finalText(data);
+  };
+  const JSON_ONLY = expectJson ? " Respond with ONLY the JSON object in the requested shape — no prose, no code fences." : "";
+
+  let text = finalText(data);
+  if (data?.stop_reason === "tool_use" || data?.stop_reason === "pause_turn" || !text) {
+    // Out of tool rounds: give it one last turn to answer with what it has.
+    console.warn(`[fantasy] wrapping up after ${rounds} rounds (stop_reason ${data?.stop_reason})`);
+    if (data?.stop_reason === "tool_use") {
+      messages.push({
+        role: "user",
+        content: (data.content || []).filter((b) => b.type === "tool_use").map((tu) => ({
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content: JSON.stringify({ status: "skipped", note: "Tool budget used up. Answer now with the data you already have; call anything missing unavailable." }),
+        })),
+      });
+    }
+    text = await wrapUp(`Stop calling tools and give your final answer now using the data you already have.${JSON_ONLY}`);
+  } else if (data?.stop_reason === "max_tokens" && expectJson) {
+    console.warn("[fantasy] response hit max_tokens; asking for a compact answer");
+    text = await wrapUp(`Your last reply was cut off. Give the complete final answer again, more concisely (keep every explanation to one sentence).${JSON_ONLY}`);
+  }
   if (!text) throw new Error(`Empty response from model (stop_reason: ${data?.stop_reason})`);
   if (!expectJson) return { text, webSearchOn };
-  return { json: parseJson(text), webSearchOn };
+  try {
+    return { json: parseJson(text), webSearchOn };
+  } catch (err) {
+    console.warn(`[fantasy] model JSON didn't parse (${err.message}); asking again`);
+    const retry = await wrapUp(`That reply was not valid JSON.${JSON_ONLY}`);
+    return { json: parseJson(retry), webSearchOn };
+  }
 }
 
 export function parseJson(text) {
@@ -451,6 +498,51 @@ Return ONLY JSON:
 
 // ---- Lineup Optimizer -------------------------------------------------------
 
+// A full imported roster is 15+ players. Asking the model to call
+// get_player_report for each one blew through the tool-round budget, so the
+// server fetches every report in parallel and hands the model a compact
+// summary. The tools stay available for anything extra.
+async function prefetchReports(roster, state, limit = 6) {
+  const todo = roster.filter((p) => p.position !== "DEF" && p.position !== "DST");
+  let i = 0;
+  const worker = async () => {
+    while (i < todo.length) {
+      const p = todo[i++];
+      try {
+        const r = await getPlayerReport(p.name, { team: p.team || undefined, position: p.position || undefined, scoring: state.scoring });
+        p.report = r;
+        if (r.found) {
+          state.players.set(norm(r.player.name), r);
+          state.players.set(norm(p.name), r);
+          if (r.status?.source) state.sources.push({ label: `${r.status.source} injury report — ${r.player.team}`, url: r.status.source_url, retrieved_at: r.status.retrieved_at, kind: "data" });
+        }
+      } catch (err) {
+        p.report = { found: false, error: err.message };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, todo.length) }, worker));
+}
+
+function compactReport(p) {
+  const r = p.report;
+  if (!r) return p.position === "DEF" || p.position === "DST" ? { note: "Team defense — no player report." } : { status: "not fetched" };
+  if (!r.found) return { found: false, status: "STATUS UNCONFIRMED", note: r.error || "Player could not be identified.", candidates: r.candidates };
+  const g = r.upcomingGame || {};
+  const d = r.opponentDefense || {};
+  const { source: _s, retrieved_at: _r, ...def } = d;
+  return {
+    player: `${r.player.name} (${r.player.position}, ${r.player.teamAbbr})`,
+    status: { label: r.status?.label, designation: r.status?.designation, practice: r.status?.practiceStatus, injury: r.status?.injury, source: r.status?.source, updated_at: r.status?.updated_at, conflict: r.status?.conflict || undefined },
+    depthRank: r.depthChart?.rank ?? null,
+    depthOrder: r.depthChart?.order,
+    lastGames: (r.recentGames?.games || []).slice(0, 5).map((x) => `${x.opponent || "?"} ${x.fantasyPoints}`),
+    usage: r.usage,
+    upcoming: g.status === "ok" ? { opponent: g.opponent, homeAway: g.homeAway, kickoff: g.kickoff, spread: g.spread, total: g.total, weather: g.weather } : { status: g.status || "unavailable" },
+    opponentDefense: def,
+  };
+}
+
 router.post("/lineup", ...gate, async (req, res) => {
   const roster = cleanRoster(req.body?.roster);
   if (roster.length < 3) return res.status(400).json({ error: "Add your roster first (type players or upload a screenshot)." });
@@ -458,15 +550,20 @@ router.post("/lineup", ...gate, async (req, res) => {
   const slots = String(req.body?.lineupSlots || "QB, RB, RB, WR, WR, TE, FLEX (RB/WR/TE), K, DEF").slice(0, 200);
   const state = newState(req.body);
   try {
+    const t0 = Date.now();
+    await prefetchReports(roster, state);
+    console.log(`[fantasy lineup] prefetched ${roster.filter((p) => p.report?.found).length}/${roster.length} reports in ${Date.now() - t0}ms`);
     const nowIso = new Date().toISOString();
     const { json, webSearchOn } = await runFantasyAI({
       state,
+      maxTokens: 10000,
       system: (ws) =>
         baseSystemPrompt({ scoringLabel: state.scoringLabel, webSearchOn: ws, nowIso }) +
         `
 
 ## Task: LINEUP OPTIMIZER
-Lineup slots: ${slots}. Check every skill player on the roster (QB/RB/WR/TE) with get_player_report, then build the strongest legal lineup for these slots. Never start a player whose designation is Out/IR/Suspended. Players the user marked as starters are the CURRENT lineup (if none are marked, treat the current lineup as unknown and set "current" to []).
+Lineup slots: ${slots}. Each roster player below already comes with his current player report (status, depth chart, recent games, usage, upcoming game, opponent defense) — this counts as having called get_player_report for him. Only call a tool if something important is missing, and use web_search sparingly (at most 2 searches, for the most uncertain statuses). Build the strongest legal lineup for these slots. Never start a player whose designation is Out/IR/Suspended. Players the user marked as starters are the CURRENT lineup (if none are marked, treat the current lineup as unknown and set "current" to []).
+Keep every "why" to one or two sentences.
 Return ONLY JSON:
 {
   "current": [ { "slot": "QB", "name": string } ],
@@ -475,9 +572,13 @@ Return ONLY JSON:
   "summary": "2-3 sentences"
 }`,
       userContent: `Scoring: ${state.scoringLabel}. My roster:\n${roster
-        .map((p) => `- ${p.name}${p.position ? ` (${p.position}${p.team ? `, ${p.team}` : ""})` : ""}${p.slot ? ` [${p.slot}${p.lineupSlot ? ` ${p.lineupSlot}` : ""}]` : ""}${p.projected != null ? ` proj ${p.projected}` : ""}`)
+        .map(
+          (p) =>
+            `- ${p.name}${p.position ? ` (${p.position}${p.team ? `, ${p.team}` : ""})` : ""}${p.slot ? ` [${p.slot}${p.lineupSlot ? ` ${p.lineupSlot}` : ""}]` : ""}${p.projected != null ? ` proj ${p.projected}` : ""}\n  report: ${JSON.stringify(compactReport(p))}`
+        )
         .join("\n")}`,
     });
+    console.log(`[fantasy lineup] done in ${Date.now() - t0}ms`);
     const optimized = await enrichList(json.optimized, state);
     const current = await enrichList(json.current, state);
     respond(res, state, { current, optimized, changes: Array.isArray(json.changes) ? json.changes : [], summary: json.summary || "" }, webSearchOn);
