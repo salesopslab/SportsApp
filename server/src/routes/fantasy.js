@@ -33,6 +33,7 @@ const MODEL = process.env.FANTASY_MODEL || process.env.CHAT_MODEL || "claude-son
 const WEB_SEARCH_ENABLED = process.env.WEB_SEARCH_ENABLED !== "false";
 const WEB_SEARCH_TOOL_TYPE = process.env.WEB_SEARCH_TOOL_TYPE || "web_search_20250305";
 const MAX_TOOL_ROUNDS = 10;
+export const MAX_ROSTER = 20; // keep in sync with web/fantasy-edge.js
 const norm = normalizePlayerName;
 
 // Swappable for tests.
@@ -376,7 +377,7 @@ function cleanRoster(list) {
   return (Array.isArray(list) ? list : [])
     .map((p) => (typeof p === "string" ? { name: p } : p))
     .filter((p) => p && p.name)
-    .slice(0, 25)
+    .slice(0, MAX_ROSTER)
     .map((p) => ({
       name: String(p.name).trim(),
       position: p.position ? String(p.position).toUpperCase() : null,

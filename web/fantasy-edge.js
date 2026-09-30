@@ -6,6 +6,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => escapeHtml(s == null ? '' : String(s));
   const STORE = 'betedge_fantasy';
+  const MAX_ROSTER = 20; // keep in sync with server/src/routes/fantasy.js
 
   // ---- State -------------------------------------------------------------
   let scoring = 'ppr';
@@ -21,7 +22,7 @@
     const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
     if(saved){
       if(['ppr','half','standard'].includes(saved.scoring)) scoring = saved.scoring;
-      if(Array.isArray(saved.roster)) roster = saved.roster.slice(0, 25);
+      if(Array.isArray(saved.roster)) roster = saved.roster.slice(0, MAX_ROSTER);
     }
   }catch{}
   function save(){
@@ -160,13 +161,13 @@
           </span>`).join('')}</div>`;
       }).join('');
       box.innerHTML = `<div class="fe-roster">
-        <div class="fe-roster-head"><span>Your roster (${roster.length})</span><button type="button" id="feClearRoster">Clear</button></div>
+        <div class="fe-roster-head"><span>Your roster (${roster.length}/${MAX_ROSTER})</span><button type="button" id="feClearRoster">Clear</button></div>
         ${html}
-        <div class="fe-roster-add">${pickerInputHtml('roster', 'Search a player to add')}</div>
+        ${roster.length >= MAX_ROSTER ? `<div class="fe-hint">Roster is full (${MAX_ROSTER} players). Remove someone to add another.</div>` : `<div class="fe-roster-add">${pickerInputHtml('roster', 'Search a player to add')}</div>`}
       </div>`;
     }
     wireAutocomplete(box, 'roster', (pl) => {
-      if(roster.some(r => sameName(r.name, pl.name))) return;
+      if(roster.some(r => sameName(r.name, pl.name)) || roster.length >= MAX_ROSTER) return;
       roster.push({ name: pl.name, position: pl.position || null, team: pl.team || null, slot: roster.length ? 'bench' : null, matched: pl.matched });
       save(); renderRoster(); renderPanel();
       const inp = box.querySelector('[data-ac="roster"]'); if(inp) inp.focus();
@@ -225,7 +226,7 @@
   // A player already on the roster keeps his entry, and picks up any detail
   // the new screenshot adds (position, team, starter/bench slot).
   function mergeIntoRoster(players){
-    let added = 0, updated = 0;
+    let added = 0, updated = 0, skipped = 0;
     for(const p of players){
       const existing = roster.find(r => sameName(r.name, p.name) || (p.screenshotName && sameName(r.name, p.screenshotName)));
       if(existing){
@@ -235,12 +236,14 @@
         }
         if(p.matched && existing.matched === false){ existing.name = p.name; existing.matched = true; changed = true; }
         if(changed) updated++;
-      }else if(roster.length < 30){
+      }else if(roster.length >= MAX_ROSTER){
+        skipped++;
+      }else{
         roster.push({ name: p.name, position: p.position, team: p.team, slot: p.slot, lineupSlot: p.lineupSlot, matched: p.matched, playerId: p.playerId || null });
         added++;
       }
     }
-    return { added, updated };
+    return { added, updated, skipped };
   }
 
   async function handleScreenshots(fileList){
@@ -298,7 +301,8 @@
       const bits = [];
       if(r.added) bits.push(`${r.added} player${r.added === 1 ? '' : 's'} added`);
       if(r.updated) bits.push(`${r.updated} updated`);
-      if(!r.added && !r.updated) bits.push('no new players — they were already on your roster');
+      if(r.skipped) bits.push(`${r.skipped} not added — rosters hold up to ${MAX_ROSTER} players`);
+      if(!r.added && !r.updated && !r.skipped) bits.push('no new players — they were already on your roster');
       const lineupBits = [starters ? `${starters} starters` : null, bench ? `${bench} bench` : null, ir ? `${ir} IR` : null].filter(Boolean).join(' · ');
       $('feResult').innerHTML = `<div class="fe-card">
         <div class="fe-card-title">✅ Roster now has ${roster.length} players${d.platform && d.platform !== 'Unknown' ? ` from ${esc(d.platform)}` : ''}</div>
