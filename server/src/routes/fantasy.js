@@ -10,6 +10,7 @@ import {
   SCORING,
   playerInjuryStatus,
   searchPlayers,
+  normalizeQueryName,
 } from "../services/fantasyDataService.js";
 import { normalizePlayerName } from "../services/injuryService.js";
 
@@ -353,6 +354,8 @@ function respond(res, state, payload, webSearchOn) {
 
 function fail(res, err, what) {
   console.error(`fantasy ${what} failed:`, err);
+  const pp = typeof providerProblem === "function" ? providerProblem(err) : null;
+  if (pp) return res.status(pp.status).json({ error: pp.error, code: pp.code });
   res.status(502).json({ error: `Fantasy Edge couldn't finish the ${what} right now. Please try again.`, detail: err.message });
 }
 
@@ -451,6 +454,7 @@ Return ONLY JSON:
 router.post("/lineup", ...gate, async (req, res) => {
   const roster = cleanRoster(req.body?.roster);
   if (roster.length < 3) return res.status(400).json({ error: "Add your roster first (type players or upload a screenshot)." });
+  console.log(`[fantasy lineup] roster received (${roster.length}): ${roster.map((p) => `${p.name}[${p.slot || "?"}]`).join(", ")}`);
   const slots = String(req.body?.lineupSlots || "QB, RB, RB, WR, WR, TE, FLEX (RB/WR/TE), K, DEF").slice(0, 200);
   const state = newState(req.body);
   try {
@@ -612,61 +616,149 @@ function parseImageDataUrl(raw) {
   return { mediaType: m[1] === "image/jpg" ? "image/jpeg" : m[1], data: m[2] };
 }
 
-router.post("/screenshot", ...loginGate, async (req, res) => {
-  const img = parseImageDataUrl(req.body?.image);
-  if (!img) return res.status(400).json({ error: "Upload a PNG, JPG or WebP screenshot." });
-  if (img.data.length > MAX_IMAGE_BASE64_CHARS) return res.status(400).json({ error: "That image is too large — try a tighter crop." });
-  try {
-    const data = await callModelImpl({
-      model: MODEL,
-      max_tokens: 3000,
-      system: `You read fantasy football screenshots (ESPN, Yahoo, Sleeper, CBS, NFL Fantasy, others) and extract exactly what is visible. Never invent players or numbers that aren't in the image. Return ONLY JSON:
+// Vision extraction for one or more screenshots of the SAME roster (a full
+// roster often needs 2+ screenshots, and the browser also splits very tall
+// screenshots into overlapping tiles). All images go to the model in ONE
+// request, in order, so it can carry section headings ("Active Players",
+// "Reserve Players", "Bench", "IR") across images and skip the overlap.
+const ROSTER_VISION_PROMPT = `You read fantasy football screenshots (CBS, ESPN, Yahoo, Sleeper, NFL Fantasy, others) and extract the user's roster exactly as shown. The images are consecutive screenshots/tiles of ONE roster, in order, and they may overlap.
+
+Rules:
+- Ignore everything that isn't a roster row: phone status bar, browser/app chrome, tabs, navigation, ads, logos, projections headers, opponent rankings, game times, weather icons.
+- Section headings decide the slot for the rows BELOW them, and carry over into the next image until a new heading appears:
+  "Active Players", "Starters", "Lineup" -> "starter"; "Reserve Players", "Bench", "BN" -> "bench"; "Injured Reserve", "IR" -> "ir".
+  If a row's slot label is BN it's bench; IR is ir. If there is no heading or slot label at all, use null.
+- A player that appears in two images (overlap) must be listed ONCE.
+- Copy names exactly as displayed (e.g. "A. St. Brown", "C. Godwin"); never invent or expand names you can't see. Team defenses: name them like "Saints" with position "DEF".
+- position = the player's own position badge (QB/RB/WR/TE/K/DEF), NOT the lineup slot. lineupSlot = the slot label on the left (QB, RB, WR, TE, FLEX, W/R/T, RWT, K, DST, BN, IR) or null.
+- team = the NFL team abbreviation shown next to the player (e.g. DET, NYJ), or null.
+- confidence = 0 to 1, how sure you are you read the name correctly.
+- Only the user's own team. If a screen shows two teams (a matchup), only include the user's side.
+
+Return ONLY JSON:
 {
-  "platform": "ESPN" | "Yahoo" | "Sleeper" | "CBS" | "NFL" | "Other" | "Unknown",
+  "platform": "CBS" | "ESPN" | "Yahoo" | "Sleeper" | "NFL" | "Other" | "Unknown",
   "screenType": "roster" | "matchup" | "waiver" | "trade" | "other",
   "teamName": string | null,
-  "players": [ { "name": string, "position": "QB"|"RB"|"WR"|"TE"|"K"|"DEF"|null, "team": "NFL team abbreviation or null",
-                 "slot": "starter" | "bench" | "ir" | null, "lineupSlot": "the lineup slot label shown (e.g. FLEX, RB, BN) or null",
-                 "projected": number | null, "status": "injury tag shown (Q, O, IR, D) or null" } ],
-  "matchup": { "opponent": string | null, "projectedFor": number | null, "projectedAgainst": number | null } | null,
+  "players": [ { "name": string, "position": "QB"|"RB"|"WR"|"TE"|"K"|"DEF"|null, "team": string|null,
+                 "slot": "starter"|"bench"|"ir"|null, "lineupSlot": string|null, "projected": number|null,
+                 "status": "injury tag shown (Q, O, IR, D) or null", "confidence": number } ],
   "unreadable": "anything you couldn't read, or null"
+}`;
+
+// Friendly handling for problems with the AI provider account itself
+// (e.g. out of API credits), which otherwise look like "bad screenshots".
+function providerProblem(err) {
+  const body = String(err?.body || err?.message || "");
+  if (/credit balance is too low|billing|insufficient.*credit/i.test(body)) {
+    return { status: 503, error: "Fantasy Edge's AI is temporarily unavailable (the AI service account needs attention). Please try again later.", code: "ai_billing" };
+  }
+  if (err?.status === 429 || /rate.?limit|overloaded/i.test(body)) {
+    return { status: 503, error: "Fantasy Edge is busy right now. Please try again in a minute.", code: "ai_busy" };
+  }
+  return null;
 }
-Only include players on the user's own team when the screenshot shows two teams (a matchup), unless it's a trade or waiver screen. Use full player names when shown; if only an abbreviated name is shown (e.g. "J. Chase"), return it as shown.`,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } },
-            { type: "text", text: "Extract the fantasy roster from this screenshot." },
-          ],
-        },
-      ],
-    });
-    const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-    const parsed = parseJson(text);
-    const raw = cleanRoster(parsed.players);
-    // Match each name to a real current NFL player so later tools start from
-    // the right person; keep the screenshot's own labels.
-    const players = await Promise.all(
-      raw.map(async (p) => {
-        const f = await findPlayer(p.name, { team: p.team, position: p.position && p.position !== "DEF" ? p.position : undefined }).catch(() => ({ player: null }));
-        if (f.player) return { ...p, name: f.player.name, team: f.player.teamAbbr, position: p.position || f.player.position, matched: true };
-        return { ...p, matched: p.position === "DEF" };
-      })
-    );
-    const statusTags = Object.fromEntries((parsed.players || []).map((p) => [norm(p.name), p.status || null]));
+
+let screenshotSeq = 0;
+
+export async function extractRosterFromImages(images, { log = () => {} } = {}) {
+  log("images received", images.map((im, i) => `#${i + 1} ${im.mediaType} ${Math.round((im.data.length * 3) / 4 / 1024)}KB`).join(", "));
+  const content = [];
+  images.forEach((im, i) => {
+    content.push({ type: "text", text: `Image ${i + 1} of ${images.length}:` });
+    content.push({ type: "image", source: { type: "base64", media_type: im.mediaType, data: im.data } });
+  });
+  content.push({ type: "text", text: "Extract the fantasy roster from these images (one roster, in order, possibly overlapping)." });
+  const data = await callModelImpl({ model: MODEL, max_tokens: 4000, system: ROSTER_VISION_PROMPT, messages: [{ role: "user", content }] });
+  const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+  const parsed = parseJson(text);
+  const rawPlayers = Array.isArray(parsed.players) ? parsed.players : [];
+  log("vision output", `${rawPlayers.length} rows (platform ${parsed.platform || "?"}): ` + rawPlayers.map((p) => `${p.name}|${p.position || "-"}|${p.team || "-"}|${p.slot || "-"}|${p.confidence ?? "-"}`).join("; "));
+
+  // Dedupe (the model is told to, but overlap is the #1 source of repeats).
+  const seen = new Map();
+  for (const p of rawPlayers) {
+    if (!p || !p.name) continue;
+    const key = normalizeQueryName(p.name).replace(/ /g, "");
+    const prev = seen.get(key);
+    if (!prev) seen.set(key, p);
+    else for (const k of ["position", "team", "slot", "lineupSlot", "projected", "status"]) if (prev[k] == null && p[k] != null) prev[k] = p[k];
+  }
+  const deduped = [...seen.values()].slice(0, 30);
+  log("normalized names", deduped.map((p) => `${p.name} -> ${normalizeQueryName(p.name)}`).join("; "));
+
+  const players = await Promise.all(
+    deduped.map(async (p) => {
+      const position = p.position ? String(p.position).toUpperCase() : null;
+      const base = {
+        name: String(p.name).trim(),
+        screenshotName: String(p.name).trim(),
+        position,
+        team: p.team ? String(p.team).toUpperCase() : null,
+        slot: ["starter", "bench", "ir"].includes(p.slot) ? p.slot : null,
+        lineupSlot: p.lineupSlot || null,
+        projected: Number.isFinite(Number(p.projected)) ? Number(p.projected) : null,
+        screenshotStatus: p.status || null,
+        confidence: Number.isFinite(Number(p.confidence)) ? Number(p.confidence) : null,
+      };
+      if (position === "DEF") return { ...base, matched: true, kind: "defense" };
+      const f = await findPlayer(base.name, { team: base.team, position: position || undefined }).catch((err) => ({ player: null, error: err.message }));
+      if (f.player) {
+        return { ...base, name: f.player.name, team: f.player.teamAbbr, position: position || f.player.position, playerId: f.player.espnId, matched: true };
+      }
+      // Fallback: keep the recognized name so analysis can still use it.
+      return { ...base, matched: false, needsConfirmation: true, candidates: (f.candidates || []).map((c) => ({ name: c.name, team: c.teamAbbr, position: c.position })), matchError: f.error || null };
+    })
+  );
+  const byId = new Set();
+  for (let i = players.length - 1; i >= 0; i--) {
+    const pid = players[i].playerId;
+    if (!pid) continue;
+    if (byId.has(pid)) players.splice(i, 1);
+    else byId.add(pid);
+  }
+  log("matched", players.filter((p) => p.matched).map((p) => `${p.screenshotName} => ${p.name}${p.playerId ? ` (#${p.playerId})` : ""}`).join("; ") || "none");
+  log("unmatched", players.filter((p) => !p.matched).map((p) => `${p.screenshotName}${p.matchError ? ` (${p.matchError})` : ""}`).join("; ") || "none");
+  return { platform: parsed.platform || "Unknown", screenType: parsed.screenType || "roster", teamName: parsed.teamName || null, players, unreadable: parsed.unreadable || null };
+}
+
+async function handleScreenshots(req, res, images) {
+  const id = `ss${++screenshotSeq}-${Date.now().toString(36)}`;
+  const log = (stage, detail) => console.log(`[fantasy screenshot ${id}] ${stage}: ${detail}`);
+  try {
+    const out = await extractRosterFromImages(images, { log });
+    log("final roster", out.players.map((p) => `${p.name}[${p.slot || "?"}]`).join(", ") || "EMPTY");
     res.json({
-      platform: parsed.platform || "Unknown",
-      screenType: parsed.screenType || "roster",
-      teamName: parsed.teamName || null,
-      players: players.map((p) => ({ ...p, screenshotStatus: statusTags[norm(p.name)] || null })),
-      matchup: parsed.matchup || null,
-      unreadable: parsed.unreadable || null,
+      ...out,
+      imageCount: images.length,
       note: "Injury tags shown in your app's screenshot are only as current as the screenshot — Fantasy Edge re-checks live status when it analyzes these players.",
     });
   } catch (err) {
+    log("FAILED", err.message);
+    const pp = providerProblem(err);
+    if (pp) return res.status(pp.status).json({ error: pp.error, code: pp.code });
     fail(res, err, "screenshot scan");
   }
+}
+
+// POST /api/fantasy/screenshots { images: [dataUrl, ...] } — one roster from up to 10 images/tiles.
+router.post("/screenshots", ...loginGate, async (req, res) => {
+  const list = Array.isArray(req.body?.images) ? req.body.images.slice(0, 10) : [];
+  const images = list.map(parseImageDataUrl);
+  if (!images.length || images.some((im) => !im)) return res.status(400).json({ error: "Upload PNG, JPG or WebP screenshots." });
+  const total = images.reduce((n, im) => n + im.data.length, 0);
+  if (images.some((im) => im.data.length > MAX_IMAGE_BASE64_CHARS) || total > MAX_IMAGE_BASE64_CHARS * 1.5) {
+    return res.status(400).json({ error: "Those images are too large — try fewer screenshots at a time." });
+  }
+  return handleScreenshots(req, res, images);
+});
+
+// POST /api/fantasy/screenshot { image } — single image (kept for older clients).
+router.post("/screenshot", ...loginGate, async (req, res) => {
+  const img = parseImageDataUrl(req.body?.image);
+  if (!img) return res.status(400).json({ error: "Upload a PNG, JPG or WebP screenshot." });
+  if (img.data.length > MAX_IMAGE_BASE64_CHARS) return res.status(400).json({ error: "That image is too large." });
+  return handleScreenshots(req, res, [img]);
 });
 
 // ---- Player search (autocomplete) --------------------------------------------

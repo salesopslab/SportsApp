@@ -17,8 +17,30 @@ let scenario = "normal";
 const TEAMS = [
   { team: { id: "28", abbreviation: "WSH", displayName: "Washington Commanders" } },
   { team: { id: "11", abbreviation: "IND", displayName: "Indianapolis Colts" } },
+  { team: { id: "8", abbreviation: "DET", displayName: "Detroit Lions" } },
+  { team: { id: "6", abbreviation: "DAL", displayName: "Dallas Cowboys" } },
+  { team: { id: "9", abbreviation: "GB", displayName: "Green Bay Packers" } },
+  { team: { id: "29", abbreviation: "CAR", displayName: "Carolina Panthers" } },
+  { team: { id: "27", abbreviation: "TB", displayName: "Tampa Bay Buccaneers" } },
+  { team: { id: "21", abbreviation: "PHI", displayName: "Philadelphia Eagles" } },
 ];
 const ROSTERS = {
+  8: [
+    { id: "801", displayName: "Jared Goff", position: { abbreviation: "QB" } },
+    { id: "802", displayName: "Amon-Ra St. Brown", position: { abbreviation: "WR" } },
+    { id: "803", displayName: "Sam LaPorta", position: { abbreviation: "TE" } },
+  ],
+  6: [
+    { id: "601", displayName: "Dak Prescott", position: { abbreviation: "QB" } },
+    { id: "602", displayName: "CeeDee Lamb", position: { abbreviation: "WR" } },
+  ],
+  9: [{ id: "901", displayName: "Chris Brooks", position: { abbreviation: "RB" } }],
+  29: [
+    { id: "2901", displayName: "AJ Dillon", position: { abbreviation: "RB" } },
+    { id: "2902", displayName: "Jalen Coker", position: { abbreviation: "WR" } },
+  ],
+  27: [{ id: "2701", displayName: "Chris Godwin Jr.", position: { abbreviation: "WR" } }],
+  21: [{ id: "2101", displayName: "A.J. Brown", position: { abbreviation: "WR" } }],
   28: [
     { id: "101", displayName: "Jayden Daniels", position: { abbreviation: "QB" } },
     { id: "102", displayName: "Terry McLaurin", position: { abbreviation: "WR" } },
@@ -353,6 +375,72 @@ await test("player search: partial names return real players, roster positions o
   assert.equal(last.json.players[0].name, "Terry McLaurin");
   const none = await local("GET", "/api/fantasy/players/search?q=z");
   assert.deepEqual(none.json.players, []);
+});
+
+await test("CBS roster in TWO overlapping screenshots → one deduped roster with starters/bench, abbreviated names matched", async () => {
+  let sent = null;
+  modelScript = (body) => {
+    sent = body;
+    // What the vision model reads across both images (image 2 repeats the
+    // first reserves because the screenshots overlap).
+    const rows = [
+      ["J. Goff", "QB", "DET", "starter", "QB"],
+      ["A. St. Brown", "WR", "DET", "starter", "WR"],
+      ["C. Lamb", "WR", "DAL", "starter", "WR"],
+      ["Saints", "DEF", "NO", "starter", "DST"],
+      ["D. Prescott", "QB", "DAL", "bench", "QB"],
+      ["C. Brooks", "RB", "GB", "bench", "RB"],
+      ["D. Prescott", "QB", "DAL", "bench", "QB"],
+      ["C. Brooks", "RB", "GB", "bench", "RB"],
+      ["A. Dillon", "RB", "CAR", "bench", "RB"],
+      ["J. Coker", "WR", "CAR", "bench", "RWT"],
+      ["C. Godwin", "WR", "TB", "bench", "RWT"],
+      ["Z. Madeupname", "WR", "NYJ", "bench", "RWT"],
+    ].map(([name, position, team, slot, lineupSlot]) => ({ name, position, team, slot, lineupSlot, confidence: 0.9 }));
+    return { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({ platform: "CBS", screenType: "roster", players: rows }) }] };
+  };
+  const img = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+  const r = await local("POST", "/api/fantasy/screenshots", { images: [img, img] });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  // Both images went to the model in ONE request, in order.
+  const imgs = sent.messages[0].content.filter((c) => c.type === "image");
+  assert.equal(imgs.length, 2);
+  assert.match(sent.system, /Reserve Players/);
+  const byName = Object.fromEntries(r.json.players.map((p) => [p.name, p]));
+  assert.equal(r.json.players.length, 10, r.json.players.map((p) => p.name).join(", ")); // 12 rows - 2 overlap duplicates
+  assert.equal(r.json.players.filter((p) => p.name === "Dak Prescott").length, 1);
+  assert.equal(byName["Amon-Ra St. Brown"]?.slot, "starter", "A. St. Brown must match St. Brown, not A.J. Brown");
+  assert.ok(!byName["A.J. Brown"]);
+  assert.equal(byName["Jared Goff"].slot, "starter");
+  assert.equal(byName["Chris Godwin Jr."].slot, "bench");
+  assert.equal(byName["AJ Dillon"].matched, true);
+  assert.equal(byName["Chris Brooks"].playerId, "901");
+  assert.equal(byName["Saints"].kind, "defense");
+  // Fallback: unmatched name is kept (for analysis by name) and flagged.
+  const mystery = r.json.players.find((p) => p.screenshotName === "Z. Madeupname");
+  assert.ok(mystery && mystery.matched === false && mystery.needsConfirmation === true);
+  assert.equal(r.json.platform, "CBS");
+});
+
+await test("AI account out of credits → clear 503 message, not 'bad screenshot'", async () => {
+  modelScript = () => {
+    const e = new Error("Anthropic API error 400");
+    e.status = 400;
+    e.body = '{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}';
+    throw e;
+  };
+  const r = await local("POST", "/api/fantasy/screenshots", { images: ["data:image/jpeg;base64,/9j/4AAQ"] });
+  assert.equal(r.status, 503);
+  assert.equal(r.json.code, "ai_billing");
+  assert.match(r.json.error, /temporarily unavailable/);
+});
+
+await test("name matching: initials, suffixes, 'St.' surnames and spacing", async () => {
+  assert.equal((await data.findPlayer("A. St. Brown")).player?.name, "Amon-Ra St. Brown");
+  assert.equal((await data.findPlayer("Chris Godwin")).player?.name, "Chris Godwin Jr.");
+  assert.equal((await data.findPlayer("A.J. Dillon")).player?.name, "AJ Dillon");
+  assert.equal((await data.findPlayer("C. Lamb", { team: "WAS" })).player?.name, "CeeDee Lamb", "wrong team from the screenshot still finds him");
+  assert.equal((await data.findPlayer("AJ Brown")).player?.name, "A.J. Brown");
 });
 
 await test("chat returns reply plus live statuses for players it looked up", async () => {

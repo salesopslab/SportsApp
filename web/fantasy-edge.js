@@ -181,21 +181,39 @@
     });
   }
 
-  function downscale(file){
+  // Reads a screenshot into one or more JPEG tiles. Tall phone screenshots
+  // are split into overlapping tiles so small roster text stays sharp (the
+  // AI downsizes very tall images, which makes names hard to read). The
+  // user never has to crop anything.
+  function imageToTiles(file){
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = () => reject(new Error('Could not read that file — try again.'));
       reader.onload = () => {
         const img = new Image();
-        img.onerror = () => resolve(reader.result); // unknown format: send as-is
+        img.onerror = () => resolve([reader.result]); // unknown format: send as-is
         img.onload = () => {
-          const max = 1800;
-          const scale = Math.min(1, max / Math.max(img.width, img.height));
-          if(scale === 1 && reader.result.length < 4_000_000) return resolve(reader.result);
-          const c = document.createElement('canvas');
-          c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
-          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-          resolve(c.toDataURL('image/jpeg', 0.88));
+          const W = img.width, H = img.height;
+          const scale = Math.min(1, 1100 / W);
+          const w = Math.round(W * scale), h = Math.round(H * scale);
+          const tileH = Math.round(w * 1.35);          // roughly square-ish tiles
+          const overlap = Math.round(tileH * 0.12);
+          const tiles = [];
+          if(h <= tileH * 1.15){
+            const c = document.createElement('canvas'); c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            tiles.push(c.toDataURL('image/jpeg', 0.88));
+          }else{
+            for(let y = 0; y < h; y += tileH - overlap){
+              const th = Math.min(tileH, h - y);
+              if(th < overlap * 1.5 && tiles.length) break;
+              const c = document.createElement('canvas'); c.width = w; c.height = th;
+              c.getContext('2d').drawImage(img, 0, y / scale, W, th / scale, 0, 0, w, th);
+              tiles.push(c.toDataURL('image/jpeg', 0.86));
+              if(y + th >= h) break;
+            }
+          }
+          resolve(tiles.slice(0, 5));
         };
         img.src = reader.result;
       };
@@ -209,16 +227,16 @@
   function mergeIntoRoster(players){
     let added = 0, updated = 0;
     for(const p of players){
-      const existing = roster.find(r => sameName(r.name, p.name));
+      const existing = roster.find(r => sameName(r.name, p.name) || (p.screenshotName && sameName(r.name, p.screenshotName)));
       if(existing){
         let changed = false;
-        for(const k of ['position', 'team', 'slot', 'lineupSlot']){
+        for(const k of ['position', 'team', 'slot', 'lineupSlot', 'playerId']){
           if(p[k] && existing[k] !== p[k]){ existing[k] = p[k]; changed = true; }
         }
         if(p.matched && existing.matched === false){ existing.name = p.name; existing.matched = true; changed = true; }
         if(changed) updated++;
       }else if(roster.length < 30){
-        roster.push({ name: p.name, position: p.position, team: p.team, slot: p.slot, lineupSlot: p.lineupSlot, matched: p.matched });
+        roster.push({ name: p.name, position: p.position, team: p.team, slot: p.slot, lineupSlot: p.lineupSlot, matched: p.matched, playerId: p.playerId || null });
         added++;
       }
     }
@@ -233,40 +251,65 @@
     }
     const btn = $('feUploadBtn');
     btn.disabled = true;
-    let added = 0, updated = 0, platform = null;
-    const failed = [];
+    btn.textContent = files.length > 1 ? `Reading ${files.length} screenshots…` : 'Reading your screenshot…';
+    $('feResult').innerHTML = '';
     try{
-      for(let i = 0; i < files.length; i++){
-        btn.textContent = files.length > 1 ? `Reading screenshot ${i + 1} of ${files.length}…` : 'Reading your screenshot…';
-        try{
-          const image = await downscale(files[i]);
-          const d = await call('screenshot', { image });
-          if(!d.players || !d.players.length){ failed.push(i + 1); continue; }
-          if(d.platform && d.platform !== 'Unknown') platform = d.platform;
-          const r = mergeIntoRoster(d.players);
-          added += r.added; updated += r.updated;
-          save(); renderRoster(); renderPanel();
-        }catch(err){
-          if(err.paywall) throw err;
-          failed.push(i + 1);
+      // All screenshots (and their tiles) go up together as ONE roster, so the
+      // AI can follow "Active / Reserve / IR" headings across screenshots and
+      // skip players that appear in both.
+      const perFile = [];
+      for(const f of files) perFile.push(await imageToTiles(f));
+      let images = perFile.flat();
+      if(images.length > 10) images = perFile.map(t => t[0]).concat(perFile.flatMap(t => t.slice(1))).slice(0, 10);
+      console.log(`[Fantasy Edge] uploading ${files.length} screenshot(s) as ${images.length} image(s)`);
+      let d = null;
+      let lastErr = null;
+      try{
+        d = await call('screenshots', { images });
+      }catch(err){
+        if(err.paywall) throw err;
+        lastErr = err;
+      }
+      // Fallback: if the combined read failed for a non-account reason, try
+      // each screenshot on its own and merge whatever comes back.
+      if(!d && lastErr && !/temporarily unavailable|busy right now/i.test(lastErr.message)){
+        const merged = { players: [], platform: null };
+        for(const tiles of perFile){
+          try{
+            const r = await call('screenshots', { images: tiles });
+            merged.players.push(...(r.players || []));
+            merged.platform = merged.platform || r.platform;
+          }catch(err){ if(err.paywall) throw err; lastErr = err; }
         }
+        if(merged.players.length) d = merged;
       }
-      if(!added && !updated && failed.length === files.length){
-        throw new Error(files.length > 1 ? "Couldn't find players in those screenshots. Try tighter crops of your roster." : "Couldn't find any players in that screenshot. Try a tighter crop of your roster.");
+      if(!d) throw lastErr || new Error('Could not read those screenshots.');
+      const players = d.players || [];
+      console.log('[Fantasy Edge] recognized players:', players.map(p => `${p.screenshotName || p.name} -> ${p.name} [${p.slot || '?'}]${p.matched ? '' : ' (unmatched)'}`));
+      if(!players.length){
+        throw new Error(`No players were recognized in ${files.length > 1 ? 'those screenshots' : 'that screenshot'}. Make sure it shows your roster list${d.unreadable ? ` (${d.unreadable})` : ''}.`);
       }
-      const unmatched = roster.filter(p => p.matched === false).length;
+      const r = mergeIntoRoster(players);
+      save(); renderRoster(); renderPanel();
+      const starters = players.filter(p => p.slot === 'starter').length;
+      const bench = players.filter(p => p.slot === 'bench').length;
+      const ir = players.filter(p => p.slot === 'ir').length;
+      const unconfirmed = players.filter(p => !p.matched);
       const bits = [];
-      if(added) bits.push(`${added} player${added === 1 ? '' : 's'} added`);
-      if(updated) bits.push(`${updated} updated`);
-      if(!added && !updated) bits.push('no new players — they were already on your roster');
+      if(r.added) bits.push(`${r.added} player${r.added === 1 ? '' : 's'} added`);
+      if(r.updated) bits.push(`${r.updated} updated`);
+      if(!r.added && !r.updated) bits.push('no new players — they were already on your roster');
+      const lineupBits = [starters ? `${starters} starters` : null, bench ? `${bench} bench` : null, ir ? `${ir} IR` : null].filter(Boolean).join(' · ');
       $('feResult').innerHTML = `<div class="fe-card">
-        <div class="fe-card-title">✅ Roster now has ${roster.length} players${platform ? ` from ${esc(platform)}` : ''}</div>
-        <div class="fe-panel-desc">${esc(bits.join(', '))}.${failed.length ? ` Couldn't read screenshot ${failed.join(' & ')} — try a tighter crop.` : ''} ${unmatched ? `${unmatched} name${unmatched === 1 ? '' : 's'} (dashed) couldn't be matched to a current NFL roster — fix or remove ${unmatched === 1 ? 'it' : 'them'}. ` : ''}Upload another screenshot to add more (bench, IR), or optimize your lineup.</div>
-        <div class="fe-actions"><button type="button" class="fe-primary" id="feGoLineup">Optimize my lineup</button><button type="button" class="fe-secondary" id="feAddMore">+ Add another screenshot</button></div>
+        <div class="fe-card-title">✅ Roster now has ${roster.length} players${d.platform && d.platform !== 'Unknown' ? ` from ${esc(d.platform)}` : ''}</div>
+        <div class="fe-panel-desc">${esc(bits.join(', '))}.${lineupBits ? ` Detected ${esc(lineupBits)}.` : ''}</div>
+        ${unconfirmed.length ? `<div class="fe-panel-desc"><b>Please confirm:</b> ${unconfirmed.map(p => esc(p.screenshotName || p.name)).join(', ')} ${unconfirmed.length === 1 ? "wasn't" : "weren't"} matched to a current NFL roster (shown dashed). ${unconfirmed.length === 1 ? 'It' : 'They'} will still be included in the analysis by name — remove or re-add ${unconfirmed.length === 1 ? 'it' : 'them'} if the name is wrong.</div>` : ''}
+        <div class="fe-actions"><button type="button" class="fe-primary" id="feGoLineup">Who should I start?</button><button type="button" class="fe-secondary" id="feAddMore">+ Add another screenshot</button></div>
       </div>`;
       $('feGoLineup').onclick = () => { selectTool('lineup'); runTool(); };
       $('feAddMore').onclick = () => $('feFileInput').click();
     }catch(err){
+      console.error('[Fantasy Edge] screenshot import failed:', err.message);
       showError($('feResult'), err);
     }finally{
       btn.disabled = false;
@@ -410,7 +453,7 @@
     const panel = $('fePanel');
     if(tool === 'startsit'){
       panel.innerHTML = `<div class="fe-card-title">Start/Sit AI</div>
-        <div class="fe-panel-desc">Pick 2–4 players. Fantasy Edge checks matchup, usage, injuries, depth chart, weather and the betting line.</div>
+        <div class="fe-panel-desc">${roster.length >= 3 ? 'Tap <b>Who should I start?</b> to set your best lineup from your roster — or pick 2–4 players to compare head-to-head.' : 'Pick 2–4 players. Fantasy Edge checks matchup, usage, injuries, depth chart, weather and the betting line.'}</div>
         ${pickerHtml('ss', '')}
         <div class="fe-actions"><button type="button" class="fe-primary" id="feRun">Who should I start?</button></div>`;
     }else if(tool === 'waiver'){
@@ -457,8 +500,15 @@
     let path, body, msg, render;
     if(tool === 'startsit'){
       const players = picks.ss.map(p => p.name);
-      if(players.length < 2){ out.innerHTML = '<div class="fe-card"><div class="fe-error">Pick at least 2 players to compare.</div></div>'; return; }
-      path = 'start-sit'; body = { players, scoring }; msg = 'Checking matchups, usage and the latest injury reports…'; render = renderStartSit;
+      if(players.length === 0 && roster.length >= 3){
+        // No specific players picked: answer "who should I start?" for the
+        // whole roster that was just imported.
+        path = 'lineup'; body = { roster, scoring }; msg = `Checking all ${roster.length} players on your roster…`; render = renderLineup;
+      }else if(players.length < 2){
+        out.innerHTML = `<div class="fe-card"><div class="fe-error">${roster.length >= 3 ? 'Pick one more player to compare — or remove your pick to optimize your whole roster.' : 'Pick at least 2 players to compare, or upload your roster.'}</div></div>`; return;
+      }else{
+        path = 'start-sit'; body = { players, scoring }; msg = 'Checking matchups, usage and the latest injury reports…'; render = renderStartSit;
+      }
     }else if(tool === 'waiver'){
       path = 'waiver'; body = { position: waiverPos, scoring, available: picks.avail.map(p => p.name), roster }; msg = 'Scanning injuries and depth charts for opportunities…'; render = renderWaiver;
     }else if(tool === 'lineup'){
@@ -473,6 +523,7 @@
       if(!a.length || !b.length){ out.innerHTML = '<div class="fe-card"><div class="fe-error">Add at least one player on each side.</div></div>'; return; }
       path = 'trade'; body = { teamAGives: a, teamBGives: b, scoring, roster }; msg = 'Weighing rest-of-season value on both sides…'; render = renderTrade;
     }
+    console.log(`[Fantasy Edge] ${path} request`, body.roster ? `roster (${body.roster.length}): ${body.roster.map(p => `${p.name}[${p.slot || '?'}]`).join(', ')}` : body);
     busy = true;
     const run = $('feRun'); if(run) run.disabled = true;
     out.innerHTML = loadingHtml(msg);

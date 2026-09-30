@@ -142,51 +142,107 @@ async function getPlayerIndex() {
   return { players, failedTeams };
 }
 
+// Common nicknames / alternate spellings fantasy apps use -> roster name.
+const NAME_ALIASES = {
+  "hollywood brown": "marquise brown",
+  "gabe davis": "gabriel davis",
+  "chig okonkwo": "chigoziem okonkwo",
+  "tank dell": "nathaniel dell",
+  "mike williams": "mike williams",
+  "kenneth walker": "kenneth walker",
+  "bam knight": "zonovan knight",
+  "scotty miller": "scott miller",
+  "josh palmer": "joshua palmer",
+  "dj moore": "d j moore",
+  "dk metcalf": "d k metcalf",
+  "cj stroud": "c j stroud",
+};
+
+// Splits a normalized query into leading initials and the surname part:
+// "a st brown" -> { initials: "a", surname: "st brown" }.
+function splitInitials(qNorm) {
+  const parts = qNorm.split(" ");
+  const initials = [];
+  while (parts.length > 1 && parts[0].length === 1) initials.push(parts.shift());
+  return { initials: initials.join(""), surname: parts.join(" ") };
+}
+
+export function normalizeQueryName(name) {
+  let q = norm(name);
+  if (NAME_ALIASES[q]) q = NAME_ALIASES[q];
+  return q;
+}
+
 function scoreNameMatch(player, qNorm, qLast) {
   const pn = norm(player.name);
   if (pn === qNorm) return 100;
-  if (pn.replace(/ /g, "") === qNorm.replace(/ /g, "")) return 95;
+  const squash = (x) => x.replace(/ /g, "");
+  if (squash(pn) === squash(qNorm)) return 95; // "aj dillon" vs "a j dillon"
+  const { initials, surname } = splitInitials(qNorm);
+  if (initials && surname) {
+    // "A. St. Brown" -> first initial A + name ending in "st brown".
+    const endsWithSurname = pn === surname || pn.endsWith(" " + surname) || squash(pn).endsWith(squash(surname));
+    if (endsWithSurname && squash(pn).startsWith(initials)) return surname.includes(" ") ? 88 : 80;
+    if (endsWithSurname && pn[0] === initials[0]) return 78;
+  }
   const [qFirst] = qNorm.split(" ");
-  if (lastName(player.name) === qLast && qFirst && pn.startsWith(qFirst[0])) return 80;
+  if (lastName(player.name) === qLast && qFirst && pn.startsWith(qFirst[0])) return 75;
   if (lastName(player.name) === qLast) return 60;
   if (pn.includes(qNorm)) return 50;
   return 0;
 }
 
-// Finds a player by name (optionally narrowed by team / position).
-// Returns { player, candidates } — candidates are listed when the name is
-// ambiguous so the caller can ask which one.
-export async function findPlayer(name, { team, position } = {}) {
-  const qNorm = norm(name);
-  if (!qNorm) return { player: null, candidates: [], error: "No player name given." };
-  const { players, failedTeams } = await getPlayerIndex();
-  const teamObj = team ? await resolveTeam(team).catch(() => null) : null;
-  const qLast = lastName(name);
-  let pool = players;
-  if (teamObj) pool = pool.filter((p) => p.teamId === teamObj.id);
-  if (position) pool = pool.filter((p) => p.position === String(position).toUpperCase());
+const fantasyRank = (p) => (FANTASY_POSITIONS.includes(p.position) || p.position === "PK" ? 0 : 1);
+const posMatches = (p, position) => {
+  const want = String(position).toUpperCase();
+  const have = p.position === "PK" ? "K" : p.position === "FB" ? "RB" : p.position;
+  return have === (want === "PK" ? "K" : want);
+};
+
+function bestMatch(pool, qNorm, qLast) {
   const scored = pool
     .map((p) => ({ p, s: scoreNameMatch(p, qNorm, qLast) }))
     .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s);
-  // Prefer fantasy-relevant positions on ties (a WR over an OL with the same name).
-  const fantasyRank = (p) => (FANTASY_POSITIONS.includes(p.position) || p.position === "PK" ? 0 : 1);
-  scored.sort((a, b) => b.s - a.s || fantasyRank(a.p) - fantasyRank(b.p));
-  if (!scored.length) {
-    return {
-      player: null,
-      candidates: [],
-      error: failedTeams.length
-        ? `Player not found. Rosters for ${failedTeams.length} team(s) could not be loaded, so the player may be on one of them.`
-        : "Player not found on current NFL rosters.",
-    };
-  }
+    .sort((a, b) => b.s - a.s || fantasyRank(a.p) - fantasyRank(b.p));
+  if (!scored.length) return { player: null, candidates: [] };
   const top = scored[0];
   const ties = scored.filter((x) => x.s === top.s && fantasyRank(x.p) === fantasyRank(top.p));
-  if (ties.length > 1 && top.s < 100) {
-    return { player: null, candidates: ties.slice(0, 5).map((x) => x.p), error: "More than one player matches that name." };
+  if (ties.length > 1 && top.s < 100) return { player: null, candidates: ties.slice(0, 5).map((x) => x.p), ambiguous: true };
+  return { player: top.p, candidates: [], score: top.s };
+}
+
+// Finds a player by name (optionally narrowed by team / position).
+// Tries the narrowest filter first and relaxes it if nothing matches, so a
+// wrong team abbreviation or position read from a screenshot doesn't lose
+// the player. Returns { player, candidates } — candidates are listed when the
+// name is ambiguous so the caller can ask which one.
+export async function findPlayer(name, { team, position } = {}) {
+  const qNorm = normalizeQueryName(name);
+  if (!qNorm) return { player: null, candidates: [], error: "No player name given." };
+  const { players, failedTeams } = await getPlayerIndex();
+  const teamObj = team ? await resolveTeam(team).catch(() => null) : null;
+  const qLast = lastName(qNorm);
+  const byTeam = teamObj ? players.filter((p) => p.teamId === teamObj.id) : null;
+  const attempts = [];
+  if (byTeam && position) attempts.push(byTeam.filter((p) => posMatches(p, position)));
+  if (byTeam) attempts.push(byTeam);
+  if (position) attempts.push(players.filter((p) => posMatches(p, position)));
+  attempts.push(players);
+  let lastAmbiguous = null;
+  for (const pool of attempts) {
+    if (!pool.length) continue;
+    const r = bestMatch(pool, qNorm, qLast);
+    if (r.player) return { player: r.player, candidates: [], score: r.score };
+    if (r.ambiguous && !lastAmbiguous) lastAmbiguous = r;
   }
-  return { player: top.p, candidates: [] };
+  if (lastAmbiguous) return { player: null, candidates: lastAmbiguous.candidates, error: "More than one player matches that name." };
+  return {
+    player: null,
+    candidates: [],
+    error: failedTeams.length
+      ? `Player not found. Rosters for ${failedTeams.length} team(s) could not be loaded, so the player may be on one of them.`
+      : "Player not found on current NFL rosters.",
+  };
 }
 
 // ---- Depth charts ----------------------------------------------------------
