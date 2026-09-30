@@ -317,6 +317,9 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .status-pill .status-age{ color:var(--sub); }
 .status-pill.stale .status-dot{ background:var(--amber); }
 .ask-ai-btn{ margin:16px 20px 0; padding:11px; border-radius:10px; background:var(--teal); color:var(--bg); border:none; font-size:13.5px; font-weight:600; width:calc(100% - 40px); cursor:pointer; }
+.bd-ask{ display:flex; gap:8px; align-items:center; margin:12px 20px 4px; }
+.bd-ask .chat-input{ min-width:0; padding:10px 14px; }
+.bd-ask .mic-btn, .bd-ask .send-btn{ flex-shrink:0; }
 .scan-shortcut-btn{ margin:14px 20px 0; padding:10px; border-radius:10px; background:none; border:1px solid var(--amber); color:var(--amber); font-size:13px; font-weight:600; width:calc(100% - 40px); cursor:pointer; font-family:inherit; }
 .scan-shortcut-btn:hover{ background:color-mix(in srgb, currentColor 10%, transparent); }
 
@@ -4167,6 +4170,23 @@ async function openGameBreakdown(sport, game){
       showScreen('chat');
       document.getElementById('chatInput').focus();
     });
+    // "Ask AI" bar at the top of every game's scorecard: sends the question
+    // straight into this game's chat.
+    const askForm = document.getElementById('bdAskForm');
+    if(askForm){
+      askForm.addEventListener('submit', (ev)=>{
+        ev.preventDefault();
+        const q = document.getElementById('bdAskInput').value.trim();
+        showScreen('chat');
+        const input = document.getElementById('chatInput');
+        if(q){ input.value = q; sendChat(); }
+        else input.focus();
+      });
+      document.getElementById('bdAskMic').addEventListener('click', ()=>{
+        showScreen('chat');
+        document.getElementById('micBtn').click();
+      });
+    }
     const scanBtn = document.getElementById('scanFromCardBtn');
     if(scanBtn) scanBtn.addEventListener('click', openScanFromCard);
   }catch(e){
@@ -4212,6 +4232,11 @@ function renderGameBreakdown(d){
   // borrow it from the game object the person actually tapped, if we have it.
   const trackGame = Object.assign({}, g, { status: currentGame ? currentGame.status : g.status });
   let html = `
+    <form class="bd-ask" id="bdAskForm" autocomplete="off">
+      <input class="chat-input" id="bdAskInput" type="text" enterkeyhint="send" aria-label="Ask AI about this game" placeholder="Ask AI about this game…">
+      <button class="mic-btn" id="bdAskMic" type="button" title="Ask by voice">🎤</button>
+      <button class="send-btn" id="bdAskSend" type="submit" title="Ask">➤</button>
+    </form>
     <div class="game-breakdown-hero">
       <div class="game-breakdown-title">${g.awayTeam} @ ${g.homeTeam}</div>
       <div class="game-breakdown-sub">${timeLabel(g.commenceTime)}</div>
