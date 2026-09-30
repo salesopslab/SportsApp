@@ -103,7 +103,7 @@ export async function getOrCreateCustomer(userRow) {
 }
 
 // Subscription Checkout — Edge / Edge+ / Edge Pro, monthly or annual.
-// The 7-day free trial happens in the app at signup (no card needed).
+// The 3-day free trial happens in the app at signup (no card needed).
 // trialEnd (unix seconds): when someone subscribes during their in-app free
 // trial, billing starts when that trial would have ended instead of today.
 export async function createCheckoutSession({ customerId, priceId, userId, tierId, interval, successUrl, cancelUrl, trialEnd }) {

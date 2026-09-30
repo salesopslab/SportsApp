@@ -839,7 +839,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
     <div class="modal-card pricing-modal-card">
       <button class="modal-close" id="pricingModalClose">×</button>
       <h2>Choose your plan</h2>
-      <div class="pricing-intro">Every new account gets a 7-day free trial with full Edge Pro access — no card required.</div>
+      <div class="pricing-intro">Every new account gets a 3-day free trial with full Edge Pro access — no card required.</div>
       <button class="auth-demo-link" id="pricingDemoLink"><span class="play-ic"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></span>Not ready to commit? Watch a 2-min demo first</button>
       <div class="pricing-error" id="pricingError"></div>
       <div class="billing-toggle" id="billingToggle" role="radiogroup" aria-label="Billing period">
@@ -1348,7 +1348,7 @@ function apiFetch(path, opts = {}) {
 }
 
 let tiersCache = null;
-let trialDaysCache = 7;
+let trialDaysCache = 3;
 
 function tierDisplayName(tierId){
   const t = (tiersCache || []).find(x => x.id === tierId);
@@ -1439,7 +1439,7 @@ async function fetchTiers(){
     const data = await res.json();
     tiersCache = data.tiers || [];
     freePlanCache = data.free || null;
-    trialDaysCache = data.trialDays || 7;
+    trialDaysCache = data.trialDays || 3;
   }catch(e){ tiersCache = []; }
   return tiersCache;
 }

@@ -172,7 +172,7 @@ async function test(name, fn) {
   }
 }
 
-await test("pricing endpoint: new names, monthly + annual prices, Free plan, 7-day trial", async () => {
+await test("pricing endpoint: new names, monthly + annual prices, Free plan, 3-day trial", async () => {
   const r = await call("GET", "/api/billing/tiers");
   assert.deepEqual(r.json.tiers.map((t) => [t.id, t.name, t.priceCents, t.annualPriceCents]), [
     ["standard", "Edge", 1499, 14900],
@@ -180,7 +180,7 @@ await test("pricing endpoint: new names, monthly + annual prices, Free plan, 7-d
     ["edge_pro", "Edge Pro", 3999, 39900],
   ]);
   assert.equal(r.json.free.priceCents, 0);
-  assert.equal(r.json.trialDays, 7);
+  assert.equal(r.json.trialDays, 3);
   assert.equal(r.json.tiers.find((t) => t.id === "edge").popular, true);
 });
 
@@ -206,12 +206,12 @@ await test("admin setup creates 6 prices, archives legacy for new sales, and is 
   assert.ok(health.json.tiers.every((t) => t.monthlyConfigured && t.annualConfigured));
 });
 
-await test("1. Free signup: account starts a 7-day trial, then falls back to Free", async () => {
+await test("1. Free signup: account starts a 3-day trial, then falls back to Free", async () => {
   const u = await newUser();
   const row = await userRow(u.id);
   assert.equal(row.tier, "trial");
   const days = (new Date(row.trial_ends_at) - Date.now()) / 86400000;
-  assert.ok(days > 6.9 && days <= 7.01, `trial days ${days}`);
+  assert.ok(days > 2.9 && days <= 3.01, `trial days ${days}`);
   assert.equal(effectiveTier(row), "trial");
   await pool.query("UPDATE users SET trial_ends_at = now() - interval '1 minute' WHERE id = $1", [u.id]);
   assert.equal(effectiveTier(await userRow(u.id)), "expired");
@@ -261,7 +261,7 @@ for (const [tier, name, monthly, annual] of [["standard", "Edge", 1499, 14900], 
   }
 }
 
-await test("6. Subscribing during the 7-day trial: no charge until the trial ends", async () => {
+await test("6. Subscribing during the 3-day trial: no charge until the trial ends", async () => {
   const u = await newUser();
   const r = await call("POST", "/api/billing/checkout", { tier: "edge", interval: "monthly" }, as(u.token));
   assert.equal(r.status, 200);

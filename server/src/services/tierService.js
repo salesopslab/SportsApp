@@ -88,7 +88,7 @@ export const FREE_PLAN = {
   ],
 };
 
-export const TRIAL_DAYS = 7;
+export const TRIAL_DAYS = 3;
 
 // Usage limits per effective tier. aiChat / fantasy are per day (Pacific
 // time); scans are per calendar month. A trial gets Edge Pro's limits.
