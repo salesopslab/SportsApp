@@ -4375,10 +4375,20 @@ function addMsg(text, who){
   return div;
 }
 
+// Guards against the same question going out twice (iOS Safari's speech
+// recognition can fire its "end" event twice, or replay the last transcript,
+// which used to post the question -- and get the answer -- twice).
+let lastChatSent = { text: '', at: 0 };
 async function sendChat(){
   const input = document.getElementById('chatInput');
   const message = input.value.trim();
   if(!message) return;
+  const now = Date.now();
+  if(message.toLowerCase() === lastChatSent.text && now - lastChatSent.at < 15000){
+    input.value = '';
+    return;
+  }
+  lastChatSent = { text: message.toLowerCase(), at: now };
   if(!currentGameBreakdown){
     addMsg(message, 'user');
     addMsg('Pick a game from the Board tab first so I have real data to work from — odds, weather, injuries and history for that specific matchup.', 'ai');
@@ -4510,6 +4520,9 @@ if(SpeechRec){
   let finalStop = false;    // a real stop (manual tap, or the overall time cap) -- send, don't auto-restart
   let silenceTimer = null;
   let sessionStart = 0;
+  let sessionId = 0;        // bumps every mic tap-to-start
+  let sentSession = -1;     // the session we already sent -- never send it twice
+  let priorText = '';       // text from earlier auto-restarted segments of this session
 
   // Bounds total listening time across any auto-restarts below, so the mic
   // can never get stuck "listening" forever if the person taps away instead
@@ -4548,6 +4561,8 @@ if(SpeechRec){
     cancelled = false;
     finalStop = false;
     finalTranscript = '';
+    priorText = '';
+    sessionId++;
     document.getElementById('chatInput').value = '';
     listening = true;
     sessionStart = Date.now();
@@ -4566,13 +4581,23 @@ if(SpeechRec){
     // listening and sent (or cancelled) -- without this, a late event could
     // silently repopulate the input box with leftover words nobody sent.
     if(!listening) return;
-    let interim = '';
-    for(let i = e.resultIndex; i < e.results.length; i++){
-      const transcript = e.results[i][0].transcript;
-      if(e.results[i].isFinal) finalTranscript += transcript + ' ';
-      else interim += transcript;
+    // Rebuild from the whole results list every time instead of appending:
+    // iOS Safari re-delivers earlier final results (resultIndex 0), which
+    // appended the same words twice.
+    let finals = '', interim = '';
+    for(let i = 0; i < e.results.length; i++){
+      const transcript = e.results[i][0].transcript.trim();
+      if(!transcript) continue;
+      if(e.results[i].isFinal){
+        // iOS also sometimes marks the cumulative text final again.
+        if(finals && transcript.toLowerCase().startsWith(finals.trim().toLowerCase())) finals = transcript + ' ';
+        else if(!finals.toLowerCase().includes(transcript.toLowerCase())) finals += transcript + ' ';
+      }else interim += transcript + ' ';
     }
-    document.getElementById('chatInput').value = (finalTranscript + interim).trim();
+    // After an auto-restart iOS may replay the earlier segment too.
+    const f = finals.trim();
+    finalTranscript = (priorText && !f.toLowerCase().startsWith(priorText.toLowerCase()) ? priorText + ' ' + f : f || priorText).trim();
+    document.getElementById('chatInput').value = (finalTranscript + ' ' + interim).trim();
   });
 
   rec.addEventListener('end', ()=>{
@@ -4581,12 +4606,22 @@ if(SpeechRec){
     // tapping stop) and we're still within the overall time budget -- pick
     // it back up instead of sending a half-finished sentence.
     if(!finalStop && listening && (Date.now() - sessionStart) < MAX_LISTEN_MS){
+      priorText = finalTranscript; // the next segment's results start fresh
       try{ rec.start(); return; }catch(e){ /* fall through and send what we have */ }
     }
+    // A second "end" for a session we already sent (iOS does this) -- ignore.
+    if(sentSession === sessionId) return;
     const shouldSend = finalTranscript.trim();
     resetMicUi();
     finalStop = false;
-    if(shouldSend) sendChat();
+    finalTranscript = '';
+    priorText = '';
+    if(shouldSend){
+      sentSession = sessionId;
+      const input = document.getElementById('chatInput');
+      if(!input.value.trim()) input.value = shouldSend;
+      sendChat();
+    }
   });
 
   rec.addEventListener('error', (e)=>{
