@@ -507,16 +507,16 @@ await test("lineup: invalid or cut-off JSON is retried once", async () => {
   assert.equal(n, 2);
 });
 
-await test("lineup: a full 20-player roster goes through in one call; extras beyond 20 are trimmed", async () => {
+await test("lineup: a full 22-player roster goes through in one call; extras beyond 22 are trimmed", async () => {
   modelCalls.length = 0;
   modelScript = () => ({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(lineupJson) }] });
-  const big = [...lineupRoster, ...Array.from({ length: 18 }, (_, i) => ({ name: `Depth Player ${i + 1}`, position: "RB", slot: "bench" }))];
-  assert.equal(big.length, 22);
+  const big = [...lineupRoster, ...Array.from({ length: 20 }, (_, i) => ({ name: `Depth Player ${i + 1}`, position: "RB", slot: "bench" }))];
+  assert.equal(big.length, 24);
   const r = await local("POST", "/api/fantasy/lineup", { roster: big });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(modelCalls.length, 1);
   const lines = modelCalls[0].messages[0].content.split("\n").filter((l) => l.startsWith("- "));
-  assert.equal(lines.length, 20);
+  assert.equal(lines.length, 22);
 });
 
 server.close();

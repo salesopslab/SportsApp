@@ -6,7 +6,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => escapeHtml(s == null ? '' : String(s));
   const STORE = 'betedge_fantasy';
-  const MAX_ROSTER = 20; // keep in sync with server/src/routes/fantasy.js
+  const MAX_ROSTER = 22; // keep in sync with server/src/routes/fantasy.js
 
   // ---- State -------------------------------------------------------------
   let scoring = 'ppr';
