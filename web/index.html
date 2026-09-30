@@ -778,6 +778,20 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
   .plan-grid{ grid-template-columns:1fr; gap:18px; }
   .plan-price-sub{ min-height:0; }
 }
+.vb-chip-fe{ border-color:var(--amber); }
+.vb-new{ margin-top:8px; font-size:12px; line-height:1.4; color:var(--sub); }
+.vb-new-tag{ display:inline-block; font-size:10px; font-weight:800; letter-spacing:0.6px; color:var(--amber); border:1px solid var(--amber); border-radius:6px; padding:0 5px; margin-right:2px; vertical-align:1px; }
+.vb-new-link{ background:none; border:none; padding:10px 4px; margin:-10px -4px; position:relative; font:inherit; font-weight:700; color:var(--text); text-decoration:underline; text-decoration-color:var(--amber); text-underline-offset:2px; cursor:pointer; }
+.vb-new-link:hover{ color:var(--amber); }
+@media (max-width:600px){
+  .value-banner{ padding:12px 14px 10px; gap:8px; }
+  .value-banner-headline{ margin-bottom:2px; }
+  .value-banner-text{ font-size:12.5px; line-height:1.4; }
+  .value-banner-chips{ gap:5px; margin-top:7px; }
+  .vb-chip{ padding:3px 8px; font-size:11px; }
+  .vb-new{ margin-top:6px; font-size:11.5px; }
+  .value-banner-btn, .value-banner-demo-btn{ padding-top:8px; padding-bottom:8px; }
+}
 </style>
 <body>
 
@@ -1098,15 +1112,17 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
     <div class="value-banner" id="valueBanner">
       <div class="value-banner-content">
         <div class="value-banner-headline">Know more than the line.</div>
-        <div class="value-banner-text">Real-time weather, injury reports, and line-movement data — AI-powered research on every game, before you bet.</div>
+        <div class="value-banner-text">Real-time odds, injuries, weather, fantasy insights, and AI-powered research — all in one place.</div>
         <div class="value-banner-chips">
           <span class="vb-chip">⛅ Live weather</span>
           <span class="vb-chip">🏥 Injury reports</span>
           <span class="vb-chip">📈 Line moves</span>
           <span class="vb-chip">🧾 Bet tracker</span>
           <span class="vb-chip">🤖 AI picks</span>
+          <span class="vb-chip vb-chip-fe">🏆 Fantasy Edge</span>
           <span class="vb-chip">🔥 Hot picks</span>
         </div>
+        <div class="vb-new"><span class="vb-new-tag">NEW</span> <button type="button" class="vb-new-link" id="valueBannerFantasy">Fantasy Edge</button> — lineup decisions, player analysis, matchup insights &amp; more.</div>
       </div>
       <div class="value-banner-actions">
         <button class="value-banner-btn" id="valueBannerCta">Start free trial</button>
@@ -1530,6 +1546,7 @@ function closeDemoModal(){
   v.pause();
   document.getElementById('demoModal').classList.add('hidden');
 }
+document.getElementById('valueBannerFantasy').addEventListener('click', ()=> goToNav('fantasy'));
 document.getElementById('valueBannerDemo').addEventListener('click', openDemoModal);
 document.getElementById('topbarDemoBtn').addEventListener('click', openDemoModal);
 document.getElementById('demoModalClose').addEventListener('click', closeDemoModal);
