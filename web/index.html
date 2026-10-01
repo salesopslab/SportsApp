@@ -271,6 +271,13 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .game-breakdown-hero{ padding:20px; border-bottom:1px solid var(--line); }
 .game-breakdown-title{ font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:4px; }
 .game-breakdown-sub{ font-size:12px; color:var(--sub); }
+.bd-score{ display:grid; grid-template-columns:1fr auto; gap:6px 12px; align-items:center; margin:10px 0 8px; }
+.bd-score .bd-team{ font-size:15px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bd-score .bd-team.lead{ color:var(--text); }
+.bd-score .bd-team.trail{ color:var(--sub); font-weight:500; }
+.bd-score .bd-runs{ font-family:'Oswald',sans-serif; font-size:30px; line-height:1; text-align:right; font-variant-numeric:tabular-nums; }
+.bd-score-head{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.bd-score-head .score-badge{ font-size:11px; }
 .section{ padding:16px 20px; border-bottom:1px solid var(--line); }
 .section h3{ font-size:12px; text-transform:uppercase; letter-spacing:0.6px; color:var(--sub); font-weight:600; margin-bottom:10px; }
 .fact-row{ display:flex; justify-content:space-between; gap:10px; font-size:13.5px; padding:6px 0; border-bottom:1px dashed var(--line); }
@@ -4170,6 +4177,7 @@ async function openGameBreakdown(sport, game){
     const gameBreakdown = await res.json();
     currentGameBreakdown = gameBreakdown;
     body.innerHTML = renderGameBreakdown(gameBreakdown);
+    startBreakdownScoreRefresh(sport, game.id);
     wireInjurySection(body);
     wireTrackButtons();
     wireUpgradePrompts(body);
@@ -4230,6 +4238,49 @@ function originalLineRow(m){
   return `<div class="fact-row"><span>${label}</span><span class="v">${fmt(m.openPoint, m.openPrice)}</span></div>`;
 }
 
+// Top of a game's page: the live (or final) score once the game has started,
+// otherwise the start date/time as before.
+function breakdownScoreHtml(game, g){
+  const st = game && (game.status === 'live' || game.status === 'final') ? game.status : null;
+  const sc = st === 'final' ? game.finalScore : st === 'live' ? game.liveScore : null;
+  const n = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+  const away = sc ? n(sc.away) : null, home = sc ? n(sc.home) : null;
+  if(!st || away === null || home === null || !Number.isFinite(away) || !Number.isFinite(home)){
+    return `<div class="game-breakdown-sub">${timeLabel(g.commenceTime)}</div>`;
+  }
+  const badge = st === 'final' ? 'Final' : escapeHtml(game.liveState?.line || 'Live');
+  const cls = (mine, other) => mine > other ? 'lead' : mine < other ? 'trail' : '';
+  const detail = st === 'live' ? (game.liveState?.detail || 'Score may be a few minutes behind') : `Started ${timeLabel(g.commenceTime)}`;
+  return `
+    <div class="bd-score-head"><span class="score-badge ${st}">${badge}</span><span class="game-breakdown-sub">${escapeHtml(detail)}</span></div>
+    <div class="bd-score" aria-label="Score: ${escapeHtml(g.awayTeam)} ${away}, ${escapeHtml(g.homeTeam)} ${home}">
+      <span class="bd-team ${cls(away, home)}">${escapeHtml(g.awayTeam)}</span><span class="bd-runs">${away}</span>
+      <span class="bd-team ${cls(home, away)}">${escapeHtml(g.homeTeam)}</span><span class="bd-runs">${home}</span>
+    </div>`;
+}
+
+// While a live game's page is open, re-check its score every 60 seconds.
+let bdScoreTimer = null;
+function startBreakdownScoreRefresh(sport, gameId){
+  if(bdScoreTimer){ clearInterval(bdScoreTimer); bdScoreTimer = null; }
+  if(!currentGame || currentGame.status !== 'live') return;
+  bdScoreTimer = setInterval(async ()=>{
+    const box = document.getElementById('bdScoreBox');
+    const onPage = document.getElementById('gameBreakdown')?.classList.contains('active');
+    if(!box || !onPage || !currentGame || currentGame.id !== gameId){ clearInterval(bdScoreTimer); bdScoreTimer = null; return; }
+    try{
+      const res = await apiFetch(`/api/games/${sport}`);
+      if(!res.ok) return;
+      const data = await res.json();
+      const fresh = (data.games || []).find(x => x.id === gameId);
+      if(!fresh) return;
+      currentGame = Object.assign({}, currentGame, fresh);
+      box.innerHTML = breakdownScoreHtml(currentGame, currentGame);
+      if(fresh.status !== 'live'){ clearInterval(bdScoreTimer); bdScoreTimer = null; }
+    }catch(e){ /* keep the last score shown */ }
+  }, 60000);
+}
+
 function renderGameBreakdown(d){
   const g = d.game;
   const w = d.weather;
@@ -4247,7 +4298,7 @@ function renderGameBreakdown(d){
     </form>
     <div class="game-breakdown-hero">
       <div class="game-breakdown-title">${g.awayTeam} @ ${g.homeTeam}</div>
-      <div class="game-breakdown-sub">${timeLabel(g.commenceTime)}</div>
+      <div id="bdScoreBox">${breakdownScoreHtml(currentGame, g)}</div>
       <div class="game-breakdown-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
     </div>
     <button class="scan-shortcut-btn" id="scanFromCardBtn" type="button">📸 Scan or upload a bet slip screenshot</button>
