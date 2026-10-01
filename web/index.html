@@ -4039,7 +4039,8 @@ function pitcherStatLine(st){
   if(!st || !Number.isFinite(Number(st.wins)) || !Number.isFinite(Number(st.losses))) return '';
   return `${st.wins}-${st.losses}${st.era ? ` · ${st.era} ERA` : ''}`;
 }
-function teamInfoBlock(name, rank, isHome, pitcher, pitcherStats){
+function teamInfoBlock(name, rank, isHome, pitcher, pitcherStats, played){
+  if(played){ pitcher = null; pitcherStats = null; } // finished games: no starters
   const statLine = pitcher ? pitcherStatLine(pitcherStats) : '';
   return `
     <div class="team-info">
@@ -4088,11 +4089,11 @@ function renderGameRow(g){
       <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${sportBadge}${divisionBadge}${bigMoveBadge}</div>
       <div class="matchup">
         <div class="team-line">
-          ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher, g.awayPitcherStats)}
+          ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher, g.awayPitcherStats, g.status === 'final')}
           <div class="score-num">${score.away ?? '—'}</div>
         </div>
         <div class="team-line">
-          ${teamInfoBlock(g.homeTeam, g.homeRank, true, g.homePitcher, g.homePitcherStats)}
+          ${teamInfoBlock(g.homeTeam, g.homeRank, true, g.homePitcher, g.homePitcherStats, g.status === 'final')}
           <div class="score-num">${score.home ?? '—'}</div>
         </div>
       </div>
@@ -4119,7 +4120,7 @@ function renderGameRow(g){
     <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || 'BetEdge AI Market Odds'}</span>${sportBadge}${divisionBadge}${bigMoveBadge}</div>
     <div class="matchup">
       <div class="team-line">
-        ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher, g.awayPitcherStats)}
+        ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher, g.awayPitcherStats, g.status === 'final')}
         <div class="odds-cluster">
           <div class="odds-box"><div class="num">${spreadAway ? fmtOdds(spreadAway.point) : '—'}</div><div class="lbl">Spread</div>${openAwayLabel}</div>
           <div class="odds-box"><div class="num">${away ? fmtOdds(away.price) : '—'}</div><div class="lbl">ML</div></div>
@@ -4127,7 +4128,7 @@ function renderGameRow(g){
         </div>
       </div>
       <div class="team-line">
-        ${teamInfoBlock(g.homeTeam, g.homeRank, true, g.homePitcher, g.homePitcherStats)}
+        ${teamInfoBlock(g.homeTeam, g.homeRank, true, g.homePitcher, g.homePitcherStats, g.status === 'final')}
         <div class="odds-cluster">
           <div class="odds-box"><div class="num">${spreadHome ? fmtOdds(spreadHome.point) : '—'}</div><div class="lbl">Spread</div>${openHomeLabel}</div>
           <div class="odds-box"><div class="num">${home ? fmtOdds(home.price) : '—'}</div><div class="lbl">ML</div></div>

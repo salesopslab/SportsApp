@@ -133,7 +133,10 @@ router.get("/:sport", withTier, async (req, res) => {
     // attached to every game regardless of status — a ranking is a fact about
     // the team, not about this particular game's state.
     const withRanks = [...withOpening, ...nonUpcoming, ...backfilled].map((g) => {
-      const pitcherInfo = lookupPitchers(sport, pitchers, g.homeTeam, g.awayTeam, g.commenceTime);
+      // No starting pitchers on games that are already over: a Final game,
+      // or one that started 5+ hours ago even if its status hasn't flipped.
+      const alreadyPlayed = g.status === "final" || (g.status !== "live" && Date.parse(g.commenceTime) < Date.now() - 5 * 3600 * 1000);
+      const pitcherInfo = alreadyPlayed ? null : lookupPitchers(sport, pitchers, g.homeTeam, g.awayTeam, g.commenceTime);
       return {
         ...g,
         homeRank: lookupRankLabel(sport, rankings, g.homeTeam),
