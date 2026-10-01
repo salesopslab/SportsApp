@@ -384,6 +384,26 @@ function pitcherId(g, side) {
 // Keyed by "AWAY@HOME:YYYY-MM-DD" (team codes + calendar date of the game),
 // same team-code convention the schedule already uses for head-to-head
 // matching. MLB-only; every other sport resolves to an empty map for free.
+const PITCHER_MATCH_WINDOW_MS = 3 * 3600 * 1000;
+
+// SportsData.io MLB game start as a UTC timestamp. DateTimeUTC when present;
+// otherwise DateTime, which is US Eastern local time with no offset.
+export function sdioStartMs(g) {
+  if (g.DateTimeUTC) {
+    const t = Date.parse(/Z|[+-]\d\d:?\d\d$/.test(g.DateTimeUTC) ? g.DateTimeUTC : g.DateTimeUTC + "Z");
+    if (Number.isFinite(t)) return t;
+  }
+  if (!g.DateTime) return NaN;
+  const asUtc = Date.parse(g.DateTime + "Z");
+  if (!Number.isFinite(asUtc)) return NaN;
+  // Eastern offset at that moment (EDT -4h / EST -5h).
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", timeZoneName: "shortOffset" }).formatToParts(new Date(asUtc));
+  const off = parts.find((p) => p.type === "timeZoneName")?.value || "GMT-4";
+  const m = off.match(/GMT([+-]\d+)/);
+  const hours = m ? Number(m[1]) : -4;
+  return asUtc - hours * 3600 * 1000;
+}
+
 export async function getProbablePitchers(sportSlug, season) {
   if (sportSlug !== "mlb") return {};
   try {
@@ -392,23 +412,28 @@ export async function getProbablePitchers(sportSlug, season) {
       getPlayerNameMap(sportSlug),
       getPitcherSeasonStats(sportSlug, season),
     ]);
+    // Keyed by matchup ("PHI@ATL"), one entry per scheduled game with its
+    // start time, so a lookup can pick the exact game. (Keying by date and
+    // checking neighbouring days made tomorrow's game borrow today's starters
+    // in a series, and doubleheaders overwrote each other.)
     const map = {};
     for (const g of schedule || []) {
       const home = g.HomeTeam;
       const away = g.AwayTeam;
-      const dateStr = String(g.Day || g.DateTime || "").slice(0, 10);
-      if (!home || !away || !dateStr) continue;
+      const startMs = sdioStartMs(g);
+      if (!home || !away || !Number.isFinite(startMs)) continue;
       const homeId = pitcherId(g, "Home");
       const awayId = pitcherId(g, "Away");
       const homePitcher = homeId ? playerNames[homeId] || null : null;
       const awayPitcher = awayId ? playerNames[awayId] || null : null;
       if (!homePitcher && !awayPitcher) continue;
-      map[`${away}@${home}:${dateStr}`] = {
+      (map[`${away}@${home}`] ||= []).push({
+        startMs,
         homePitcher,
         awayPitcher,
         homePitcherStats: homePitcher ? lookupPitcherStats(pitcherStats, homePitcher, home) : null,
         awayPitcherStats: awayPitcher ? lookupPitcherStats(pitcherStats, awayPitcher, away) : null,
-      };
+      });
     }
     return map;
   } catch (err) {
@@ -426,14 +451,19 @@ export function lookupPitchers(sportSlug, pitcherMap, homeTeamFullName, awayTeam
   try {
     const home = toTeamCode(sportSlug, homeTeamFullName);
     const away = toTeamCode(sportSlug, awayTeamFullName);
-    const base = new Date(commenceTime);
-    for (const offsetDays of [0, -1, 1]) {
-      const d = new Date(base);
-      d.setUTCDate(d.getUTCDate() + offsetDays);
-      const key = `${away}@${home}:${d.toISOString().slice(0, 10)}`;
-      if (pitcherMap[key]) return pitcherMap[key];
+    const target = Date.parse(commenceTime);
+    const games = pitcherMap[`${away}@${home}`];
+    if (!games?.length || !Number.isFinite(target)) return null;
+    // Only the same game: start times within 3 hours (covers small schedule
+    // shifts and time-zone handling, never the next or previous day's game).
+    let best = null;
+    for (const g of games) {
+      const diff = Math.abs(g.startMs - target);
+      if (diff <= PITCHER_MATCH_WINDOW_MS && (!best || diff < best.diff)) best = { diff, g };
     }
-    return null;
+    if (!best) return null;
+    const { startMs: _s, ...info } = best.g;
+    return info;
   } catch (err) {
     console.error("lookupPitchers failed:", err.message);
     return null;

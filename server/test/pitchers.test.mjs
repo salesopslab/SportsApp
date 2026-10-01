@@ -35,5 +35,33 @@ test("unknown pitcher -> null; missing ERA -> record only", () => {
   assert.deepEqual(m.lookupPitcherStats(map, "No Era Yet", "SEA"), { wins: 0, losses: 0, era: null, season: "2026", source: "MLB Stats API" });
 });
 
+// Board matching: the right game's starters, never a neighbouring game's.
+const pmap = {
+  "PHI@ATL": [
+    // Today 7:20pm ET (announced). Tomorrow's game has no starters yet, so it isn't in the map.
+    { startMs: m.sdioStartMs({ DateTime: "2026-09-30T19:20:00" }), homePitcher: "Today Home", awayPitcher: "Today Away" },
+  ],
+  "NYM@MIA": [
+    { startMs: m.sdioStartMs({ DateTime: "2026-09-30T13:10:00" }), homePitcher: "DH1 Home", awayPitcher: "DH1 Away" },
+    { startMs: m.sdioStartMs({ DateTime: "2026-09-30T18:40:00" }), homePitcher: "DH2 Home", awayPitcher: "DH2 Away" },
+  ],
+  "SD@LAD": [ { startMs: m.sdioStartMs({ DateTime: "2026-09-30T22:10:00" }), homePitcher: "Late Home", awayPitcher: "Late Away" } ],
+};
+const L = (h, a, t) => m.lookupPitchers("mlb", pmap, h, a, t);
+test("today's game gets today's starters", () => {
+  assert.equal(L("Atlanta Braves", "Philadelphia Phillies", "2026-09-30T23:20:00Z")?.awayPitcher, "Today Away");
+});
+test("tomorrow's game in the same series does NOT borrow today's starters", () => {
+  assert.equal(L("Atlanta Braves", "Philadelphia Phillies", "2026-10-01T23:20:00Z"), null);
+  assert.equal(L("Atlanta Braves", "Philadelphia Phillies", "2026-09-29T23:20:00Z"), null);
+});
+test("doubleheader: each game gets its own starters", () => {
+  assert.equal(L("Miami Marlins", "New York Mets", "2026-09-30T17:10:00Z")?.homePitcher, "DH1 Home");
+  assert.equal(L("Miami Marlins", "New York Mets", "2026-09-30T22:40:00Z")?.homePitcher, "DH2 Home");
+});
+test("late game that starts the next day in UTC still matches", () => {
+  assert.equal(L("Los Angeles Dodgers", "San Diego Padres", "2026-10-01T02:10:00Z")?.homePitcher, "Late Home");
+});
+
 if (failures) { console.log(`\n${failures} test(s) failed`); process.exit(1); }
 console.log("\nAll pitcher tests passed");
