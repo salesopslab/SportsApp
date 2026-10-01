@@ -623,7 +623,8 @@
     el.className = `msg ${role}`;
     el.innerHTML = html;
     log.appendChild(el);
-    log.scrollTop = log.scrollHeight;
+    // Bring the new message into view; for a long answer, show its start.
+    requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: role === 'user' ? 'nearest' : 'start' }));
     return el;
   }
   async function sendChat(text){

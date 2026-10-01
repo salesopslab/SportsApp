@@ -243,18 +243,24 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .back-btn{ position:sticky; top:0; z-index:5; display:inline-flex; align-items:center; gap:4px; margin:10px 0 0 16px; font-size:14px; font-weight:600; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:7px 14px; border-radius:16px; cursor:pointer; }
 .back-btn:active{ background:var(--surface2); }
 
-.chat-wrap{ display:flex; flex-direction:column; height:100%; padding:0 20px; }
+.chat-wrap{ display:flex; flex-direction:column; min-height:100%; padding:0 20px; }
 .chat-header{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 0 0; flex-shrink:0; }
 .chat-header-game{ flex:1; min-width:0; font-size:12.5px; color:var(--sub); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .clear-chat-btn{ font-size:12px; color:var(--sub); background:none; border:1px solid var(--line); padding:5px 12px; border-radius:20px; cursor:pointer; font-family:inherit; flex-shrink:0; white-space:nowrap; }
 .clear-chat-btn:hover{ border-color:var(--amber); color:var(--text); }
-.chat-log{ flex:1; padding:16px 0; display:flex; flex-direction:column; gap:14px; overflow-y:auto; }
+/* The chat scrolls with the screen itself (one scroller, like the Board):
+   a separate scroll box inside the screen wouldn't take a finger swipe on
+   iPhone. The input row is pinned just above the bottom menu instead. */
+.chat-log{ flex:1; padding:16px 0; display:flex; flex-direction:column; gap:14px; }
+.chat-log > .msg{ flex-shrink:0; }
 .msg{ max-width:82%; padding:12px 14px; border-radius:14px; font-size:14px; line-height:1.55; white-space:pre-wrap; }
 .msg.ai{ background:var(--surface); align-self:flex-start; border-bottom-left-radius:4px; }
 .msg.user{ background:var(--surface2); align-self:flex-end; border-bottom-right-radius:4px; }
 .msg.ai .src{ display:block; margin-top:8px; font-size:11px; color:var(--teal); }
 .msg.hint{ background:none; border:1px dashed var(--line); color:var(--sub); font-size:12.5px; align-self:center; max-width:100%; text-align:center; }
-.chat-input-row{ display:flex; gap:10px; align-items:center; padding:14px 0 20px; border-top:1px solid var(--line); flex-shrink:0; }
+.chat-input-row{ display:flex; gap:10px; align-items:center; padding:14px 0 20px; border-top:1px solid var(--line); flex-shrink:0; position:sticky; bottom:0; z-index:3; background:var(--bg); }
+/* Solid backing under and beside the pinned input so scrolled messages never show through above the bottom menu. */
+.chat-input-row::after{ content:''; position:absolute; left:-20px; right:-20px; top:1px; bottom:-160px; background:var(--bg); z-index:-1; }
 /* font-size must be >=16px on any typeable input — below that, iOS Safari
    (and iOS Chrome, which also runs on WebKit) auto-zooms the whole page in
    when the field is focused, and often doesn't zoom back out. That's what
@@ -736,7 +742,8 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
 .fe-waiver-row{ display:flex; gap:12px; align-items:flex-start; }
 .fe-waiver-row .body{ flex:1; min-width:0; }
 .fe-faab{ font-size:12px; font-weight:700; color:var(--teal); margin-top:6px; }
-.fe-chat-log{ display:flex; flex-direction:column; gap:8px; max-height:420px; overflow-y:auto; margin-bottom:8px; }
+/* Grows with the page (no inner scroll box — those don't take a finger swipe on iPhone). */
+.fe-chat-log{ display:flex; flex-direction:column; gap:8px; margin-bottom:8px; }
 .fe-chat-log:empty{ display:none; }
 .fe-chat-log .msg{ max-width:92%; }
 .fe-chat-log .msg.user{ align-self:flex-end; background:var(--amber); color:var(--bg); border-bottom-right-radius:4px; }
@@ -3697,6 +3704,7 @@ function showScreen(id, opts={}){
   setActiveNav(navForScreen(id));
   if(!opts.noUrl) syncUrlForScreen(id);
   document.querySelector('.screen.active').scrollTop = 0;
+  if(id === 'chat') scrollChatToBottom(); // open the chat at the latest message
   positionMoverAlerts(); // sport tabs only show on Board — re-measure so alerts never sit over the header/tabs on other screens
   if(opts.resetHistory){
     screenHistory = [id];
@@ -4449,13 +4457,28 @@ function wireInjurySection(root){
   });
 }
 
+// The chat screen is the scroller (see .chat-log CSS).
+function chatScroller(){ return document.getElementById('chat'); }
+function scrollChatToBottom(){
+  const sc = chatScroller();
+  if(sc) sc.scrollTop = sc.scrollHeight;
+}
+// For a long answer, show its beginning (not its last line) so it reads top-down.
+function scrollChatToMsg(el){
+  const sc = chatScroller();
+  if(!sc || !el) return;
+  const row = document.querySelector('#chat .chat-input-row');
+  const visible = sc.clientHeight - (row ? row.offsetHeight : 0) - 90;
+  if(el.offsetHeight > visible) sc.scrollTop = Math.max(0, sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 12);
+  else scrollChatToBottom();
+}
 function addMsg(text, who){
   const log = document.getElementById('chatLog');
   const div = document.createElement('div');
   div.className = 'msg ' + who;
   div.textContent = text;
   log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
+  scrollChatToBottom();
   return div;
 }
 
@@ -4520,7 +4543,7 @@ async function sendChat(){
       ? `${text}<br><button class="upgrade-cta" data-action="signin">Log in / Sign up free</button>`
       : `${text}<br><button class="upgrade-cta">See plans</button>`;
     document.getElementById('chatLog').appendChild(div);
-    document.getElementById('chatLog').scrollTop = document.getElementById('chatLog').scrollHeight;
+    scrollChatToBottom();
     wireUpgradePrompts(div);
   }
 
@@ -4563,7 +4586,7 @@ async function sendChat(){
 function renderAiReply(el, data){
   el.textContent = data.reply;
   const sources = Array.isArray(data.sources) ? data.sources : [];
-  if(!sources.length && !data.refreshed?.length) return;
+  if(!sources.length && !data.refreshed?.length){ scrollChatToMsg(el); return; }
   const line = document.createElement('span');
   line.className = 'msg-sources';
   const parts = [];
@@ -4578,8 +4601,7 @@ function renderAiReply(el, data){
   if(webSrc.length) parts.push('News: ' + webSrc.slice(0, 4).map(s => link(s) + (s.published_at ? ` (${escapeHtml(s.published_at)})` : '')).join(', '));
   line.innerHTML = parts.join(' • ');
   el.appendChild(line);
-  const log = document.getElementById('chatLog');
-  if(log) log.scrollTop = log.scrollHeight;
+  scrollChatToMsg(el);
 }
 document.getElementById('sendBtn').addEventListener('click', sendChat);
 document.getElementById('chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChat(); });
