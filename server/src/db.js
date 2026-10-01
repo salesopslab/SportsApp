@@ -285,6 +285,37 @@ export function ensureSchema() {
         recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_odds_api_usage_time ON odds_api_usage (recorded_at DESC);
+
+      -- Every AI chat answer, for weekly quality spot-checks (admin page).
+      -- No personal data beyond the user id.
+      CREATE TABLE IF NOT EXISTS chat_logs (
+        id BIGSERIAL PRIMARY KEY,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        user_id BIGINT,
+        sport TEXT,
+        game_id TEXT,
+        game_label TEXT,
+        question TEXT NOT NULL,
+        reply TEXT,
+        error TEXT,
+        model TEXT,
+        prompt_version TEXT,
+        tools TEXT[],
+        used_web_search BOOLEAN,
+        response_ms INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_logs_time ON chat_logs (created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_chat_logs_user ON chat_logs (user_id, created_at DESC);
+
+      -- What BetEdge AI has learned about each user from their chats (teams,
+      -- sports, bet types, preferences). Users can view and clear it.
+      CREATE TABLE IF NOT EXISTS user_ai_memory (
+        user_id BIGINT PRIMARY KEY,
+        profile TEXT,
+        chats_since_update INTEGER NOT NULL DEFAULT 0,
+        cleared_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
     `);
   }
   return schemaReady;

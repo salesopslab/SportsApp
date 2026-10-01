@@ -251,6 +251,14 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .chat-header-game{ flex:1; min-width:0; font-size:12.5px; color:var(--sub); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .clear-chat-btn{ font-size:12px; color:var(--sub); background:none; border:1px solid var(--line); padding:5px 12px; border-radius:20px; cursor:pointer; font-family:inherit; flex-shrink:0; white-space:nowrap; }
 .clear-chat-btn:hover{ border-color:var(--amber); color:var(--text); }
+.msg.memory-panel{ background:var(--surface); border:1px solid var(--line); max-width:100%; width:100%; white-space:normal; align-self:stretch; }
+.memory-panel .mem-title{ font-weight:700; margin-bottom:6px; }
+.memory-panel .mem-sub{ color:var(--sub); font-size:13px; margin:4px 0; }
+.memory-panel ul{ margin:4px 0 6px; padding-left:18px; }
+.memory-panel li{ margin:2px 0; }
+.memory-panel li::marker{ color:var(--amber); }
+.memory-panel .mem-actions{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.memory-panel .upgrade-cta{ margin-top:10px; }
 /* The chat scrolls with the screen itself (one scroller, like the Board):
    a separate scroll box inside the screen wouldn't take a finger swipe on
    iPhone. The input row is pinned just above the bottom menu instead. */
@@ -1213,10 +1221,11 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
     <div class="chat-wrap">
       <div class="chat-header">
         <span class="chat-header-game" id="chatHeaderGame">Any game · ask about a team or day</span>
+        <button class="clear-chat-btn" id="memoryBtn" title="What BetEdge AI remembers about you">Memory</button>
         <button class="clear-chat-btn" id="clearChatBtn" title="Clear this conversation">Clear chat</button>
       </div>
       <div class="chat-log" id="chatLog">
-        <div class="msg hint">Ask about any game, team or day — "best NFL bets Sunday?", "Dodgers tomorrow?" — or tap a game on the Board to ask about it. The AI checks live odds, injuries and weather, plus current news online.</div>
+        <div class="msg hint">Ask about any game, team or day — "best NFL bets Sunday?", "Dodgers tomorrow?" — or tap a game on the Board to ask about it. The AI checks live odds, injuries and weather, plus current news online, and remembers your teams and preferences.</div>
       </div>
       <div class="chat-input-row">
         <input class="chat-input" id="chatInput" type="text" placeholder="Ask about any game or team…">
@@ -3847,12 +3856,54 @@ function goBack(){
 }
 document.getElementById('gameBreakdownBackBtn').addEventListener('click', goBack);
 document.getElementById('bigLinesBackBtn').addEventListener('click', goBack);
+// This conversation (oldest first), sent with each question so follow-ups
+// like "what about the total?" make sense. Cleared with the chat.
+let chatTurns = [];
+const CHAT_HINT_HTML = '<div class="msg hint">Ask about any game, team or day — "best NFL bets Sunday?", "Dodgers tomorrow?" — or tap a game on the Board to ask about it. The AI checks live odds, injuries and weather, plus current news online, and remembers your teams and preferences.</div>';
 document.getElementById('clearChatBtn').addEventListener('click', ()=>{
   const chatLog = document.getElementById('chatLog');
-  if(chatLog){
-    chatLog.innerHTML = '<div class="msg hint">Tap a game on the Board, then ask about it here — the AI answers using that game\'s real odds, weather, injuries and history.</div>';
-  }
+  if(chatLog) chatLog.innerHTML = CHAT_HINT_HTML;
+  chatTurns = [];
 });
+
+// "Memory": what BetEdge AI has learned about this user, with Forget.
+async function toggleMemoryPanel(){
+  const log = document.getElementById('chatLog');
+  const open = document.getElementById('memoryPanel');
+  if(open){ open.remove(); return; }
+  const panel = document.createElement('div');
+  panel.id = 'memoryPanel';
+  panel.className = 'msg memory-panel';
+  log.prepend(panel);
+  chatScroller().scrollTop = 0;
+  if(!currentUser){
+    panel.innerHTML = `<div class="mem-title">Memory</div><div>Log in and BetEdge AI will remember your teams, sports, bet types and how you like answers — across conversations.</div><button type="button" class="upgrade-cta" data-action="signin">Log in / Sign up free</button>`;
+    wireUpgradePrompts(panel);
+    return;
+  }
+  panel.innerHTML = '<div class="mem-title">Memory</div><div class="mem-sub">Loading…</div>';
+  try{
+    const res = await apiFetch('/api/chat/memory');
+    const d = await res.json();
+    const lines = String(d.profile || '').split('\n').map(l => l.replace(/^[-*•]\s*/, '').trim()).filter(Boolean);
+    panel.innerHTML = `
+      <div class="mem-title">What BetEdge AI remembers about you</div>
+      ${lines.length ? `<ul>${lines.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul>` : `<div class="mem-sub">Nothing yet — it learns your teams, sports, bet types and preferences as you chat. Tell it "remember I bet 1 unit = $25" and it will.</div>`}
+      ${d.recent?.length ? `<div class="mem-sub">It also sees your last ${d.recent.length} question${d.recent.length === 1 ? '' : 's'} from earlier chats.</div>` : ''}
+      <div class="mem-actions"><button type="button" class="clear-chat-btn" id="memForget">Forget everything</button><button type="button" class="clear-chat-btn" id="memClose">Close</button></div>`;
+    document.getElementById('memClose').onclick = () => panel.remove();
+    const forget = document.getElementById('memForget');
+    forget.onclick = async () => {
+      if(forget.dataset.confirm !== '1'){ forget.dataset.confirm = '1'; forget.textContent = 'Tap again to forget'; return; }
+      forget.disabled = true; forget.textContent = 'Forgetting…';
+      try{ await apiFetch('/api/chat/memory', { method:'DELETE' }); panel.innerHTML = '<div class="mem-title">Memory cleared</div><div class="mem-sub">BetEdge AI starts fresh from here.</div>'; setTimeout(()=>panel.remove(), 2500); }
+      catch(e){ forget.textContent = "Couldn't clear — try again"; forget.disabled = false; forget.dataset.confirm = ''; }
+    };
+  }catch(e){
+    panel.innerHTML = '<div class="mem-title">Memory</div><div class="mem-sub">Couldn\'t load memory right now.</div>';
+  }
+}
+document.getElementById('memoryBtn').addEventListener('click', toggleMemoryPanel);
 // Bottom nav: Games | BetEdge AI | Fantasy Edge | Ledger AI | Live.
 // "Live" is the Games board filtered to games in progress; Breakdown and Big
 // Moves live under Games (a game tap / the Big Moves button).
@@ -4291,9 +4342,8 @@ async function openGameBreakdown(sport, game){
   // alert for it, etc.) keeps the conversation the user was having.
   if(game.id !== chatLogGameId){
     const chatLog = document.getElementById('chatLog');
-    if(chatLog){
-      chatLog.innerHTML = '<div class="msg hint">Tap a game on the Board, then ask about it here — the AI answers using that game\'s real odds, weather, injuries and history.</div>';
-    }
+    if(chatLog) chatLog.innerHTML = CHAT_HINT_HTML;
+    chatTurns = [];
     chatLogGameId = game.id;
   }
   const chatHeaderGame = document.getElementById('chatHeaderGame');
@@ -4709,7 +4759,7 @@ async function sendChat(){
       const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ message, context: currentGameBreakdown || null, sport: currentGameBreakdown ? currentGameSport : (typeof currentSport !== 'undefined' && currentSport !== 'all' ? currentSport : null) }),
+        body: JSON.stringify({ message, history: chatTurns.slice(-12), context: currentGameBreakdown || null, sport: currentGameBreakdown ? currentGameSport : (typeof currentSport !== 'undefined' && currentSport !== 'all' ? currentSport : null) }),
         signal: controller.signal
       });
       if(res.status === 402){
@@ -4763,6 +4813,8 @@ async function sendChat(){
     think.stop();
     if(reply){
       renderAiReply(thinking, reply);
+      chatTurns.push({ role: 'user', text: message }, { role: 'assistant', text: reply.reply });
+      if(chatTurns.length > 24) chatTurns = chatTurns.slice(-24);
     } else {
       thinking.textContent = "The AI didn't return an answer — try rephrasing the question.";
     }
@@ -5143,7 +5195,14 @@ async function refreshBigLines(){
       return;
     }
     bigLinesPaywalled = null;
-    if(!res.ok) return;
+    if(!res.ok){
+      // Don't leave "Loading…" up forever on a server error.
+      const list = document.getElementById('bigLinesList');
+      if(list && document.getElementById('bigLines').classList.contains('active') && !bigLinesData.length){
+        list.innerHTML = '<div class="board-msg">Couldn\'t load big line moves right now — try again in a minute.</div>';
+      }
+      return;
+    }
     const data = await res.json();
     if(!data.available){
       bigLinesData = [];

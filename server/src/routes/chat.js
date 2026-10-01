@@ -8,6 +8,14 @@ import { getGameWeather } from "../services/weatherService.js";
 import { getLiveGameState, lookupLiveState } from "../services/statsService.js";
 import { VENUES } from "../data/venues.js";
 import { meetsTier } from "../services/tierService.js";
+import { linesWithMath } from "../services/marketMath.js";
+import { logChat } from "../services/chatLogService.js";
+import { getMemoryForChat, noteChatForMemory, clearMemory } from "../services/memoryService.js";
+import { requireAuth } from "../middleware/auth.js";
+
+// Bump when the system prompt changes meaningfully; stored with every logged
+// chat so answers can be reviewed per prompt version.
+export const PROMPT_VERSION = "picker-v3-memory";
 
 // ---------------------------------------------------------------------------
 // AI chat, grounded in live data.
@@ -238,7 +246,7 @@ export async function findGames(input = {}, addSource = () => {}) {
           home: g.homeTeam,
           status,
           score: sc && (sc.homeScore != null || sc.awayScore != null) ? { away: sc.awayScore, home: sc.homeScore } : null,
-          lines: lines ? { moneyline: lines.moneyline, spread: lines.spread, total: lines.total, books: lines.consensusBookCount } : null,
+          lines: lines ? { ...linesWithMath({ moneyline: lines.moneyline, spread: lines.spread, total: lines.total }), books: lines.consensusBookCount } : null,
         });
       };
       for (const g of odds || []) push(g.id, g, scores?.[g.id], g);
@@ -345,7 +353,7 @@ function makeToolRunner({ sport, game, userRow, sources, refreshed, state }) {
         source: "The Odds API (median across US books)",
         retrieved_at: retrievedAt,
         retrieved: minutesAgoLabel(retrievedAt),
-        consensus: { spread: g.spread, moneyline: g.moneyline, total: g.total, bookCount: g.consensusBookCount },
+        consensus: { ...linesWithMath({ spread: g.spread, moneyline: g.moneyline, total: g.total }), bookCount: g.consensusBookCount },
         books: (g.allBooks || []).slice(0, 8),
         lineMovement,
         note: "Line movement = recorded price/number changes over time. BetEdge has no bet%/handle% (sharp/public money) data.",
@@ -393,7 +401,20 @@ function makeToolRunner({ sport, game, userRow, sources, refreshed, state }) {
   };
 }
 
-function buildSystemPrompt({ context, freshness, nowIso, webSearchOn }) {
+function memorySection(memory) {
+  if (!memory) return "";
+  const recent = (memory.recent || [])
+    .map((r) => `- ${new Date(r.at).toISOString().slice(0, 10)}${r.game ? ` (${r.game})` : ""}: ${r.question}`)
+    .join("\n");
+  return `
+
+## What you remember about this user (from past conversations)
+Use this to personalize: their teams, sports, bet types, stake sizes and how they like answers. Bring it up naturally only when it's relevant ("You usually play totals — ..."); don't recite it. It may be out of date; anything the user says now wins. Never use it to encourage more or bigger betting.
+${memory.profile ? `PROFILE:\n${memory.profile}` : "PROFILE: (nothing saved yet)"}
+${recent ? `RECENT QUESTIONS FROM EARLIER SESSIONS (newest first):\n${recent}` : ""}`;
+}
+
+function buildSystemPrompt({ context, freshness, nowIso, webSearchOn, memory }) {
   return `You are BetEdge AI, a professional sports betting desk analyst inside the BetEdge AI product.
 
 Current date/time: ${nowIso} (UTC). Treat anything older than today's practice/injury news as potentially outdated.
@@ -423,19 +444,32 @@ You DO have live retrieval through these tools. Never say you "can't browse the 
 11. If MATCHUP_CONTEXT has no game, that's fine — use find_games (and web_search) to answer about whatever game, team or day the user asks. Only ask a clarifying question if you genuinely can't tell which sport or game they mean.
 12. For a slate question ("best bets today", "who do you like Sunday"), call find_games for that day, pick the 2–4 most interesting games, check their odds/injuries with the tools and current news with web_search, and give a short lean (or Pass) for each — never a long list of every game.
 
+## How a pro thinks (apply when relevant)
+- Price first. Every line in the data carries impliedProbability (with vig), noVigProbability (fair) and the market's vig — use those numbers; don't recompute them. A lean only has value if your estimated win probability beats the implied probability of the price. If you can't justify that from the data, the answer is "Pass."
+- Line movement: a move toward one side — especially across a key number — shows where money (often sharp money) went. Reverse line movement (the line moves against the popular side) is notable. Moves within the vig (e.g. -110 to -115) are noise. Never claim to see bet%/handle.
+- NFL key numbers: 3 and 7 matter most, then 10, 6, 4, 14. A spread crossing 3 or 7 is significant; -2.5 and -3.5 are very different bets. CFB key numbers are weaker but 3 and 7 still matter.
+- Weather (NFL/CFB, outdoor): sustained wind around 15+ mph tends to suppress passing and totals; heavy rain/snow matters more than temperature. Domes = no weather effect.
+- NBA: rest, back-to-backs and travel matter; a star's status can swing a line several points.
+- MLB: the starting pitcher drives the moneyline — check who's starting (web_search if needed); wind direction at outdoor parks affects totals; run lines are almost always ±1.5.
+- Injuries: weight by role and status (Out > Doubtful > Questionable). A QB or star out matters far more than depth players; check whether the line already moved on the news.
+- Head-to-head history is weak evidence on its own — never lean on H2H alone.
+- Home field is already priced into the line; don't count it again.
+- Parlays multiply the vig; say so when someone asks about stacking legs.
+
 ## Voice
 - Professional, concise, specific. Full sentences; plain English first.
-- No emojis. No "lock," "smash," "easy money," "can't miss."
-- Never guarantee outcomes. Gambling involves risk; say so briefly when giving a lean.
+- No emojis. Never say "lock," "smash," "easy money," "can't miss," "guaranteed," or "trust me."
+- Never guarantee outcomes or profit. Gambling involves risk; say so briefly when giving a lean.
+- If the user asks for a lock or a sure thing, or shows signs of chasing losses (e.g. "I need to win it back", doubling up after losses), decline the guarantee, give a measured lean or Pass, and remind them to bet only what they can afford to lose (1-800-GAMBLER for help).
 - Do not narrate your tool use or thinking ("Let me search…") in the final answer.
 
 ## How to answer
 For analysis / "who covers" / "what's the lean" questions:
 **Bottom line** — one sentence: lean (or Pass) + why.
-**Market** — current spread / ML / total; open → current when available.
+**Market** — current spread / ML / total; open → current when available; the implied probability of the side you lean.
 **Drivers** — 2–4 bullets, each tied to a sourced, timestamped data point.
 **Risks** — what would flip the lean (include unverified player statuses here).
-**Confidence** — Low / Medium / High with one reason. Lower it when key statuses are unverified or reports conflict.
+**Confidence** — Low / Medium / High with one reason. Default to Low or Medium unless the data is rich and points the same way; lower it when key statuses are unverified or reports conflict.
 
 For narrow factual questions ("Is X playing?", "Who is out?", "What's the total?"), answer directly in 2–6 sentences or a short list, with source + timestamp.
 
@@ -445,7 +479,7 @@ DATA_FRESHNESS (computed by the server just now; "stale": true means refresh bef
 ${JSON.stringify(freshness, null, 2)}
 
 MATCHUP_CONTEXT:
-${JSON.stringify(context, null, 2)}`;
+${JSON.stringify(context, null, 2)}${memorySection(memory)}`;
 }
 
 let callModelImpl = null;
@@ -510,16 +544,66 @@ function dedupeSources(sources) {
   return [...data, ...cited, ...other.slice(0, Math.max(0, 3 - cited.length))];
 }
 
-// POST /api/chat  { message, context, sport? }
+export function sanitizeHistory(raw) {
+  if (!Array.isArray(raw)) return [];
+  const turns = raw
+    .filter((t) => t && (t.role === "user" || t.role === "assistant") && typeof t.text === "string" && t.text.trim())
+    .map((t) => ({ role: t.role, content: t.text.trim().slice(0, t.role === "user" ? 1500 : 3000) }));
+  // Keep the last 6 exchanges; collapse same-role runs; start on user, end on assistant.
+  const out = [];
+  for (const t of turns.slice(-12)) {
+    if (out.length && out[out.length - 1].role === t.role) out[out.length - 1] = t;
+    else out.push(t);
+  }
+  while (out.length && out[0].role !== "user") out.shift();
+  while (out.length && out[out.length - 1].role !== "assistant") out.pop();
+  return out;
+}
+
+// GET /api/chat/memory — what BetEdge AI remembers about the signed-in user.
+router.get("/memory", requireAuth, async (req, res) => {
+  const m = await getMemoryForChat(req.user.id);
+  res.json({ profile: m?.profile || null, updatedAt: m?.updatedAt || null, recent: m?.recent || [] });
+});
+// DELETE /api/chat/memory — forget everything learned so far.
+router.delete("/memory", requireAuth, async (req, res) => {
+  try {
+    await clearMemory(req.user.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Couldn't clear memory right now." });
+  }
+});
+
+// POST /api/chat  { message, context, sport?, history? }
 router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: "message is required" });
 
   // Work on a copy — the tools replace stale sections with fresh ones.
   const context = req.body.context ? JSON.parse(JSON.stringify(req.body.context)) : null;
+  // Implied probability + vig on the open game's lines, computed here so the
+  // model never does the math itself.
+  if (context?.game) {
+    context.game = linesWithMath(context.game);
+    delete context.game.allBooks; // per-book detail is available via the odds tool; keeps the prompt lean
+  }
   const sport = resolveSportSlug(req.body, context);
   const game = context?.game || null;
 
+  const startedAt = Date.now();
+  const toolsUsed = [];
+  const logBase = () => ({
+    userId: req.user?.id ?? null,
+    sport: sport || null,
+    gameId: game?.id || null,
+    gameLabel: game ? `${game.awayTeam} @ ${game.homeTeam}` : null,
+    question: message,
+    model: CHAT_MODEL,
+    promptVersion: PROMPT_VERSION,
+    tools: toolsUsed,
+    responseMs: Date.now() - startedAt,
+  });
   const sources = [];
   const refreshed = [];
   const state = { injuries: context?.injuries && !Array.isArray(context.injuries) ? context.injuries : null, scoresAt: null };
@@ -544,10 +628,15 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
     }
 
     const freshness = buildFreshness(context);
+    const memory = req.user?.id ? await getMemoryForChat(req.user.id) : null;
     let webSearchOn = WEB_SEARCH_ENABLED;
     const nowIso = new Date().toISOString();
 
-    const messages = [{ role: "user", content: message }];
+    // This conversation so far (sent by the app, oldest first; cleared when
+    // the user taps Clear chat), so follow-ups like "what about the total?"
+    // make sense. Must alternate user/assistant and end on an assistant turn.
+    const history = sanitizeHistory(req.body.history);
+    const messages = [...history, { role: "user", content: message }];
     let data = null;
     let rounds = 0;
     let usedWebSearch = false;
@@ -559,7 +648,7 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
         // Covers thinking + tool calls + the reply; see git history for why
         // this can't be small (an empty reply at max_tokens was a real bug).
         max_tokens: 6000,
-        system: buildSystemPrompt({ context, freshness, nowIso, webSearchOn }),
+        system: buildSystemPrompt({ context, freshness, nowIso, webSearchOn, memory }),
         tools: webSearchOn ? [...DATA_TOOLS, webSearchTool()] : DATA_TOOLS,
         messages,
       };
@@ -579,6 +668,7 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
 
       collectWebSources(data.content, sources);
       if ((data.content || []).some((b) => b.type === "server_tool_use")) usedWebSearch = true;
+      for (const b of data.content || []) if (b.type === "server_tool_use") toolsUsed.push(b.name || "web_search");
       messages.push({ role: "assistant", content: data.content });
 
       if (data.stop_reason === "pause_turn") continue; // long web search — resume as-is
@@ -588,6 +678,7 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
       const results = await Promise.all(
         toolUses.map(async (tu) => {
           try {
+            toolsUsed.push(tu.name);
             const out = await runTool(tu.name, tu.input);
             return { type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out) };
           } catch (err) {
@@ -616,7 +707,7 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
       data = await callAnthropic({
         model: CHAT_MODEL,
         max_tokens: 6000,
-        system: buildSystemPrompt({ context, freshness, nowIso, webSearchOn }),
+        system: buildSystemPrompt({ context, freshness, nowIso, webSearchOn, memory }),
         tools: webSearchOn ? [...DATA_TOOLS, webSearchTool()] : DATA_TOOLS,
         tool_choice: { type: "none" },
         messages,
@@ -644,6 +735,9 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
       throw new Error(`Empty response from model (stop_reason: ${data?.stop_reason}, rounds: ${rounds})`);
     }
 
+    logChat({ ...logBase(), reply: text, usedWebSearch }).then(() => {
+      if (req.user?.id) noteChatForMemory(req.user.id);
+    });
     res.json({
       reply: text,
       sources: dedupeSources(sources),
@@ -655,6 +749,7 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
     });
   } catch (err) {
     console.error(err);
+    logChat({ ...logBase(), error: err.message });
     res.status(502).json({ error: "AI chat failed", detail: err.message });
   }
 });

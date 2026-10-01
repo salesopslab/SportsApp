@@ -5,6 +5,7 @@ import { TIERS, TIER_RANK, effectiveTier } from "../services/tierService.js";
 import { stripe, stripeAvailable, tierForPrice, pricingStatus, setupPricing, migrateLegacySubscribers } from "../services/stripeService.js";
 import { REFERRAL_BONUS_DAYS } from "../services/referralService.js";
 import { signToken, toPublicUser } from "../services/authService.js";
+import { listChatLogs } from "../services/chatLogService.js";
 
 const router = Router();
 
@@ -23,6 +24,17 @@ function requireAdminKey(req, res, next) {
   }
   next();
 }
+
+// GET /api/admin/chat-logs?days=7&limit=100&offset=0&search=&promptVersion=
+// Recent AI chat questions + answers for quality spot-checks.
+router.get("/chat-logs", requireAdminKey, async (req, res) => {
+  try {
+    res.json(await listChatLogs(req.query));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load chat logs", detail: err.message });
+  }
+});
 
 // GET /api/admin/usage — Odds API credit usage (latest + recent history) plus
 // basic subscriber/engagement counts, for the cost-vs-users dashboard.

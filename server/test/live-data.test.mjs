@@ -234,6 +234,10 @@ await test("chat: uses live tools + web search, returns sources and timestamps",
   assert.match(first.system, /Missing data is UNKNOWN, never healthy/);
   assert.doesNotMatch(first.system, /Use ONLY facts present in MATCHUP_CONTEXT/);
   assert.match(first.system, /DATA_FRESHNESS/);
+  // Market math is done server-side and handed to the model.
+  assert.match(first.system, /"impliedProbability":/);
+  assert.match(first.system, /"vig":/);
+  assert.match(first.system, /Price first/);
   const toolResult = JSON.parse(anthropicRequests[1].messages[2].content[0].content);
   assert.equal(toolResult.homeTeam.players.find((p) => p.name === "Jayden Daniels").game_designation, "Questionable");
   const labels = r.json.sources.map((s) => s.label);

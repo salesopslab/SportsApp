@@ -47,6 +47,13 @@ body{
 .card .value{ font-size:22px; font-weight:700; font-family:'Oswald', -apple-system, sans-serif; }
 .card .note{ font-size:11.5px; color:var(--sub); margin-top:4px; }
 
+.chatlog{ border-top:1px solid var(--line); padding:10px 0; }
+.chatlog:first-child{ border-top:none; }
+.chatlog .meta{ font-size:11.5px; color:var(--sub); margin-bottom:4px; display:flex; flex-wrap:wrap; gap:6px 10px; }
+.chatlog .q{ font-weight:600; margin-bottom:4px; overflow-wrap:anywhere; }
+.chatlog details summary{ cursor:pointer; color:var(--sub); font-size:12.5px; }
+.chatlog .a{ white-space:pre-wrap; font-size:13px; line-height:1.5; margin-top:6px; overflow-wrap:anywhere; }
+.chatlog .err{ color:#c0392b; font-size:12.5px; }
 .section{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:18px; }
 .section h2{ font-size:14px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
 .section h2 .tag{ font-size:11px; color:var(--sub); font-weight:500; }
@@ -196,6 +203,19 @@ select.tier-select.flash-error{ border-color:var(--red); }
       <div class="section">
         <h2>Odds API usage <span class="tag" id="usageTag"></span></h2>
         <div id="usageBody"></div>
+      </div>
+
+      <div class="section" id="chatReviewSection">
+        <h2>AI chat review <span class="tag" id="chatReviewTag"></span></h2>
+        <div class="search-row">
+          <input type="text" id="chatSearch" placeholder="Search questions, answers or games…">
+          <select id="chatDays">
+            <option value="1">Last 24 hours</option>
+            <option value="7" selected>Last 7 days</option>
+            <option value="30">Last 30 days</option>
+          </select>
+        </div>
+        <div id="chatReviewBody"></div>
       </div>
 
       <div class="section">
@@ -700,6 +720,31 @@ document.getElementById('userSearch').addEventListener('input', () => {
 document.getElementById('prevPage').addEventListener('click', () => { usersOffset = Math.max(0, usersOffset - USERS_LIMIT); loadUsers(); });
 document.getElementById('nextPage').addEventListener('click', () => { usersOffset += USERS_LIMIT; loadUsers(); });
 
+// AI chat review: recent questions + answers for weekly spot-checks.
+const escA = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function loadChatLogs(){
+  const body = document.getElementById('chatReviewBody');
+  const search = document.getElementById('chatSearch').value.trim();
+  const days = document.getElementById('chatDays').value;
+  try{
+    const d = await adminFetch(`/api/admin/chat-logs?days=${days}&limit=100&search=${encodeURIComponent(search)}`);
+    document.getElementById('chatReviewTag').textContent = `${d.total} chat${d.total === 1 ? '' : 's'}`;
+    if(!d.rows.length){ body.innerHTML = `<div class="empty-note">${escA(d.note || 'No chats in this window yet.')}</div>`; return; }
+    body.innerHTML = d.rows.map(r => `
+      <div class="chatlog">
+        <div class="meta"><span>${escA(new Date(r.created_at).toLocaleString())}</span>${r.game_label ? `<span>${escA(r.game_label)}</span>` : '<span>No game open</span>'}${r.user_id ? `<span>user #${escA(r.user_id)}</span>` : '<span>guest</span>'}<span>${escA(r.prompt_version || '')}</span>${r.response_ms ? `<span>${(r.response_ms/1000).toFixed(1)}s</span>` : ''}${r.used_web_search ? '<span>web search</span>' : ''}${(r.tools||[]).length ? `<span>tools: ${escA([...new Set(r.tools)].join(', '))}</span>` : ''}</div>
+        <div class="q">${escA(r.question)}</div>
+        ${r.error ? `<div class="err">Failed: ${escA(r.error)}</div>` : `<details><summary>Answer</summary><div class="a">${escA(r.reply)}</div></details>`}
+      </div>`).join('');
+  }catch(e){
+    if(e.unauthorized){ showGate('Invalid admin key.'); return; }
+    body.innerHTML = `<div class="empty-note">Couldn't load chat logs (${escA(e.message)}).</div>`;
+  }
+}
+let chatSearchDebounce = null;
+document.getElementById('chatSearch').addEventListener('input', () => { clearTimeout(chatSearchDebounce); chatSearchDebounce = setTimeout(loadChatLogs, 350); });
+document.getElementById('chatDays').addEventListener('change', loadChatLogs);
+
 async function loadAll(){
   loadingMsg.classList.remove('hidden');
   dashContent.classList.add('hidden');
@@ -720,6 +765,7 @@ async function loadAll(){
     renderGrowth(growth);
     renderUsage(usage);
     await loadUsers();
+    loadChatLogs();
     loadingMsg.classList.add('hidden');
     dashContent.classList.remove('hidden');
   }catch(e){
