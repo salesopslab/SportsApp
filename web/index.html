@@ -4495,7 +4495,11 @@ async function sendChat(){
   const key = message.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   // Same question already waiting on an answer (answers that check several
   // games + the web can take a minute), or sent in the last 15s: ignore.
-  if(chatInFlight.has(key) || (key === lastChatSent.text && now - lastChatSent.at < 15000)){
+  // Also catches a voice partial followed by the full sentence (or the
+  // reverse): one question starts with the other.
+  const sameQ = (a, b2) => a === b2 || (Math.min(a.length, b2.length) >= 12 && (a.startsWith(b2) || b2.startsWith(a)));
+  const recent = [...chatInFlight, ...(now - lastChatSent.at < 15000 ? [lastChatSent.text] : [])];
+  if(recent.some(r => r && sameQ(r, key))){
     input.value = '';
     return;
   }
