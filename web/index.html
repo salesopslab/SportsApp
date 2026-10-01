@@ -4463,16 +4463,21 @@ function addMsg(text, who){
 // recognition can fire its "end" event twice, or replay the last transcript,
 // which used to post the question -- and get the answer -- twice).
 let lastChatSent = { text: '', at: 0 };
+const chatInFlight = new Set(); // questions still waiting on an answer
 async function sendChat(){
   const input = document.getElementById('chatInput');
   const message = input.value.trim();
   if(!message) return;
   const now = Date.now();
-  if(message.toLowerCase() === lastChatSent.text && now - lastChatSent.at < 15000){
+  const key = message.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  // Same question already waiting on an answer (answers that check several
+  // games + the web can take a minute), or sent in the last 15s: ignore.
+  if(chatInFlight.has(key) || (key === lastChatSent.text && now - lastChatSent.at < 15000)){
     input.value = '';
     return;
   }
-  lastChatSent = { text: message.toLowerCase(), at: now };
+  lastChatSent = { text: key, at: now };
+  chatInFlight.add(key);
   // No game open is fine: the AI can look up any game, team or day itself.
   addMsg(message, 'user');
   input.value = '';
@@ -4548,6 +4553,8 @@ async function sendChat(){
     thinking.textContent = "Couldn't reach the AI server after waiting. Please wait a moment and send your message again.";
   }finally{
     clearTimeout(progressTimer);
+    chatInFlight.delete(key);
+    lastChatSent = { text: key, at: Date.now() };
   }
 }
 
