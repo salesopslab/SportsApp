@@ -246,7 +246,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .back-btn{ position:sticky; top:0; z-index:5; display:inline-flex; align-items:center; gap:4px; margin:10px 0 0 16px; font-size:14px; font-weight:600; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:7px 14px; border-radius:16px; cursor:pointer; }
 .back-btn:active{ background:var(--surface2); }
 
-.chat-wrap{ display:flex; flex-direction:column; min-height:100%; padding:0 20px; }
+.chat-wrap{ display:flex; flex-direction:column; min-height:100%; padding:0 16px; min-width:0; max-width:100%; box-sizing:border-box; }
 .chat-header{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 0 0; flex-shrink:0; }
 .chat-header-game{ flex:1; min-width:0; font-size:12.5px; color:var(--sub); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .clear-chat-btn{ font-size:12px; color:var(--sub); background:none; border:1px solid var(--line); padding:5px 12px; border-radius:20px; cursor:pointer; font-family:inherit; flex-shrink:0; white-space:nowrap; }
@@ -254,7 +254,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 /* The chat scrolls with the screen itself (one scroller, like the Board):
    a separate scroll box inside the screen wouldn't take a finger swipe on
    iPhone. The input row is pinned just above the bottom menu instead. */
-.chat-log{ flex:1; padding:16px 0; display:flex; flex-direction:column; gap:14px; }
+.chat-log{ flex:1; padding:16px 0; display:flex; flex-direction:column; gap:14px; min-width:0; }
 /* iPhone (WebKit) bug: a scroll area that opened short (an empty chat) can
    stay unscrollable after messages are added, until something repaints it --
    which is why it scrolled only while the mic's pulse animation was running.
@@ -262,20 +262,31 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
    re-arms it after every new message. */
 #chat.screen{ -webkit-transform:translateZ(0); transform:translateZ(0); will-change:scroll-position; touch-action:pan-y; }
 .chat-log > .msg{ flex-shrink:0; }
-.msg{ max-width:82%; padding:12px 14px; border-radius:14px; font-size:14px; line-height:1.55; white-space:pre-wrap; }
+.msg{ max-width:82%; padding:12px 14px; border-radius:14px; font-size:14px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; min-width:0; box-sizing:border-box; }
+/* AI answers: formatted (bold headings, bullets, links), full width, never wider than the screen. */
+.msg.ai.md{ white-space:normal; max-width:100%; width:100%; }
+.msg.ai.md p{ margin:0 0 8px; }
+.msg.ai.md p:last-child{ margin-bottom:0; }
+.msg.ai.md strong{ font-weight:700; color:var(--text); }
+.msg.ai.md .md-h{ font-weight:700; font-size:13px; letter-spacing:.2px; margin:12px 0 4px; color:var(--text); }
+.msg.ai.md .md-h:first-child{ margin-top:0; }
+.msg.ai.md ul, .msg.ai.md ol{ margin:2px 0 8px; padding-left:18px; }
+.msg.ai.md li{ margin:3px 0; padding-left:2px; }
+.msg.ai.md li::marker{ color:var(--amber); }
+.msg.ai.md a{ color:var(--teal); text-decoration:underline; text-underline-offset:2px; overflow-wrap:anywhere; }
 .msg.ai{ background:var(--surface); align-self:flex-start; border-bottom-left-radius:4px; }
 .msg.user{ background:var(--surface2); align-self:flex-end; border-bottom-right-radius:4px; }
 .msg.ai .src{ display:block; margin-top:8px; font-size:11px; color:var(--teal); }
 .msg.hint{ background:none; border:1px dashed var(--line); color:var(--sub); font-size:12.5px; align-self:center; max-width:100%; text-align:center; }
-.chat-input-row{ display:flex; gap:10px; align-items:center; padding:14px 0 20px; border-top:1px solid var(--line); flex-shrink:0; position:sticky; bottom:0; z-index:3; background:var(--bg); }
+.chat-input-row{ display:flex; gap:8px; align-items:center; padding:12px 0 16px; min-width:0; border-top:1px solid var(--line); flex-shrink:0; position:sticky; bottom:0; z-index:3; background:var(--bg); }
 /* Solid backing under and beside the pinned input so scrolled messages never show through above the bottom menu. */
-.chat-input-row::after{ content:''; position:absolute; left:-20px; right:-20px; top:1px; bottom:-160px; background:var(--bg); z-index:-1; }
+.chat-input-row::after{ content:''; position:absolute; left:-16px; right:-16px; top:1px; bottom:-160px; background:var(--bg); z-index:-1; }
 /* font-size must be >=16px on any typeable input — below that, iOS Safari
    (and iOS Chrome, which also runs on WebKit) auto-zooms the whole page in
    when the field is focused, and often doesn't zoom back out. That's what
    was making the app look "cut off"/"not fitting" specifically when tapping
    into the AI chat bar. */
-.chat-input{ flex:1; background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:11px 16px; color:var(--text); font-size:16px; font-family:inherit; }
+.chat-input{ flex:1; min-width:0; width:100%; background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:11px 16px; color:var(--text); font-size:16px; font-family:inherit; }
 .chat-input:focus{ outline:2px solid var(--teal); outline-offset:1px; }
 .mic-btn,.send-btn{ width:42px; height:42px; border-radius:50%; border:none; color:var(--bg); font-size:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
 .mic-btn{ background:var(--teal); }
@@ -769,6 +780,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
 .fe-chat-log{ display:flex; flex-direction:column; gap:8px; margin-bottom:8px; }
 .fe-chat-log:empty{ display:none; }
 .fe-chat-log .msg{ max-width:92%; }
+.fe-chat-log .msg.ai.md{ max-width:100%; }
 .fe-chat-log .msg.user{ align-self:flex-end; background:var(--amber); color:var(--bg); border-bottom-right-radius:4px; }
 .fe-chat-log .msg.ai{ background:var(--surface2); }
 .fe-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
@@ -1207,7 +1219,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
         <div class="msg hint">Ask about any game, team or day — "best NFL bets Sunday?", "Dodgers tomorrow?" — or tap a game on the Board to ask about it. The AI checks live odds, injuries and weather, plus current news online.</div>
       </div>
       <div class="chat-input-row">
-        <input class="chat-input" id="chatInput" type="text" placeholder="Ask about any game, team or day…">
+        <input class="chat-input" id="chatInput" type="text" placeholder="Ask about any game or team…">
         <button class="mic-btn" id="micBtn" title="Voice input">🎤</button>
         <button class="send-btn" id="sendBtn" title="Send">➤</button>
       </div>
@@ -4765,10 +4777,49 @@ async function sendChat(){
   }
 }
 
+// Safe mini-markdown for AI answers: **bold**, "- " / "1. " lists, "##"
+// headings, and links (shown as the site name). Everything is HTML-escaped
+// first, so nothing from the model can inject markup.
+function renderChatMarkdown(text){
+  const inline = (t) => {
+    let h = escapeHtml(t);
+    h = h.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+    h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, url) => `<a href="${url}" target="_blank" rel="noopener">${label}</a>`);
+    h = h.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g, (m, pre, url) => {
+      let host = url; try{ host = new URL(url.replace(/&amp;/g,'&')).hostname.replace(/^www\./,''); }catch(e){}
+      return `${pre}<a href="${url}" target="_blank" rel="noopener">${host}</a>`;
+    });
+    return h;
+  };
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  let html = '', list = null, para = [];
+  const flushPara = () => { if(para.length){ html += `<p>${para.map(inline).join('<br>')}</p>`; para = []; } };
+  const flushList = () => { if(list){ html += `<${list.tag}>${list.items.map(i => `<li>${inline(i)}</li>`).join('')}</${list.tag}>`; list = null; } };
+  for(const raw of lines){
+    const line = raw.trim();
+    if(!line){ flushPara(); flushList(); continue; }
+    let m;
+    if((m = /^#{1,4}\s+(.*)$/.exec(line)) || (m = /^\*\*([^*]+)\*\*:?$/.exec(line))){
+      flushPara(); flushList(); html += `<div class="md-h">${inline(m[1])}</div>`; continue;
+    }
+    if((m = /^[-*•]\s+(.*)$/.exec(line))){
+      flushPara(); if(!list || list.tag !== 'ul'){ flushList(); list = { tag:'ul', items:[] }; } list.items.push(m[1]); continue;
+    }
+    if((m = /^\d+[.)]\s+(.*)$/.exec(line))){
+      flushPara(); if(!list || list.tag !== 'ol'){ flushList(); list = { tag:'ol', items:[] }; } list.items.push(m[1]); continue;
+    }
+    flushList(); para.push(line);
+  }
+  flushPara(); flushList();
+  return html;
+}
+window.renderChatMarkdown = renderChatMarkdown;
+
 // Reply text + a provenance line: "Updated 8 min ago • Source: ESPN injury
 // report — Washington Commanders", plus any news articles the answer cited.
 function renderAiReply(el, data){
-  el.textContent = data.reply;
+  el.classList.add('md');
+  el.innerHTML = renderChatMarkdown(data.reply);
   const sources = Array.isArray(data.sources) ? data.sources : [];
   if(!sources.length && !data.refreshed?.length){ scrollChatToMsg(el); return; }
   const line = document.createElement('span');

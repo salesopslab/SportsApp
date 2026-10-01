@@ -647,7 +647,8 @@
       chatHistory = chatHistory.slice(-8);
       const statuses = (d.players || []).slice(0, 6).map(p => `${esc(p.name)}: ${esc(p.status.label)}${p.status.updated_at ? ` (${esc(agoLabel(p.status.updated_at))}${p.status.source ? `, ${esc(p.status.source)}` : ''})` : ''}`);
       think.stop();
-      pending.innerHTML = esc(d.reply) + (statuses.length ? `<div class="fe-status-meta" style="margin-top:8px">Status check — ${statuses.join(' · ')}</div>` : '');
+      pending.classList.add('md');
+      pending.innerHTML = (window.renderChatMarkdown ? window.renderChatMarkdown(d.reply) : esc(d.reply)) + (statuses.length ? `<div class="fe-status-meta" style="margin-top:8px">Status check — ${statuses.join(' · ')}</div>` : '');
     }catch(err){
       think.stop();
       if(err.paywall){ pending.innerHTML = paywallHtml(err.paywall); wireUpgradePrompts(pending); }
