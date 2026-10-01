@@ -302,6 +302,76 @@ async function getPlayerNameMap(sportSlug) {
   );
 }
 
+// Season pitching line (W-L, ERA) for every MLB pitcher, from MLB's official
+// Stats API (free, no key). Not from SportsData.io: this account anonymizes
+// some player fields, and a scrambled ERA on a betting board is worse than
+// none. One cached call for the whole league, keyed by normalized full name
+// (accents, punctuation and Jr./Sr. stripped). Regular-season numbers even
+// during the postseason, since that's the line people quote for a starter.
+// Any failure -> empty map, and the Board just shows the name.
+const MLB_STATS_URL = "https://statsapi.mlb.com/api/v1/stats";
+export function pitcherNameKey(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\b(jr|sr|ii|iii|iv)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+export function parseMlbPitchingStats(json, year) {
+  const map = {};
+  for (const block of json?.stats || []) {
+    for (const sp of block.splits || []) {
+      const name = sp.player?.fullName;
+      const st = sp.stat || {};
+      const w = Number(st.wins), l = Number(st.losses);
+      if (!name || !Number.isFinite(w) || !Number.isFinite(l)) continue;
+      const era = st.era != null && /^\d+(\.\d+)?$/.test(String(st.era)) ? Number(st.era).toFixed(2) : null;
+      const key = pitcherNameKey(name);
+      const team = sp.team?.name ? toTeamCode("mlb", sp.team.name) : null;
+      // One row per pitcher (a traded pitcher's row carries his current team).
+      // Two different pitchers can share a name, so keep every one.
+      (map[key] ||= []).push({ id: sp.player?.id ?? null, team, wins: w, losses: l, era, season: String(year), source: "MLB Stats API" });
+    }
+  }
+  return map;
+}
+
+// The season line for a named starter. If two pitchers share the name, the
+// team breaks the tie; if it still can't, return null rather than risk
+// showing someone else's ERA.
+export function lookupPitcherStats(statsMap, name, teamCode) {
+  const rows = statsMap?.[pitcherNameKey(name)];
+  if (!rows?.length) return null;
+  const pick = rows.length === 1 ? rows[0] : rows.filter((r) => r.team && r.team === teamCode).length === 1 ? rows.find((r) => r.team === teamCode) : null;
+  if (!pick) return null;
+  const { wins, losses, era, season, source } = pick;
+  return { wins, losses, era, season, source };
+}
+let fetchMlbStats = (url) => fetch(url, { headers: { Accept: "application/json" } });
+export function __setMlbStatsFetch(fn) { fetchMlbStats = fn; }
+export async function getPitcherSeasonStats(sportSlug, season) {
+  if (sportSlug !== "mlb") return {};
+  const year = String(season).replace(/(REG|POST|PRE)$/, "");
+  return cached(
+    `pitcher-stats:mlb:${year}`,
+    async () => {
+      try {
+        const url = `${MLB_STATS_URL}?stats=season&group=pitching&season=${year}&sportId=1&gameType=R&playerPool=ALL&limit=3000`;
+        const res = await fetchMlbStats(url);
+        if (!res.ok) throw new Error(`MLB Stats API ${res.status}`);
+        return parseMlbPitchingStats(await res.json(), year);
+      } catch (err) {
+        console.error(`getPitcherSeasonStats(${year}) failed:`, err.message);
+        return {};
+      }
+    },
+    3 * 60 * 60 // a starter's line only changes once per start
+  );
+}
+
 // Prefer the probable pitcher (announced ahead of the game) and fall back to
 // the confirmed starter (set once the game is underway/closer to first
 // pitch) — whichever ID is actually populated. Never fabricates a name: a
@@ -317,9 +387,10 @@ function pitcherId(g, side) {
 export async function getProbablePitchers(sportSlug, season) {
   if (sportSlug !== "mlb") return {};
   try {
-    const [schedule, playerNames] = await Promise.all([
+    const [schedule, playerNames, pitcherStats] = await Promise.all([
       getSeasonSchedule(sportSlug, season),
       getPlayerNameMap(sportSlug),
+      getPitcherSeasonStats(sportSlug, season),
     ]);
     const map = {};
     for (const g of schedule || []) {
@@ -332,7 +403,12 @@ export async function getProbablePitchers(sportSlug, season) {
       const homePitcher = homeId ? playerNames[homeId] || null : null;
       const awayPitcher = awayId ? playerNames[awayId] || null : null;
       if (!homePitcher && !awayPitcher) continue;
-      map[`${away}@${home}:${dateStr}`] = { homePitcher, awayPitcher };
+      map[`${away}@${home}:${dateStr}`] = {
+        homePitcher,
+        awayPitcher,
+        homePitcherStats: homePitcher ? lookupPitcherStats(pitcherStats, homePitcher, home) : null,
+        awayPitcherStats: awayPitcher ? lookupPitcherStats(pitcherStats, awayPitcher, away) : null,
+      };
     }
     return map;
   } catch (err) {

@@ -141,6 +141,9 @@ router.get("/:sport", withTier, async (req, res) => {
         divisionGame: isDivisionGame(sport, rankings, g.homeTeam, g.awayTeam),
         homePitcher: pitcherInfo?.homePitcher || null,
         awayPitcher: pitcherInfo?.awayPitcher || null,
+        // Season W-L and ERA for each starter: { wins, losses, era, season } or null.
+        homePitcherStats: pitcherInfo?.homePitcherStats || null,
+        awayPitcherStats: pitcherInfo?.awayPitcherStats || null,
         // Quarter/inning, clock, down-distance-or-balls-strikes-outs — only
         // ever populated for status === "live" rows; null otherwise (or when
         // the provider doesn't have this game's live state yet).

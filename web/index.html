@@ -219,7 +219,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .team-info{ display:flex; flex-direction:column; gap:3px; min-width:0; }
 .team-name{ font-size:16px; font-weight:500; display:flex; align-items:center; gap:6px; line-height:1.25; }
 .rank-line{ font-size:11px; font-weight:700; color:var(--amber); white-space:nowrap; letter-spacing:0.2px; }
-.pitcher-line{ font-size:11px; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
+.pitcher-line{ font-size:11px; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
+.pitcher-stats{ font-size:11px; color:var(--sub); font-variant-numeric:tabular-nums; white-space:nowrap; padding-left:17px; margin-top:-2px; }
 .home-tag{ font-size:9px; font-weight:700; color:var(--sub); border:1px solid var(--line); border-radius:6px; padding:1px 5px; letter-spacing:0.3px; white-space:nowrap; flex-shrink:0; }
 .odds-cluster{ display:flex; gap:14px; font-family:'Oswald',sans-serif; flex-shrink:0; }
 .odds-box{ text-align:right; min-width:44px; }
@@ -4033,12 +4034,18 @@ async function loadBoard(sport){
 // smaller muted text underneath. All three extras are no-ops (omitted) when
 // there's nothing to show, so a plain team just shows the name, still
 // centered against whatever's on the other side of the row (odds or score).
-function teamInfoBlock(name, rank, isHome, pitcher){
+// "12-6 · 2.85 ERA" for a starter, or '' when stats aren't available.
+function pitcherStatLine(st){
+  if(!st || !Number.isFinite(Number(st.wins)) || !Number.isFinite(Number(st.losses))) return '';
+  return `${st.wins}-${st.losses}${st.era ? ` · ${st.era} ERA` : ''}`;
+}
+function teamInfoBlock(name, rank, isHome, pitcher, pitcherStats){
+  const statLine = pitcher ? pitcherStatLine(pitcherStats) : '';
   return `
     <div class="team-info">
       <span class="team-name">${name}${isHome ? homeTag : ''}</span>
       ${rank ? `<span class="rank-line">${rank}</span>` : ''}
-      ${pitcher ? `<span class="pitcher-line">⚾ ${pitcher}</span>` : ''}
+      ${pitcher ? `<span class="pitcher-line">⚾ ${pitcher}</span>${statLine ? `<span class="pitcher-stats" title="Season W-L and ERA">${statLine}</span>` : ''}` : ''}
     </div>
   `;
 }
@@ -4081,11 +4088,11 @@ function renderGameRow(g){
       <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${sportBadge}${divisionBadge}${bigMoveBadge}</div>
       <div class="matchup">
         <div class="team-line">
-          ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher)}
+          ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher, g.awayPitcherStats)}
           <div class="score-num">${score.away ?? '—'}</div>
         </div>
         <div class="team-line">
-          ${teamInfoBlock(g.homeTeam, g.homeRank, true, g.homePitcher)}
+          ${teamInfoBlock(g.homeTeam, g.homeRank, true, g.homePitcher, g.homePitcherStats)}
           <div class="score-num">${score.home ?? '—'}</div>
         </div>
       </div>
@@ -4112,7 +4119,7 @@ function renderGameRow(g){
     <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || 'BetEdge AI Market Odds'}</span>${sportBadge}${divisionBadge}${bigMoveBadge}</div>
     <div class="matchup">
       <div class="team-line">
-        ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher)}
+        ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher, g.awayPitcherStats)}
         <div class="odds-cluster">
           <div class="odds-box"><div class="num">${spreadAway ? fmtOdds(spreadAway.point) : '—'}</div><div class="lbl">Spread</div>${openAwayLabel}</div>
           <div class="odds-box"><div class="num">${away ? fmtOdds(away.price) : '—'}</div><div class="lbl">ML</div></div>
@@ -4120,7 +4127,7 @@ function renderGameRow(g){
         </div>
       </div>
       <div class="team-line">
-        ${teamInfoBlock(g.homeTeam, g.homeRank, true, g.homePitcher)}
+        ${teamInfoBlock(g.homeTeam, g.homeRank, true, g.homePitcher, g.homePitcherStats)}
         <div class="odds-cluster">
           <div class="odds-box"><div class="num">${spreadHome ? fmtOdds(spreadHome.point) : '—'}</div><div class="lbl">Spread</div>${openHomeLabel}</div>
           <div class="odds-box"><div class="num">${home ? fmtOdds(home.price) : '—'}</div><div class="lbl">ML</div></div>
