@@ -37,8 +37,8 @@ const CHAT_MODEL = process.env.CHAT_MODEL || "claude-sonnet-5";
 // organization in the Claude Console. Set WEB_SEARCH_ENABLED=false to turn off.
 const WEB_SEARCH_ENABLED = process.env.WEB_SEARCH_ENABLED !== "false";
 const WEB_SEARCH_TOOL_TYPE = process.env.WEB_SEARCH_TOOL_TYPE || "web_search_20250305";
-const WEB_SEARCH_MAX_USES = Number(process.env.WEB_SEARCH_MAX_USES || 4);
-const MAX_TOOL_ROUNDS = 8;
+const WEB_SEARCH_MAX_USES = Number(process.env.WEB_SEARCH_MAX_USES || 6);
+const MAX_TOOL_ROUNDS = 12;
 
 // Freshness thresholds (minutes) used by the data-quality checks.
 const ODDS_FRESHNESS_MINUTES = Number(process.env.ODDS_FRESHNESS_MINUTES || 15);
@@ -103,16 +103,40 @@ function buildFreshness(context) {
 
 // ---- Tool definitions (executed on this server) ---------------------------
 
+// Every game tool takes an optional sport + game_id so the AI can look at ANY
+// game (from find_games), not just the one the user had open. Omit both to
+// mean the selected game.
+const GAME_TARGET = {
+  sport: { type: "string", enum: ["nfl", "ncaaf", "nba", "ncaab", "mlb"], description: "Sport of the game (omit for the selected game)." },
+  game_id: { type: "string", description: "Game id from find_games (omit for the selected game)." },
+};
+
 const DATA_TOOLS = [
+  {
+    name: "find_games",
+    description:
+      "Find games on any date or date range, for any supported sport (nfl, ncaaf, nba, ncaab, mlb) or 'all', optionally filtered by team. Returns each game's id, start time (UTC and US Eastern), teams, status (upcoming / live / final), score if started, and current consensus moneyline/spread/total when posted. Covers games with posted odds (typically the next 1-2 weeks) and games from the last 3 days. Use this whenever the user asks about a day, a slate, a team, or a game other than the selected one, then call the other tools with that game_id. Games outside this window: use web_search.",
+    input_schema: {
+      type: "object",
+      properties: {
+        sport: { type: "string", enum: ["nfl", "ncaaf", "nba", "ncaab", "mlb", "all"] },
+        date: { type: "string", description: "YYYY-MM-DD (US Eastern game day). Omit for the next few days." },
+        date_to: { type: "string", description: "Optional end date YYYY-MM-DD for a range (inclusive)." },
+        team: { type: "string", description: "Optional team name or city to filter by, e.g. 'Eagles' or 'Dallas'." },
+      },
+      required: ["sport"],
+    },
+  },
   {
     name: "get_injury_report",
     description:
-      "Current injury report for this matchup: player, position, injury, practice participation (Full / Limited / Did not practice), and game designation (Questionable / Doubtful / Out / IR etc.), with source, source_url and retrieved_at. Call this before answering ANY question about a player's availability, injuries, inactives, or who is starting — unless DATA_FRESHNESS shows injury data for that team is fresh and status 'ok'. A player missing from the report is NOT confirmed healthy.",
+      "Current injury report for a game (the selected one, or any game_id from find_games): player, position, injury, practice participation (Full / Limited / Did not practice), and game designation (Questionable / Doubtful / Out / IR etc.), with source, source_url and retrieved_at. Call this before answering ANY question about a player's availability, injuries, inactives, or who is starting — unless DATA_FRESHNESS shows injury data for that team is fresh and status 'ok'. A player missing from the report is NOT confirmed healthy.",
     input_schema: {
       type: "object",
       properties: {
         team: { type: "string", enum: ["home", "away", "both"], description: "Which team's report to return." },
         force_refresh: { type: "boolean", description: "Bypass the cache and pull from the source now." },
+        ...GAME_TARGET,
       },
       required: ["team"],
     },
@@ -120,22 +144,22 @@ const DATA_TOOLS = [
   {
     name: "get_odds_and_line_movement",
     description:
-      "Current consensus spread / moneyline / total for this game, each sportsbook's current line, and recorded line movement (opening vs current) with retrieved_at. Use for any question about the line, odds, price, or why a line moved.",
+      "Current consensus spread / moneyline / total for a game (selected, or any game_id from find_games), each sportsbook's current line, and recorded line movement (opening vs current) with retrieved_at. Use for any question about the line, odds, price, or why a line moved.",
     input_schema: {
       type: "object",
-      properties: { force_refresh: { type: "boolean", description: "Refresh odds from the provider if the cached copy is old." } },
+      properties: { force_refresh: { type: "boolean", description: "Refresh odds from the provider if the cached copy is old." }, ...GAME_TARGET },
     },
   },
   {
     name: "get_game_status",
     description:
-      "Current game status for this matchup: scheduled / in progress / final, current or final score, and live game state (quarter, clock, down & distance) when in progress, with retrieved_at.",
-    input_schema: { type: "object", properties: {} },
+      "Current game status for a game: scheduled / in progress / final, current or final score, and live game state (quarter/inning, clock, down & distance or outs/count) when in progress, with retrieved_at.",
+    input_schema: { type: "object", properties: { ...GAME_TARGET } },
   },
   {
     name: "get_weather",
-    description: "Kickoff weather forecast for the home venue (or dome), with retrieved_at. Returns unavailable if the venue isn't on file.",
-    input_schema: { type: "object", properties: {} },
+    description: "Game-time weather forecast for the home venue (or dome), with retrieved_at. Returns unavailable if the venue isn't on file.",
+    input_schema: { type: "object", properties: { ...GAME_TARGET } },
   },
 ];
 
@@ -171,22 +195,117 @@ function injuryForModel(r) {
   };
 }
 
+const easternDay = (iso) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+const easternLabel = (iso) =>
+  new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso)) + " ET";
+
+// find_games: any sport/date/team from BetEdge's own feeds (odds = upcoming
+// with lines; scores = last 3 days). Not limited to what's on the Board.
+export async function findGames(input = {}, addSource = () => {}) {
+  const sports = input.sport === "all" || !input.sport ? Object.keys(SPORT_KEYS) : [input.sport].filter((s) => SPORT_KEYS[s]);
+  if (!sports.length) return { status: "unavailable", error: `Unsupported sport "${input.sport}". Supported: ${Object.keys(SPORT_KEYS).join(", ")}.` };
+  const from = input.date || null;
+  const to = input.date_to || input.date || null;
+  const team = String(input.team || "").toLowerCase().trim();
+  const now = Date.now();
+  const out = [];
+  await Promise.all(
+    sports.map(async (sp) => {
+      const [{ value: odds, retrievedAt }, { value: scores }] = await Promise.all([
+        getOddsForSportWithMeta(sp).catch(() => ({ value: [], retrievedAt: null })),
+        getScoresForSportWithMeta(sp, 3).catch(() => ({ value: {} })),
+      ]);
+      if (retrievedAt) addSource("The Odds API — consensus of US sportsbooks", "https://the-odds-api.com", retrievedAt);
+      const seen = new Set();
+      const push = (id, g, sc, lines) => {
+        if (!g?.commenceTime || seen.has(id)) return;
+        const day = easternDay(g.commenceTime);
+        if (from && day < from) return;
+        if (to && day > to) return;
+        if (!from && !to && (Date.parse(g.commenceTime) < now - 36 * 3600e3 || Date.parse(g.commenceTime) > now + 4 * 86400e3)) return;
+        if (team && !`${g.homeTeam} ${g.awayTeam}`.toLowerCase().includes(team)) return;
+        seen.add(id);
+        const started = Date.parse(g.commenceTime) <= now;
+        const status = sc?.completed ? "final" : started && sc && (sc.homeScore != null || sc.awayScore != null) ? "live" : started ? "started (no score yet)" : "upcoming";
+        out.push({
+          sport: sp,
+          game_id: id,
+          start_utc: g.commenceTime,
+          start_et: easternLabel(g.commenceTime),
+          game_day_et: day,
+          away: g.awayTeam,
+          home: g.homeTeam,
+          status,
+          score: sc && (sc.homeScore != null || sc.awayScore != null) ? { away: sc.awayScore, home: sc.homeScore } : null,
+          lines: lines ? { moneyline: lines.moneyline, spread: lines.spread, total: lines.total, books: lines.consensusBookCount } : null,
+        });
+      };
+      for (const g of odds || []) push(g.id, g, scores?.[g.id], g);
+      for (const [id, sc] of Object.entries(scores || {})) push(id, sc, sc, null);
+    })
+  );
+  out.sort((a, b) => Date.parse(a.start_utc) - Date.parse(b.start_utc));
+  const MAX = 40;
+  return {
+    status: "ok",
+    count: out.length,
+    games: out.slice(0, MAX),
+    truncated: out.length > MAX,
+    coverage: "Games with posted odds (usually the next 1-2 weeks) plus games from the last 3 days. Anything else (older results, games further out with no odds yet): use web_search.",
+  };
+}
+
 function makeToolRunner({ sport, game, userRow, sources, refreshed, state }) {
   const addSource = (label, url, retrievedAt) => {
     if (!label) return;
     sources.push({ label, url: url || null, retrieved_at: retrievedAt || null, kind: "data" });
   };
 
+  const selectedSport = sport, selectedGame = game;
+
+  // Resolve which game a tool call is about: the selected one, or any game
+  // the model found with find_games (looked up in the odds + scores feeds).
+  async function resolveTarget(input) {
+    const tSport = input.sport || selectedSport;
+    if (!input.game_id || (selectedGame && input.game_id === selectedGame.id && tSport === selectedSport)) {
+      return selectedGame && selectedSport ? { sport: selectedSport, game: selectedGame, selected: true } : null;
+    }
+    if (!tSport || !SPORT_KEYS[tSport]) return null;
+    const [{ value: odds }, { value: scores }] = await Promise.all([
+      getOddsForSportWithMeta(tSport).catch(() => ({ value: [] })),
+      getScoresForSportWithMeta(tSport, 3).catch(() => ({ value: {} })),
+    ]);
+    const g = (odds || []).find((x) => x.id === input.game_id);
+    if (g) return { sport: tSport, game: g, selected: false };
+    const sc = scores?.[input.game_id];
+    if (sc?.homeTeam) return { sport: tSport, game: { id: input.game_id, homeTeam: sc.homeTeam, awayTeam: sc.awayTeam, commenceTime: sc.commenceTime }, selected: false };
+    return null;
+  }
+
   return async function runTool(name, input = {}) {
-    if (!sport || !game) return { status: "unavailable", error: "No game selected — cannot look up live data." };
+    if (name === "find_games") return findGames(input, addSource);
+
+    const target = await resolveTarget(input);
+    if (!target) {
+      return {
+        status: "unavailable",
+        error: input.game_id
+          ? "That game_id wasn't found in BetEdge's odds or recent-scores feeds. Use find_games to get a valid id, or web_search."
+          : "No game is selected. Use find_games to find the game (by sport, date or team) and pass its sport + game_id.",
+      };
+    }
+    const { sport, game } = target;
 
     if (name === "get_injury_report") {
-      const current = state.injuries;
+      state.injuriesByGame ||= {};
+      const current = target.selected ? state.injuries : state.injuriesByGame[game.id];
       const force = !!input.force_refresh || injuriesNeedRefresh(current);
       let inj = current;
       if (force || !inj) {
         inj = await getMatchupInjuries(sport, game.homeTeam, game.awayTeam, { forceRefresh: force });
-        state.injuries = inj;
+        if (target.selected) state.injuries = inj;
+        else state.injuriesByGame[game.id] = inj;
         refreshed.push("injuries");
       }
       const teams = input.team === "home" ? ["homeTeam"] : input.team === "away" ? ["awayTeam"] : ["homeTeam", "awayTeam"];
@@ -280,11 +399,12 @@ function buildSystemPrompt({ context, freshness, nowIso, webSearchOn }) {
 Current date/time: ${nowIso} (UTC). Treat anything older than today's practice/injury news as potentially outdated.
 
 ## Mission
-Help the user reason about ONE selected matchup. Sound like a calm, precise betting desk note — not a tipster, hype account, or sports-radio host.
+Help the user reason about games and bets. The game they have open (MATCHUP_CONTEXT) is the default focus, but they can ask about ANY game, team, day or slate (e.g. "who do you like Sunday?", "Dodgers tomorrow?", "best NBA bets tonight") — even if it's not on their Board and no game is selected. Sound like a calm, precise betting desk note — not a tipster, hype account, or sports-radio host.
 
 ## Your data (in priority order)
-A. BetEdge live data tools (run on BetEdge's servers): get_injury_report, get_odds_and_line_movement, get_game_status, get_weather. These are the primary source for injuries, practice participation, game designations, odds, line movement, scores and game status.
-B. ${webSearchOn ? "web_search: current reporting that may be newer than the structured feeds (e.g. today's practice reports, a starter being ruled out, a QB change). Prefer, in order: official team sites and team beat accounts' published articles, NFL/league sources (nfl.com, league injury reports), then established sports outlets (ESPN, The Athletic, AP, CBS Sports, NBC Sports, Yahoo Sports, Pro Football Talk). Avoid unsourced rumor, fantasy-content farms and betting-tout sites." : "Web search is currently unavailable on this server — rely on the data tools, and say plainly when something could not be verified."}
+A. BetEdge live data tools (run on BetEdge's servers): find_games (any sport/date/team), then get_injury_report, get_odds_and_line_movement, get_game_status, get_weather — pass sport + game_id for any game other than the selected one. These are the primary source for schedules, injuries, practice participation, game designations, odds, line movement, scores and game status.
+   Dates: "today", "tonight", "tomorrow", "Sunday" etc. mean US Eastern game days relative to the current date/time below; convert to YYYY-MM-DD for find_games.
+B. ${webSearchOn ? "web_search: use it on every analysis or advice question, not only for injuries — game previews, expert and beat-writer analysis, matchup notes, recent form, starting pitchers/goalies/QBs, betting trends, and news newer than the structured feeds (e.g. today's practice reports, a starter being ruled out, a QB change). Also use it for games outside find_games' window (older results, games further out). Summarize what credible outlets are saying and attribute it; never copy a tout's pick as fact. Prefer, in order: official team sites and team beat accounts' published articles, NFL/league sources (nfl.com, league injury reports), then established sports outlets (ESPN, The Athletic, AP, CBS Sports, NBC Sports, Yahoo Sports, Pro Football Talk). Avoid unsourced rumor, fantasy-content farms and betting-tout sites." : "Web search is currently unavailable on this server — rely on the data tools, and say plainly when something could not be verified."}
 C. MATCHUP_CONTEXT: the Breakdown snapshot the user was viewing. Useful, but it may be stale — check DATA_FRESHNESS.
 
 You DO have live retrieval through these tools. Never say you "can't browse the web", "only have MATCHUP_CONTEXT", or "don't have real-time data" — fetch it instead. If a tool or search genuinely fails, say exactly what could not be retrieved.
@@ -300,7 +420,8 @@ You DO have live retrieval through these tools. Never say you "can't browse the 
 8. Numbers must be copied carefully: include signs on moneylines (+150 / -130), and distinguish open vs current.
 9. "lineMovement" is recorded line changes over time — NOT bet%/handle% splits, which BetEdge does not have. Don't imply you can see sharp/public money.
 10. "headToHead" lists past scheduled meetings without scores; "headToHeadResults" has real final scores — use that for who won.
-11. If MATCHUP_CONTEXT has no game, tell the user to pick a game on the Board first.
+11. If MATCHUP_CONTEXT has no game, that's fine — use find_games (and web_search) to answer about whatever game, team or day the user asks. Only ask a clarifying question if you genuinely can't tell which sport or game they mean.
+12. For a slate question ("best bets today", "who do you like Sunday"), call find_games for that day, pick the 2–4 most interesting games, check their odds/injuries with the tools and current news with web_search, and give a short lean (or Pass) for each — never a long list of every game.
 
 ## Voice
 - Professional, concise, specific. Full sentences; plain English first.
@@ -327,7 +448,10 @@ MATCHUP_CONTEXT:
 ${JSON.stringify(context, null, 2)}`;
 }
 
+let callModelImpl = null;
+export function __setChatModelCaller(fn) { callModelImpl = fn; }
 async function callAnthropic(body) {
+  if (callModelImpl) return callModelImpl(body);
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -434,7 +558,7 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
         model: CHAT_MODEL,
         // Covers thinking + tool calls + the reply; see git history for why
         // this can't be small (an empty reply at max_tokens was a real bug).
-        max_tokens: 4096,
+        max_tokens: 6000,
         system: buildSystemPrompt({ context, freshness, nowIso, webSearchOn }),
         tools: webSearchOn ? [...DATA_TOOLS, webSearchTool()] : DATA_TOOLS,
         messages,
@@ -478,6 +602,26 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
         })
       );
       messages.push({ role: "user", content: results });
+    }
+
+    // Ran out of tool rounds (e.g. a big slate question): one last call with
+    // tools off so it answers with what it already gathered.
+    if (data && (data.stop_reason === "tool_use" || data.stop_reason === "pause_turn")) {
+      const pending = (data.content || []).filter((b) => b.type === "tool_use");
+      if (pending.length) {
+        messages.push({ role: "user", content: pending.map((tu) => ({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ status: "skipped", note: "Tool budget used up — answer now with what you have." }) })) });
+      } else {
+        messages.push({ role: "user", content: "Answer now with what you have." });
+      }
+      data = await callAnthropic({
+        model: CHAT_MODEL,
+        max_tokens: 6000,
+        system: buildSystemPrompt({ context, freshness, nowIso, webSearchOn }),
+        tools: webSearchOn ? [...DATA_TOOLS, webSearchTool()] : DATA_TOOLS,
+        tool_choice: { type: "none" },
+        messages,
+      });
+      collectWebSources(data.content, sources);
     }
 
     // Only the text after the last search/tool block is the answer — anything

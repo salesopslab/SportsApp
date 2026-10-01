@@ -305,6 +305,68 @@ await test("web search disabled at org level → chat degrades to data tools ins
   assert.ok(!anthropicRequests[0].tools.some((t) => t.name === "web_search"));
 });
 
+await test("chat with NO game selected: finds a game by team and checks its injuries", async () => {
+  const chatMod = await import("../src/routes/chat.js");
+  const calls = [];
+  chatMod.__setChatModelCaller(async (body) => {
+    calls.push(body);
+    const last = body.messages[body.messages.length - 1];
+    const results = Array.isArray(last.content) ? last.content.filter((c) => c.type === "tool_result") : [];
+    if (calls.length === 1) return { stop_reason: "tool_use", content: [{ type: "tool_use", id: "f1", name: "find_games", input: { sport: "nfl", team: "Colts" } }] };
+    if (calls.length === 2) {
+      const found = JSON.parse(results[0].content);
+      return { stop_reason: "tool_use", content: [{ type: "tool_use", id: "i1", name: "get_injury_report", input: { team: "both", sport: "nfl", game_id: found.games[0].game_id } }] };
+    }
+    return { stop_reason: "end_turn", content: [{ type: "text", text: "Colts at Commanders: Daniels is Questionable (elbow), McLaurin is Out." }] };
+  });
+  const r = await local("POST", "/api/chat", { message: "How do the Colts look this week?", context: null, sport: null });
+  chatMod.__setChatModelCaller(null);
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.match(calls[0].system, /even if it's not on their Board and no game is selected/);
+  assert.ok(calls[0].tools.some((t) => t.name === "find_games"));
+  const found = JSON.parse(calls[1].messages[2].content[0].content);
+  assert.equal(found.games[0].game_id, GAME_ID);
+  assert.equal(found.games[0].home, "Washington Commanders");
+  assert.ok(found.games[0].lines, "lines included");
+  const inj = JSON.parse(calls[2].messages[4].content[0].content);
+  assert.equal(inj.homeTeam.players.find((p) => p.name === "Jayden Daniels").game_designation, "Questionable");
+  assert.match(r.json.reply, /Questionable/);
+});
+
+await test("chat: find_games date filter and unknown game_id are handled", async () => {
+  const chatMod = await import("../src/routes/chat.js");
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(oddsGame.commence_time));
+  const hit = await chatMod.findGames({ sport: "nfl", date: day });
+  assert.equal(hit.count, 1);
+  const miss = await chatMod.findGames({ sport: "nfl", date: "2026-01-01" });
+  assert.equal(miss.count, 0);
+  const calls = [];
+  chatMod.__setChatModelCaller(async (body) => {
+    calls.push(body);
+    if (calls.length === 1) return { stop_reason: "tool_use", content: [{ type: "tool_use", id: "o1", name: "get_odds_and_line_movement", input: { sport: "nfl", game_id: "nope" } }] };
+    return { stop_reason: "end_turn", content: [{ type: "text", text: "Couldn't find that game." }] };
+  });
+  const r = await local("POST", "/api/chat", { message: "odds?", context: null });
+  chatMod.__setChatModelCaller(null);
+  assert.equal(r.status, 200);
+  assert.match(calls[1].messages[2].content[0].content, /wasn't found/);
+});
+
+await test("chat: model that never stops calling tools still answers (final no-tools turn)", async () => {
+  const chatMod = await import("../src/routes/chat.js");
+  const calls = [];
+  chatMod.__setChatModelCaller(async (body) => {
+    calls.push(body);
+    if (body.tool_choice?.type === "none") return { stop_reason: "end_turn", content: [{ type: "text", text: "Here's my best read with what I found." }] };
+    return { stop_reason: "tool_use", content: [{ type: "tool_use", id: `x${calls.length}`, name: "find_games", input: { sport: "all" } }] };
+  });
+  const r = await local("POST", "/api/chat", { message: "best bets this weekend?", context: null });
+  chatMod.__setChatModelCaller(null);
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.match(r.json.reply, /best read/);
+  assert.equal(calls.at(-1).tool_choice.type, "none");
+});
+
 server.close();
 console.log(failures ? `\n${failures} test(s) failed` : "\nAll tests passed");
 process.exit(failures ? 1 : 0);

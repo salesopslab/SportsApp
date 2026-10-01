@@ -1170,14 +1170,14 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
   <div class="screen" id="chat">
     <div class="chat-wrap">
       <div class="chat-header">
-        <span class="chat-header-game" id="chatHeaderGame"></span>
+        <span class="chat-header-game" id="chatHeaderGame">Any game · ask about a team or day</span>
         <button class="clear-chat-btn" id="clearChatBtn" title="Clear this conversation">Clear chat</button>
       </div>
       <div class="chat-log" id="chatLog">
-        <div class="msg hint">Tap a game on the Board, then ask about it here — the AI answers using that game's real odds, weather, injuries and history.</div>
+        <div class="msg hint">Ask about any game, team or day — "best NFL bets Sunday?", "Dodgers tomorrow?" — or tap a game on the Board to ask about it. The AI checks live odds, injuries and weather, plus current news online.</div>
       </div>
       <div class="chat-input-row">
-        <input class="chat-input" id="chatInput" type="text" placeholder="Ask about the selected matchup…">
+        <input class="chat-input" id="chatInput" type="text" placeholder="Ask about any game, team or day…">
         <button class="mic-btn" id="micBtn" title="Voice input">🎤</button>
         <button class="send-btn" id="sendBtn" title="Send">➤</button>
       </div>
@@ -4473,12 +4473,7 @@ async function sendChat(){
     return;
   }
   lastChatSent = { text: message.toLowerCase(), at: now };
-  if(!currentGameBreakdown){
-    addMsg(message, 'user');
-    addMsg('Pick a game from the Board tab first so I have real data to work from — odds, weather, injuries and history for that specific matchup.', 'ai');
-    input.value = '';
-    return;
-  }
+  // No game open is fine: the AI can look up any game, team or day itself.
   addMsg(message, 'user');
   input.value = '';
   const thinking = addMsg('Thinking…', 'ai');
@@ -4490,7 +4485,7 @@ async function sendChat(){
       const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ message, context: currentGameBreakdown, sport: currentGameSport }),
+        body: JSON.stringify({ message, context: currentGameBreakdown || null, sport: currentGameBreakdown ? currentGameSport : (typeof currentSport !== 'undefined' && currentSport !== 'all' ? currentSport : null) }),
         signal: controller.signal
       });
       if(res.status === 402){
@@ -4534,7 +4529,7 @@ async function sendChat(){
   try{
     let reply;
     try{
-      reply = await attempt(75000);
+      reply = await attempt(120000); // slate questions check several games + news
     }catch(firstErr){
       if(firstErr.paywalled){ showUpgradeInChat(firstErr.requiredTier, firstErr.serverMessage, firstErr.loggedIn); return; }
       // Either a genuinely slow reply, or (rarely, on Render's free tier)
