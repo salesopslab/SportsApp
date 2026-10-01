@@ -279,6 +279,17 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .mic-btn.listening{ background:var(--red); animation:pulse 1s ease-in-out infinite; }
 .send-btn{ background:var(--amber); }
 @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.55; } }
+/* "Working on it" bubble: typing dots, what it's doing, seconds elapsed. */
+.msg.thinking{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; white-space:normal; }
+.think-dots{ display:inline-flex; gap:4px; align-items:center; }
+.think-dots i{ width:7px; height:7px; border-radius:50%; background:var(--amber); display:block; animation:thinkDot 1.2s ease-in-out infinite; }
+.think-dots i:nth-child(2){ animation-delay:.15s; }
+.think-dots i:nth-child(3){ animation-delay:.3s; }
+@keyframes thinkDot{ 0%,80%,100%{ transform:translateY(0); opacity:.35; } 40%{ transform:translateY(-4px); opacity:1; } }
+.think-text{ font-size:13.5px; color:var(--text); flex:1; min-width:0; }
+.think-time{ font-size:12px; color:var(--sub); font-variant-numeric:tabular-nums; margin-left:auto; }
+.think-note{ flex-basis:100%; font-size:11.5px; color:var(--sub); }
+@media (prefers-reduced-motion: reduce){ .think-dots i{ animation:none; opacity:.8; } }
 
 .game-breakdown-hero{ padding:20px; border-bottom:1px solid var(--line); }
 .game-breakdown-title{ font-family:'Oswald',sans-serif; font-size:20px; margin-bottom:4px; }
@@ -4463,6 +4474,34 @@ function wireInjurySection(root){
   });
 }
 
+// Animated "working on it" bubble for AI answers: typing dots, a status line
+// that steps through what the AI checks, and seconds elapsed (answer time
+// varies, so it counts up rather than down). Returns { setText, stop }.
+const AI_THINK_STEPS = ['Reading your question', 'Finding the games', 'Checking odds & line movement', 'Pulling injury reports', 'Searching the latest news', 'Weighing it all up', 'Writing your answer'];
+function startThinking(el, steps = AI_THINK_STEPS, stepMs = 4000){
+  el.classList.add('thinking');
+  el.innerHTML = '<span class="think-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="think-text"></span><span class="think-time">0s</span><span class="think-note" hidden></span>';
+  el.setAttribute('role', 'status');
+  const text = el.querySelector('.think-text'), time = el.querySelector('.think-time'), note = el.querySelector('.think-note');
+  const t0 = Date.now();
+  let i = 0, custom = false;
+  text.textContent = steps[0] + '…';
+  const timer = setInterval(()=>{
+    const sec = Math.floor((Date.now() - t0) / 1000);
+    time.textContent = sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s`;
+    if(!custom){
+      const next = Math.min(steps.length - 1, Math.floor((Date.now() - t0) / stepMs));
+      if(next !== i){ i = next; text.textContent = steps[i] + '…'; }
+    }
+    if(sec === 30){ note.hidden = false; note.textContent = 'Bigger questions check several games and the news — this can take up to a minute.'; }
+  }, 1000);
+  return {
+    setText(t){ custom = true; text.textContent = t; },
+    stop(){ clearInterval(timer); el.classList.remove('thinking'); el.removeAttribute('role'); },
+  };
+}
+window.startThinking = startThinking;
+
 // The chat screen is the scroller (see .chat-log CSS).
 function chatScroller(){ return document.getElementById('chat'); }
 // Re-arms iOS scrolling after the content height changes (see #chat CSS).
@@ -4530,7 +4569,8 @@ async function sendChat(){
   // No game open is fine: the AI can look up any game, team or day itself.
   addMsg(message, 'user');
   input.value = '';
-  const thinking = addMsg('Thinking…', 'ai');
+  const thinking = addMsg('', 'ai');
+  const think = startThinking(thinking);
 
   async function attempt(timeoutMs){
     const controller = new AbortController();
@@ -4560,6 +4600,7 @@ async function sendChat(){
   }
 
   function showUpgradeInChat(requiredTier, message, loggedIn){
+    think.stop();
     thinking.remove();
     const div = document.createElement('div');
     div.className = 'msg upgrade';
@@ -4576,9 +4617,6 @@ async function sendChat(){
   // The AI may now pull fresh injury reports, odds and current news before
   // answering, which takes longer than answering from the snapshot alone —
   // show what it's doing so a 20-30s answer doesn't look stuck.
-  const progressTimer = setTimeout(() => {
-    if(thinking.textContent === 'Thinking…') thinking.textContent = 'Checking the latest injury reports, odds and news…';
-  }, 4000);
 
   try{
     let reply;
@@ -4589,9 +4627,10 @@ async function sendChat(){
       // Either a genuinely slow reply, or (rarely, on Render's free tier)
       // a cold-started backend after ~15 min idle. Either way: don't give
       // up, just say it's taking longer than usual and try once more.
-      thinking.textContent = 'Still working on it — this one is taking longer than usual… still trying.';
+      think.setText('Still working on it — taking longer than usual…');
       reply = await attempt(75000);
     }
+    think.stop();
     if(reply){
       renderAiReply(thinking, reply);
     } else {
@@ -4599,9 +4638,10 @@ async function sendChat(){
     }
   }catch(e){
     if(e.paywalled){ showUpgradeInChat(e.requiredTier, e.serverMessage, e.loggedIn); return; }
+    think.stop();
     thinking.textContent = "Couldn't reach the AI server after waiting. Please wait a moment and send your message again.";
   }finally{
-    clearTimeout(progressTimer);
+    think.stop();
     chatInFlight.delete(key);
     lastChatSent = { text: key, at: Date.now() };
   }

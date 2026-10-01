@@ -133,7 +133,7 @@
     return `<div class="fe-sources">${parts.join(' · ')}</div>`;
   }
   function loadingHtml(msg){
-    return `<div class="fe-card"><div class="fe-loading"><div class="spin"></div><div>${esc(msg)}</div></div></div>`;
+    return `<div class="fe-card"><div class="fe-loading"><div class="spin"></div><div>${esc(msg)} <span class="think-time" data-t0="${Date.now()}">0s</span></div></div></div>`;
   }
   function dl(pairs){
     const rows = pairs.filter(([, v]) => v && (!Array.isArray(v) || v.length)).map(([k, v]) =>
@@ -532,12 +532,19 @@
     const run = $('feRun'); if(run) run.disabled = true;
     out.innerHTML = loadingHtml(msg);
     out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Seconds elapsed next to the spinner, so a long lineup check visibly keeps going.
+    const tick = setInterval(() => {
+      const t = out.querySelector('.think-time[data-t0]');
+      if(!t){ clearInterval(tick); return; }
+      t.textContent = Math.floor((Date.now() - Number(t.dataset.t0)) / 1000) + 's';
+    }, 1000);
     try{
       const d = await call(path, body);
       out.innerHTML = render(d);
     }catch(err){
       showError(out, err);
     }finally{
+      clearInterval(tick);
       busy = false;
       const r2 = $('feRun'); if(r2) r2.disabled = tool === 'lineup' && roster.length < 3;
     }
@@ -632,16 +639,21 @@
     if(!message) return;
     $('feChatInput').value = '';
     addMsg('user', esc(message));
-    const pending = addMsg('ai', '<span class="fe-status-meta">Checking the latest data…</span>');
+    const pending = addMsg('ai', '');
+    const think = window.startThinking(pending, ['Reading your question', 'Checking your roster', 'Pulling injury reports', 'Checking matchups & usage', 'Writing your answer']);
     try{
       const d = await call('chat', { message, roster, scoring, history: chatHistory });
       chatHistory.push({ role: 'user', text: message }, { role: 'assistant', text: d.reply });
       chatHistory = chatHistory.slice(-8);
       const statuses = (d.players || []).slice(0, 6).map(p => `${esc(p.name)}: ${esc(p.status.label)}${p.status.updated_at ? ` (${esc(agoLabel(p.status.updated_at))}${p.status.source ? `, ${esc(p.status.source)}` : ''})` : ''}`);
+      think.stop();
       pending.innerHTML = esc(d.reply) + (statuses.length ? `<div class="fe-status-meta" style="margin-top:8px">Status check — ${statuses.join(' · ')}</div>` : '');
     }catch(err){
+      think.stop();
       if(err.paywall){ pending.innerHTML = paywallHtml(err.paywall); wireUpgradePrompts(pending); }
       else pending.innerHTML = `<span class="fe-error">${esc(err.message)}</span>`;
+    }finally{
+      think.stop();
     }
   }
 
