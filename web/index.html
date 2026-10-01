@@ -450,7 +450,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .scan-bet-card input.uncertain, .scan-bet-card select.uncertain{ border-color:var(--amber); background:rgba(199,127,29,0.06); }
 .scan-leg-row{ display:flex; gap:6px; margin-bottom:6px; }
 .scan-leg-row input:first-child{ flex:1; min-width:0; }
-.scan-leg-row input:last-child{ width:84px; flex-shrink:0; }
+.scan-leg-row input:nth-child(2){ width:84px; flex-shrink:0; }
+.scan-leg-remove{ width:36px; flex-shrink:0; border:1px solid var(--line); background:none; color:var(--sub); border-radius:10px; font-size:18px; cursor:pointer; }
+.scan-add-leg{ margin:2px 0 10px; padding:7px 12px; border:1px dashed var(--line); background:none; color:var(--sub); border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+.scan-price-hint{ font-size:11.5px; color:var(--sub); margin:-4px 0 8px; }
 /* Flex-shrink:0 keeps this row a fixed-size sibling of the scrollable
    .scan-bet-fields above (see .scan-bet-card) -- always visible without
    scrolling, never itself part of the scrolled content. */
@@ -2327,14 +2330,24 @@ function updateParlayOddsSuggestion(){
   const odds = Array.from(legs).map(l => l.querySelector('.leg-odds').value.trim()).filter(v=>v!=='').map(Number);
   if(odds.length !== legs.length || odds.some(o=>!isValidOdds(o))){ el.classList.add('hidden'); el.innerHTML = ''; return; }
   const combined = decimalToAmerican(odds.reduce((acc,o)=>acc*americanToDecimal(o), 1));
-  el.innerHTML = `Suggested from leg odds: <b>${combined>0?'+':''}${combined}</b> · <a data-action="use-suggested-odds">Use</a>`;
+  const oddsInput = document.getElementById('parlayOdds');
+  if(oddsInput.dataset.manual !== '1'){
+    // Not typed by hand: fill it in automatically and update the payout.
+    oddsInput.value = `${combined>0?'+':''}${combined}`;
+    updateParlayPotential();
+    el.innerHTML = `Calculated from the ${legs.length} legs' odds`;
+  }else{
+    el.innerHTML = `From the legs: <b>${combined>0?'+':''}${combined}</b> · <a data-action="use-suggested-odds">Use</a>`;
+  }
   el.classList.remove('hidden');
 }
 document.getElementById('parlayOddsSuggest').addEventListener('click', (e)=>{
   if(!e.target.closest('[data-action="use-suggested-odds"]')) return;
   const b = e.currentTarget.querySelector('b');
   document.getElementById('parlayOdds').value = b.textContent;
+  document.getElementById('parlayOdds').dataset.manual = '';
   updateParlayPotential();
+  updateParlayOddsSuggestion();
 });
 
 function updateParlayPotential(){
@@ -2344,7 +2357,12 @@ function updateParlayPotential(){
   el.innerHTML = payoutPreviewHtml(wager, price);
 }
 document.getElementById('parlayWager').addEventListener('input', updateParlayPotential);
-document.getElementById('parlayOdds').addEventListener('input', updateParlayPotential);
+document.getElementById('parlayOdds').addEventListener('input', (e)=>{
+  // Typed by hand: keep the person's number (cleared -> auto again).
+  e.target.dataset.manual = e.target.value.trim() ? '1' : '';
+  updateParlayPotential();
+  if(!e.target.dataset.manual) updateParlayOddsSuggestion();
+});
 
 function switchParlayType(type){
   parlayType = type;
@@ -2379,6 +2397,7 @@ function openParlayForm(){
   document.getElementById('teaserPointsCustom').value = '';
   document.getElementById('teaserPointsCustom').classList.add('hidden');
   document.getElementById('parlayOdds').value = '';
+  document.getElementById('parlayOdds').dataset.manual = '';
   document.getElementById('parlayWager').value = '';
   document.getElementById('parlayDate').value = new Date().toISOString().slice(0, 10);
   document.getElementById('parlayPotential').textContent = '';
@@ -2671,9 +2690,16 @@ async function runScan(dataUrl){
       legs: Array.isArray(b.legs) ? b.legs.map(l=>({ label: l.label || '', price: l.price ?? null })) : [],
       confidence: b.confidence || 'medium',
       uncertainFields: Array.isArray(b.uncertainFields) ? b.uncertainFields : [],
+      priceSource: b.priceSource || null,
+      missingLegs: Number(b.missingLegs) > 0 ? Number(b.missingLegs) : 0,
+      slipToWin: b.toWin ?? null,
+      slipWager: b.wagerAmount ?? null,
       discarded: false,
       added: false,
     }));
+    // Parlays without printed combined odds: calculate from the legs here
+    // too (covers an older server, or legs the person fixes later).
+    scanResults.forEach(b=>{ if(b.kind === 'parlay' && !isValidOdds(Number(b.price)) && !b.missingLegs){ const c = scanCombinedFromLegs(b); if(c != null){ b.price = c; b.priceSource = 'legs'; } } });
     document.getElementById('scanLoading').classList.add('hidden');
     renderScanReview();
   }catch(err){
@@ -2697,23 +2723,62 @@ function scanPayoutPreviewHtml(bet){
     bet.toWin = null;
     return `<div class="scan-payout-summary muted">Enter a wager and odds to see To Win / Payout</div>`;
   }
-  const { toWin, totalReturn } = americanPayout(wager, price);
+  let { toWin, totalReturn } = americanPayout(wager, price);
+  // The book's own "to win" from the slip wins over formula math when it's
+  // close (books round), as long as the wager is what the slip said.
+  const slip = Number(bet.slipToWin);
+  if(slip > 0 && Number(bet.slipWager) === wager && Math.abs(slip - toWin) <= Math.max(1, toWin * 0.02)){
+    toWin = slip; totalReturn = Math.round((wager + slip) * 100) / 100;
+  }
   bet.toWin = toWin;
   return `<div class="scan-payout-summary">Risk ${fmtMoney(wager)}<span class="sep">•</span>To Win ${fmtMoney(toWin)}<span class="sep">•</span>Payout ${fmtMoney(totalReturn)}</div>`;
 }
+
+// Combined parlay odds for a scanned slip, recalculated from the legs
+// whenever they change -- unless the slip printed its own combined odds or
+// the person typed one in.
+function scanCombinedFromLegs(bet){
+  if(bet.kind !== 'parlay' || bet.market === 'teaser') return null;
+  const legs = bet.legs || [];
+  if(legs.length < 2 || !legs.every(l => isValidOdds(Number(l.price)))) return null;
+  return decimalToAmerican(legs.reduce((acc, l) => acc * americanToDecimal(Number(l.price)), 1));
+}
+function refreshScanCombined(bet, idx){
+  if(bet.kind !== 'parlay' || bet.priceSource === 'slip' || bet.priceManual) return;
+  const c = scanCombinedFromLegs(bet);
+  if(c != null){ bet.price = c; bet.priceSource = 'legs'; }
+  const input = document.querySelector(`[data-scan-idx="${idx}"][data-scan-field="price"]`);
+  if(input && c != null) input.value = c > 0 ? `+${c}` : String(c);
+  const hint = document.getElementById(`scan-price-hint-${idx}`);
+  if(hint) hint.innerHTML = scanPriceHint(bet);
+  const previewEl = document.getElementById(`scan-payout-${idx}`);
+  if(previewEl) previewEl.innerHTML = scanPayoutPreviewHtml(bet);
+}
+function scanPriceHint(bet){
+  if(bet.kind !== 'parlay') return '';
+  if(bet.priceSource === 'legs') return `Calculated from the ${bet.legs.length} legs' odds`;
+  if(bet.priceSource === 'risk-and-win') return `Calculated from the slip's risk and to-win amounts`;
+  if(bet.priceSource === 'slip') return 'As shown on the slip';
+  if(!bet.priceManual) return 'Fill in every leg\'s odds and this calculates itself';
+  return '';
+}
+function fmtOddsVal(p){ return p == null || p === '' ? '' : (Number(p) > 0 ? `+${Number(p)}` : String(p)); }
 
 function renderScanBetCard(bet, idx){
   const dup = !bet.added ? findDuplicatePick(bet) : null;
   const dupWarning = dup ? `<div class="scan-dup-warning">⚠️ Possible duplicate bet detected — you already have a similar bet tracked. Add it anyway if this is a different one.</div>` : '';
 
   const legsHtml = bet.kind === 'parlay' ? `
-    <div class="scan-field-label ${isUncertain(bet,'legs')?'uncertain':''}">Legs</div>
+    <div class="scan-field-label ${isUncertain(bet,'legs')?'uncertain':''}">Legs (${bet.legs.length})</div>
+    ${bet.missingLegs > 0 ? `<div class="scan-dup-warning">⚠️ The slip lists ${bet.legs.length + bet.missingLegs} legs but only ${bet.legs.length} were read — add the missing one${bet.missingLegs > 1 ? 's' : ''} below.</div>` : ''}
     ${bet.legs.map((leg,li)=>`
       <div class="scan-leg-row">
-        <input class="modal-input ${isLegUncertain(bet,li)?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="legs.${li}.label" value="${escapeHtml(leg.label)}" placeholder="e.g. Chiefs -2.5">
-        <input class="modal-input ${isLegUncertain(bet,li)?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="legs.${li}.price" value="${leg.price ?? ''}" placeholder="odds">
+        <input class="modal-input ${isLegUncertain(bet,li)?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="legs.${li}.label" value="${escapeHtml(leg.label)}" placeholder="e.g. Liberty ML">
+        <input class="modal-input ${isLegUncertain(bet,li)?'uncertain':''}" inputmode="numeric" data-scan-idx="${idx}" data-scan-field="legs.${li}.price" value="${fmtOddsVal(leg.price)}" placeholder="odds">
+        ${bet.legs.length > 2 ? `<button type="button" class="scan-leg-remove" data-scan-action="remove-leg" data-scan-idx="${idx}" data-leg-idx="${li}" aria-label="Remove leg ${li+1}">×</button>` : ''}
       </div>
     `).join('')}
+    <button type="button" class="scan-add-leg" data-scan-action="add-leg" data-scan-idx="${idx}">+ Add leg</button>
   ` : '';
 
   const straightFieldsHtml = bet.kind === 'straight' ? `
@@ -2741,7 +2806,8 @@ function renderScanBetCard(bet, idx){
         <input class="modal-input ${isUncertain(bet,'eventLabel')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="eventLabel" value="${escapeHtml(bet.eventLabel)}" placeholder="e.g. Chiefs @ Bills">
         ${straightFieldsHtml}
         <div class="scan-field-label ${isUncertain(bet,'price')?'uncertain':''}">${bet.kind==='parlay' ? 'Combined odds' : 'American odds'}</div>
-        <input class="modal-input ${isUncertain(bet,'price')?'uncertain':''}" data-scan-idx="${idx}" data-scan-field="price" value="${bet.price ?? ''}" placeholder="e.g. -110 or +150">
+        <input class="modal-input ${isUncertain(bet,'price')?'uncertain':''}" inputmode="numeric" data-scan-idx="${idx}" data-scan-field="price" value="${fmtOddsVal(bet.price)}" placeholder="${bet.kind==='parlay' ? 'Calculated from the legs' : 'e.g. -110 or +150'}">
+        ${bet.kind==='parlay' ? `<div class="scan-price-hint" id="scan-price-hint-${idx}">${scanPriceHint(bet)}</div>` : ''}
         <div class="scan-field-label ${isUncertain(bet,'wagerAmount')?'uncertain':''}">Wager / Risk ($)</div>
         <input class="modal-input ${isUncertain(bet,'wagerAmount')?'uncertain':''}" type="number" data-scan-idx="${idx}" data-scan-field="wagerAmount" value="${bet.wagerAmount ?? ''}" placeholder="100">
         <div id="scan-payout-${idx}">${scanPayoutPreviewHtml(bet)}</div>
@@ -2782,11 +2848,20 @@ document.getElementById('scanReviewList').addEventListener('input', (e)=>{
   const legMatch = /^legs\.(\d+)\.(label|price)$/.exec(field);
   if(legMatch){
     const [, li, sub] = legMatch;
-    bet.legs[Number(li)][sub] = sub === 'price' ? (el.value.trim() === '' ? null : Number(el.value)) : el.value;
+    bet.legs[Number(li)][sub] = sub === 'price' ? (el.value.trim() === '' ? null : Number(el.value.replace(/^\+/, ''))) : el.value;
+    if(sub === 'price') refreshScanCombined(bet, idx);
     return;
   }
   if(field === 'wagerAmount' || field === 'price'){
-    bet[field] = el.value.trim() === '' ? null : Number(el.value);
+    bet[field] = el.value.trim() === '' ? null : Number(el.value.replace(/^\+/, ''));
+    if(field === 'price'){
+      // Typed by hand: stop auto-calculating (cleared -> resume).
+      bet.priceManual = el.value.trim() !== '';
+      if(bet.priceManual) bet.priceSource = 'manual';
+      else { bet.priceSource = null; refreshScanCombined(bet, idx); }
+      const hint = document.getElementById(`scan-price-hint-${idx}`);
+      if(hint) hint.innerHTML = scanPriceHint(bet);
+    }
     // Risk / To Win / Payout are always calculated live from wagerAmount +
     // price (the combined odds, for a parlay/teaser ticket) -- no separate
     // editable To Win field to keep in sync, just re-render the summary.
@@ -2800,6 +2875,13 @@ document.getElementById('scanReviewList').addEventListener('input', (e)=>{
 async function saveScannedBet(idx){
   const bet = scanResults[idx];
   if(!bet || bet.added) return true;
+  if(!isValidOdds(Number(bet.price)) && bet.kind === 'parlay'){
+    const c = scanCombinedFromLegs(bet);
+    if(c != null){ bet.price = c; bet.priceSource = 'legs'; }
+  }
+  if(!isValidOdds(Number(bet.price)) && bet.kind === 'parlay'){
+    throw new Error('Enter odds for every leg (combined odds calculate automatically), or type the combined odds.');
+  }
   const price = Number(bet.price);
   if(!isValidOdds(price)){ throw new Error('Enter valid American odds for one of your bets (e.g. -110 or +150).'); }
   const wagerAmount = Number(bet.wagerAmount);
@@ -2854,6 +2936,19 @@ document.getElementById('scanReviewList').addEventListener('click', async (e)=>{
   if(!el) return;
   const idx = Number(el.dataset.scanIdx);
   const errEl = document.getElementById('scanError');
+  if(el.dataset.scanAction === 'add-leg' || el.dataset.scanAction === 'remove-leg'){
+    const bet = scanResults[idx];
+    if(el.dataset.scanAction === 'add-leg') bet.legs.push({ label: '', price: null });
+    else if(bet.legs.length > 2) bet.legs.splice(Number(el.dataset.legIdx), 1);
+    if(bet.missingLegs) bet.missingLegs = Math.max(0, bet.missingLegs - (el.dataset.scanAction === 'add-leg' ? 1 : -1));
+    if(bet.priceSource !== 'slip' && !bet.priceManual){ bet.price = scanCombinedFromLegs(bet); bet.priceSource = bet.price != null ? 'legs' : null; }
+    renderScanReview();
+    if(el.dataset.scanAction === 'add-leg'){
+      const inputs = document.querySelectorAll(`[data-scan-card="${idx}"] [data-scan-field$=".label"]`);
+      inputs[inputs.length - 1]?.focus();
+    }
+    return;
+  }
   if(el.dataset.scanAction === 'discard'){
     scanResults[idx].discarded = !scanResults[idx].discarded;
     renderScanReview();

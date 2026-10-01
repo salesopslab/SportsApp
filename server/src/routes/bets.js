@@ -63,6 +63,28 @@ function wagerFromToWin(toWin, price) {
   return round2(wager);
 }
 
+// Parlay combined odds. Standard math: multiply each leg's decimal odds,
+// then convert back to American. (-300, -140, -165 -> 1.333 x 1.714 x 1.606
+// = 3.671 -> +267; $50 wins $133.55.) Only when EVERY leg has valid odds.
+export function americanToDecimal(price) {
+  const p = Number(price);
+  return p > 0 ? 1 + p / 100 : 1 + 100 / Math.abs(p);
+}
+export function decimalToAmerican(decimal) {
+  return decimal >= 2 ? Math.round((decimal - 1) * 100) : Math.round(-100 / (decimal - 1));
+}
+export function parlayPriceFromLegs(legs) {
+  if (!Array.isArray(legs) || legs.length < 2) return null;
+  if (!legs.every((l) => l && isValidAmericanOdds(l.price))) return null;
+  return decimalToAmerican(legs.reduce((acc, l) => acc * americanToDecimal(l.price), 1));
+}
+// Odds implied by a slip's own risk and to-win amounts ("$50/134" -> +268).
+export function priceFromRiskAndWin(wagerAmount, toWin) {
+  const w = Number(wagerAmount), win = Number(toWin);
+  if (!(w > 0) || !(win > 0)) return null;
+  return win >= w ? Math.round((win / w) * 100) : Math.round((-100 * w) / win);
+}
+
 // Fills in whichever of {wagerAmount, toWin} is missing, given the other
 // plus the odds, and always derives potentialPayout = wagerAmount + toWin
 // fresh from whatever the two end up being. Never overwrites a value that
@@ -535,7 +557,8 @@ Output ONLY a single JSON object, no markdown fences, no commentary, in exactly 
       "teaserPoints": number | null,             // teaser kind only
       "betDate": "YYYY-MM-DD" | null,            // only if a date is actually visible on the slip
       "sportsbook": string | null,               // e.g. "DraftKings", only if the logo/name is visible
-      "legs": [ { "label": string, "price": number | null } ],  // parlay kind only, one per leg, in slip order
+      "legs": [ { "label": string, "price": number | null } ],  // parlay kind only, one per leg, in slip order -- EVERY leg
+      "declaredLegCount": number | null,          // parlay kind only: the leg count printed on the slip, e.g. "PARLAY (3 TEAMS)" -> 3, "4-Leg Parlay" -> 4; null if not printed
       "confidence": "high" | "medium" | "low",
       "uncertainFields": string[]                // field names (or "legs[N]") you weren't confident reading -- empty array if none
     }
@@ -546,7 +569,9 @@ Rules:
 - If the image contains multiple separate bet slips or bets, return one object per bet in "bets", in the order they appear.
 - If you cannot make out a real bet slip at all, return { "bets": [] } -- never invent a plausible-looking bet.
 - Never guess a number you can't actually read. If odds, wager, or payout are illegible or not shown, use null and add that field's name to "uncertainFields" -- do not fill in a "typical" value.
-- Many slips show the risk and the win as two numbers together, like "$60/50", "Risk $60 to win $50", or a wager amount right next to a separate "to win" figure. The FIRST/larger number is always wagerAmount (what they risked); the SECOND is toWin (the profit if it hits) -- never report it as a second wager or add it to wagerAmount. If the slip instead shows a single combined "total payout" or "potential return" number (wager + profit together), that is neither wagerAmount nor toWin on its own -- read the actual risk and win amounts separately if both are shown, or leave the field you can't independently verify as null rather than guessing from the payout.
+- Many slips show the risk and the win as two numbers together, like "$60/50", "$50/134", "Risk $60 to win $50", or a wager amount right next to a separate "to win" figure. The FIRST number (usually the one with the "$") is wagerAmount (what they risked) and the SECOND is toWin (the profit if it hits) -- whichever is larger. On a favorite the risk is bigger ("$60/50"); on a parlay or underdog the win is bigger ("$50/134"). Never report the second number as a wager or add it to wagerAmount.
+- Parlays: list EVERY leg on the slip -- each line with its own team/selection and odds is one leg (e.g. "Oct-01-26 05:00 PM [CFB]-[109] LIBERTY -300" is a leg: label "Liberty ML", price -300). If the slip prints a leg count ("PARLAY (3 TEAMS)"), your legs array must have that many entries; re-read the slip if it doesn't. Combined parlay odds are often NOT printed -- leave "price" null in that case; it is calculated from the legs. Do not compute it yourself.
+- A team name with no spread/total next to it, just odds, is a moneyline: label it "<Team> ML". If the slip instead shows a single combined "total payout" or "potential return" number (wager + profit together), that is neither wagerAmount nor toWin on its own -- read the actual risk and win amounts separately if both are shown, or leave the field you can't independently verify as null rather than guessing from the payout.
 - If only one of wagerAmount/toWin is visible next to the odds, leave the other null -- it will be calculated from the odds, not guessed by you.
 - "confidence" reflects your overall read of that one bet: "low" if more than one field is uncertain or the image is blurry/cropped, "high" only if every important field (event, selection, odds, wager) is clearly legible.
 - Round dollar amounts to the cent if shown with cents, otherwise a whole number.
@@ -608,8 +633,31 @@ Rules:
     // this is the same math POST / uses at save time, run here too so the
     // review screen shows real numbers before the person ever saves.
     const enrichedBets = bets.map((bet) => {
-      const payout = derivePayoutFields({ wagerAmount: bet.wagerAmount, toWin: bet.toWin, price: bet.price });
       const uncertainFields = Array.isArray(bet.uncertainFields) ? [...bet.uncertainFields] : [];
+      let priceSource = isValidAmericanOdds(bet.price) ? "slip" : null;
+      if (bet.kind === "parlay") {
+        const legs = Array.isArray(bet.legs) ? bet.legs : [];
+        const declared = Number(bet.declaredLegCount);
+        // The slip says N legs but fewer were read: flag it so the person
+        // adds the missing one(s) before saving.
+        if (Number.isInteger(declared) && declared > legs.length) {
+          bet.missingLegs = declared - legs.length;
+          if (!uncertainFields.includes("legs")) uncertainFields.push("legs");
+        }
+        // Combined odds not printed: calculate from the legs (only if none
+        // are missing), else from the slip's own risk / to-win amounts.
+        if (!priceSource) {
+          const fromLegs = !bet.missingLegs ? parlayPriceFromLegs(legs) : null;
+          const fromSlip = priceFromRiskAndWin(bet.wagerAmount, bet.toWin);
+          if (fromLegs != null && bet.market !== "teaser") { bet.price = fromLegs; priceSource = "legs"; }
+          else if (fromSlip != null) { bet.price = fromSlip; priceSource = "risk-and-win"; }
+        }
+      } else if (!priceSource) {
+        const fromSlip = priceFromRiskAndWin(bet.wagerAmount, bet.toWin);
+        if (fromSlip != null) { bet.price = fromSlip; priceSource = "risk-and-win"; }
+      }
+      bet.priceSource = priceSource;
+      const payout = derivePayoutFields({ wagerAmount: bet.wagerAmount, toWin: bet.toWin, price: bet.price });
       // The model read BOTH a risk and a win amount -- if they don't roughly
       // match what the odds imply, trust the numbers actually on the slip
       // (books round differently, apply boosts/promos) but flag it so the
