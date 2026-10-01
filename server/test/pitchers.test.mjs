@@ -63,5 +63,32 @@ test("late game that starts the next day in UTC still matches", () => {
   assert.equal(L("Los Angeles Dodgers", "San Diego Padres", "2026-10-01T02:10:00Z")?.homePitcher, "Late Home");
 });
 
+// Live inning/outs/count from MLB's feed (shape captured from the real API).
+const mlbLive = { dates: [{ date: "2026-09-30", games: [
+  { gameDate: "2026-10-01T02:00:00Z", status: { abstractGameState: "Live" },
+    teams: { away: { team: { name: "Chicago Cubs" } }, home: { team: { name: "San Diego Padres" } } },
+    linescore: { currentInning: 6, inningState: "Bottom", inningHalf: "Bottom", outs: 2, balls: 2, strikes: 2 } },
+  { gameDate: "2026-10-01T00:00:00Z", status: { abstractGameState: "Live" },
+    teams: { away: { team: { name: "Chicago White Sox" } }, home: { team: { name: "Houston Astros" } } },
+    linescore: { currentInning: 4, inningState: "Middle", inningHalf: "Top", outs: 3, balls: 0, strikes: 0 } },
+  { gameDate: "2026-09-30T18:00:00Z", status: { abstractGameState: "Final" },
+    teams: { away: { team: { name: "Philadelphia Phillies" } }, home: { team: { name: "Atlanta Braves" } } },
+    linescore: { currentInning: 10, inningState: "Bottom", outs: 3, balls: 0, strikes: 3 } },
+] }] };
+test("live MLB game: inning, outs and count", () => {
+  const live = m.parseMlbLinescores(mlbLive);
+  assert.deepEqual(live["code:CHC@SD"], { line: "Bot 6th", detail: "2 outs • 2-2 count", source: "MLB" });
+  assert.equal(m.lookupLiveState("mlb", live, "San Diego Padres", "Chicago Cubs")?.line, "Bot 6th");
+});
+test("between innings shows 'Mid 4th' with no stale count; finished games skipped", () => {
+  const live = m.parseMlbLinescores(mlbLive);
+  assert.deepEqual(live["code:CHW@HOU"], { line: "Mid 4th", detail: null, source: "MLB" });
+  assert.equal(live["code:PHI@ATL"], undefined);
+});
+test("game day uses the Eastern date (9pm Pacific still checks today's slate)", () => {
+  assert.deepEqual(m.easternGameDays(new Date("2026-10-01T04:08:00Z")), ["2026-10-01", "2026-09-30"]);
+  assert.deepEqual(m.easternGameDays(new Date("2026-10-01T02:00:00Z")), ["2026-09-30", "2026-09-29"]);
+});
+
 if (failures) { console.log(`\n${failures} test(s) failed`); process.exit(1); }
 console.log("\nAll pitcher tests passed");

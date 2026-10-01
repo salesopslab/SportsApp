@@ -488,6 +488,56 @@ function todayYMD() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// The game day as the leagues/feeds use it: US Eastern date. (UTC rolls over
+// at 5pm Pacific, which put every evening game under "tomorrow" and left
+// live rows with no inning/quarter.) Also returns the previous Eastern day,
+// for late West Coast games still going after midnight Eastern.
+export function easternGameDays(now = new Date()) {
+  const fmt = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const today = fmt(now);
+  const yesterday = fmt(new Date(now.getTime() - 24 * 3600 * 1000));
+  return today === yesterday ? [today] : [today, yesterday];
+}
+
+// MLB backup source for inning/outs/count: MLB's official Stats API (free,
+// no key). Used when SportsData.io has no live state for a game.
+let fetchMlbLive = (url) => fetch(url, { headers: { Accept: "application/json" } });
+export function __setMlbLiveFetch(fn) { fetchMlbLive = fn; }
+export function parseMlbLinescores(json) {
+  const map = {};
+  for (const d of json?.dates || []) {
+    for (const g of d.games || []) {
+      if (g.status?.abstractGameState !== "Live") continue;
+      const ls = g.linescore || {};
+      if (!ls.currentInning) continue;
+      const half = { Top: "Top", Bottom: "Bot", Middle: "Mid", End: "End" }[ls.inningState || ls.inningHalf] || "";
+      const line = `${half} ${ordinal(ls.currentInning)}`.trim();
+      const parts = [];
+      if (half === "Top" || half === "Bot") {
+        if (Number.isFinite(ls.outs)) parts.push(`${ls.outs} out${ls.outs === 1 ? "" : "s"}`);
+        if (Number.isFinite(ls.balls) && Number.isFinite(ls.strikes)) parts.push(`${ls.balls}-${ls.strikes} count`);
+      }
+      const away = toTeamCode("mlb", g.teams?.away?.team?.name);
+      const home = toTeamCode("mlb", g.teams?.home?.team?.name);
+      if (away && home) map[`code:${away}@${home}`] = { line, detail: parts.length ? parts.join(" • ") : null, source: "MLB" };
+    }
+  }
+  return map;
+}
+async function getMlbLiveFallback() {
+  const map = {};
+  for (const day of easternGameDays()) {
+    try {
+      const res = await fetchMlbLive(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${day}&hydrate=linescore,team`);
+      if (!res.ok) throw new Error(`MLB Stats API ${res.status}`);
+      Object.assign(map, parseMlbLinescores(await res.json()), map);
+    } catch (err) {
+      console.error(`MLB live fallback (${day}) failed:`, err.message);
+    }
+  }
+  return map;
+}
+
 function clockLabel(minutes, seconds) {
   if (minutes === null || minutes === undefined || seconds === null || seconds === undefined) return null;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
@@ -551,10 +601,15 @@ function buildHoopsLiveEntry(g) {
 export async function getLiveGameState(sportSlug) {
   if (!["nfl", "mlb", "nba", "ncaaf", "ncaab"].includes(sportSlug)) return {};
   return cached(
-    `livestate:${sportSlug}:${todayYMD()}`,
+    `livestate:${sportSlug}:${easternGameDays()[0]}`,
     async () => {
       try {
-        const games = await fetchLiveByDate(sportSlug, todayYMD());
+        const days = easternGameDays();
+        const perDay = await Promise.all(days.map((d) => fetchLiveByDate(sportSlug, d).catch((err) => {
+          console.error(`getLiveGameState(${sportSlug}) ${d} failed:`, err.message);
+          return [];
+        })));
+        const games = perDay.flat();
         const map = {};
         let inProgressSeen = 0;
         for (const g of games || []) {
@@ -581,8 +636,13 @@ export async function getLiveGameState(sportSlug) {
         // narrows it down next time it runs: 0 games fetched points to a
         // request/auth issue for this specific call; games fetched but 0
         // in-progress/0 entries points to a data-shape or key-matching issue.
+        if (sportSlug === "mlb") {
+          // Fill any in-progress game SportsData.io didn't cover.
+          const backup = await getMlbLiveFallback();
+          for (const [k, v] of Object.entries(backup)) if (!map[k]) map[k] = v;
+        }
         console.log(
-          `getLiveGameState(${sportSlug}): fetched ${Array.isArray(games) ? games.length : 0} games, ${inProgressSeen} in progress, built ${Object.keys(map).length} live-state entries`
+          `getLiveGameState(${sportSlug}) [${days.join(", ")}]: fetched ${games.length} games, ${inProgressSeen} in progress, built ${Object.keys(map).length} live-state entries`
         );
         return map;
       } catch (err) {
