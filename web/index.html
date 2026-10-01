@@ -252,6 +252,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
    a separate scroll box inside the screen wouldn't take a finger swipe on
    iPhone. The input row is pinned just above the bottom menu instead. */
 .chat-log{ flex:1; padding:16px 0; display:flex; flex-direction:column; gap:14px; }
+/* iPhone (WebKit) bug: a scroll area that opened short (an empty chat) can
+   stay unscrollable after messages are added, until something repaints it --
+   which is why it scrolled only while the mic's pulse animation was running.
+   Its own compositing layer keeps it scrollable; refreshChatScroll() also
+   re-arms it after every new message. */
+#chat.screen{ -webkit-transform:translateZ(0); transform:translateZ(0); will-change:scroll-position; touch-action:pan-y; }
 .chat-log > .msg{ flex-shrink:0; }
 .msg{ max-width:82%; padding:12px 14px; border-radius:14px; font-size:14px; line-height:1.55; white-space:pre-wrap; }
 .msg.ai{ background:var(--surface); align-self:flex-start; border-bottom-left-radius:4px; }
@@ -4459,9 +4465,22 @@ function wireInjurySection(root){
 
 // The chat screen is the scroller (see .chat-log CSS).
 function chatScroller(){ return document.getElementById('chat'); }
+// Re-arms iOS scrolling after the content height changes (see #chat CSS).
+function refreshChatScroll(){
+  const sc = chatScroller();
+  if(!sc) return;
+  requestAnimationFrame(()=>{
+    const top = sc.scrollTop;
+    sc.style.overflowY = 'hidden';
+    void sc.offsetHeight; // force layout
+    sc.style.overflowY = '';
+    sc.scrollTop = top;
+  });
+}
 function scrollChatToBottom(){
   const sc = chatScroller();
   if(sc) sc.scrollTop = sc.scrollHeight;
+  refreshChatScroll();
 }
 // For a long answer, show its beginning (not its last line) so it reads top-down.
 function scrollChatToMsg(el){
@@ -4469,7 +4488,10 @@ function scrollChatToMsg(el){
   if(!sc || !el) return;
   const row = document.querySelector('#chat .chat-input-row');
   const visible = sc.clientHeight - (row ? row.offsetHeight : 0) - 90;
-  if(el.offsetHeight > visible) sc.scrollTop = Math.max(0, sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 12);
+  if(el.offsetHeight > visible){
+    sc.scrollTop = Math.max(0, sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 12);
+    refreshChatScroll();
+  }
   else scrollChatToBottom();
 }
 function addMsg(text, who){
