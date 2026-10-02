@@ -5273,7 +5273,7 @@ setInterval(refreshBigLines, 3 * 60 * 1000);
   try{ who = localStorage.getItem('betedge_impersonating'); }catch{}
   if(!who || !authToken) { try{ localStorage.removeItem('betedge_impersonating'); }catch{} return; }
   const bar = document.createElement('div');
-  bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;background:#e8a33d;color:#1a1a1a;font:600 13px/1.4 inherit;padding:8px 16px;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;';
+  bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;padding-top:calc(8px + env(safe-area-inset-top,0px));background:#e8a33d;color:#1a1a1a;font:600 13px/1.4 inherit;padding-left:16px;padding-right:16px;padding-bottom:8px;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;';
   const label = document.createElement('span');
   label.textContent = 'Admin view: logged in as ' + who;
   const exit = document.createElement('button');
@@ -5285,6 +5285,47 @@ setInterval(refreshBigLines, 3 * 60 * 1000);
   });
   bar.append(label, exit);
   document.body.appendChild(bar);
+})();
+
+// Auto-update: phones (especially iPhone home-screen apps and Safari tabs
+// left open for days) can keep running an old copy of the app long after a
+// new version ships. Each deploy changes the page's Last-Modified time, so we
+// compare the copy that's running with the one on the server and reload when
+// a newer one exists. Checked on open, whenever the app comes back to the
+// foreground, and every 10 minutes while it's in use. A reload is never
+// forced while someone is typing; it waits for the next check instead.
+(function(){
+  const loaded = Date.parse(document.lastModified);
+  if(!Number.isFinite(loaded)) return;
+  const RELOAD_KEY = 'betedge_update_reload_at';
+  let checking = false;
+  function typing(){
+    const a = document.activeElement;
+    return !!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable) && a.value);
+  }
+  async function check(){
+    if(checking || document.visibilityState === 'hidden') return;
+    checking = true;
+    try{
+      const res = await fetch('/', { method:'HEAD', cache:'no-store' });
+      const live = Date.parse(res.headers.get('last-modified') || '');
+      if(!res.ok || !Number.isFinite(live) || live <= loaded + 1000) return;
+      // Guard against a reload loop if a cache somewhere keeps serving the old copy.
+      let last = 0;
+      try{ last = Number(sessionStorage.getItem(RELOAD_KEY)) || 0; }catch{}
+      if(Date.now() - last < 2 * 60 * 1000) return;
+      if(typing()) return;
+      try{ sessionStorage.setItem(RELOAD_KEY, String(Date.now())); }catch{}
+      console.log('[update] newer version found, reloading');
+      location.reload();
+    }catch{ /* offline or blocked: try again later */ }
+    finally{ checking = false; }
+  }
+  check();
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') check(); });
+  window.addEventListener('pageshow', (e) => { if(e.persisted) check(); });
+  window.addEventListener('focus', check);
+  setInterval(check, 10 * 60 * 1000);
 })();
 
 // Marketing email toggle (account window)
