@@ -15,7 +15,7 @@ import fantasyRouter from "./routes/fantasy.js";
 import favoritesRouter from "./routes/favorites.js";
 import picksRouter from "./routes/picks.js";
 import { timezoneMiddleware } from "./services/timeService.js";
-import { runPickers } from "./services/pickerService.js";
+import { runDailyIfDue } from "./services/pickerService.js";
 
 const app = express();
 // Render puts the app behind a reverse proxy, so without this every request
@@ -56,15 +56,16 @@ app.use("/api/fantasy", fantasyRouter);
 app.use("/api/favorites", favoritesRouter);
 app.use("/api/picks", picksRouter);
 
-// Built-in pickers: post picks on games starting soon and grade finished
-// ones, every 2 hours while the server is up (5 minutes after boot first).
-// An outside hourly ping (see .github/workflows/pickers.yml) wakes a sleeping
-// server and runs them too; a database lock stops two runs overlapping.
+// Built-in pickers run once a day, at about 8 AM Pacific (PICKERS_DAILY_HOUR):
+// they pick games starting in the next 24 hours and grade finished ones.
+// The server checks hourly whether today's run is due; a daily GitHub
+// Actions ping (.github/workflows/pickers.yml) wakes a sleeping server and
+// triggers the same check. picker_runs makes sure it only runs once a day.
 // Set PICKERS_AUTO=off to disable.
 if (process.env.PICKERS_AUTO !== "off" && process.env.DATABASE_URL) {
-  const run = () => runPickers().catch((err) => console.error("[pickers] run failed:", err.message));
-  setTimeout(run, 5 * 60 * 1000);
-  setInterval(run, 2 * 60 * 60 * 1000);
+  const check = () => runDailyIfDue().catch((err) => console.error("[pickers] daily check failed:", err.message));
+  setTimeout(check, 5 * 60 * 1000);
+  setInterval(check, 60 * 60 * 1000);
 }
 
 const port = process.env.PORT || 8080;

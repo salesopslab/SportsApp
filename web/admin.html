@@ -198,7 +198,7 @@ select.tier-select.flash-error{ border-color:var(--red); }
       </div>
 
       <div class="section" id="pickersSection">
-        <h2>Pickers <span class="tag">post picks ~0.5–10h before kickoff · grade finals · runs every 2h</span></h2>
+        <h2>Pickers <span class="tag">runs once a day at ~8 AM PT · picks games in the next 24h · grades finals</span></h2>
         <div class="pk-actions">
           <button type="button" id="pickersPreview">Preview (saves nothing)</button>
           <button type="button" id="pickersRun">Run pickers now</button>
@@ -553,7 +553,7 @@ async function runPickersFromAdmin(dry){
   const out = document.getElementById('pickersOut');
   const btns = [document.getElementById('pickersPreview'), document.getElementById('pickersRun')];
   btns.forEach(b => b.disabled = true);
-  out.textContent = dry ? 'Checking games starting in the next 10 hours…' : 'Running the pickers…';
+  out.textContent = dry ? 'Checking games starting in the next 24 hours…' : 'Running the pickers…';
   try{
     const res = await fetch(`${API}/api/admin/picks/run`, { method:'POST', headers:{ 'Content-Type':'application/json', 'x-admin-key': currentKey }, body: JSON.stringify({ dry }) });
     const d = await res.json().catch(() => ({}));

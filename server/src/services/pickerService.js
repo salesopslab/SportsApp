@@ -30,8 +30,10 @@ export function inSeason(sport, d = new Date()) {
   return start <= end ? md >= start && md <= end : md >= start || md <= end;
 }
 
-// Posting windows (hours before kickoff) and caps.
-const WINDOW = { [LINE]: [0.5, 4], [STATS]: [0.5, 10], [VALUE]: [0.5, 10] };
+// Runs once a day (about 8 AM Pacific): each run covers every game starting
+// in the next 24 hours and grades everything that has finished.
+const WINDOW = { [LINE]: [0.5, 24], [STATS]: [0.5, 24], [VALUE]: [0.5, 24] };
+export const DAILY_HOUR = Number(process.env.PICKERS_DAILY_HOUR || 8); // Pacific
 const DAILY_CAP = 8;       // per picker, per Pacific day (by posting time)
 const DAILY_SPORT_CAP = 4; // per picker, per sport, per day
 const GRADE_AFTER_HOURS = 2.5; // start checking for a final this long after kickoff
@@ -373,7 +375,7 @@ async function postPicks({ now, dryRun, log }) {
     try { games = await getOddsForSport(sport); } catch (err) { log.errors.push(`${sport} odds: ${err.message}`); continue; }
     const soon = (games || []).filter((g) => {
       const t = Date.parse(g.commenceTime);
-      return t - now > hours(0.5) && t - now <= hours(10);
+      return t - now > hours(0.5) && t - now <= hours(24);
     });
     if (!soon.length) continue;
     let ratings = null;
@@ -449,6 +451,25 @@ async function gradeFinished({ now, dryRun, log }) {
       else log.errors.push(`grade ${p.id}: ${r.error}`);
     }
   }
+}
+
+// Once-a-day scheduling: the first check at or after DAILY_HOUR (Pacific)
+// on a given day claims that day in picker_runs and runs; every other check
+// that day is a no-op. Safe to call as often as you like (hourly timer on
+// the server + the GitHub Actions ping).
+export async function runDailyIfDue({ now = Date.now() } = {}) {
+  if (!pool) return { ok: false, error: "No database." };
+  await ensureSchema();
+  const d = new Date(now);
+  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hourCycle: "h23" }).format(d));
+  const day = pacificDay(d);
+  if (hour < DAILY_HOUR) return { ok: true, due: false, reason: `Runs at ${DAILY_HOUR}:00 Pacific; it's ${hour}:00.`, day };
+  const claim = await pool.query("INSERT INTO picker_runs (day) VALUES ($1) ON CONFLICT (day) DO NOTHING RETURNING day", [day]);
+  if (!claim.rows.length) return { ok: true, due: false, reason: `Already ran today (${day}).`, day };
+  const result = await runPickers({ now });
+  await pool.query("UPDATE picker_runs SET finished_at = now(), summary = $2 WHERE day = $1", [day, JSON.stringify({ posted: result.posted?.length || 0, graded: result.graded?.length || 0, errors: result.errors || [], error: result.error || null })]);
+  if (result.ok === false) await pool.query("DELETE FROM picker_runs WHERE day = $1", [day]); // let a later check retry
+  return { ...result, due: true, day };
 }
 
 // One run at a time across all server instances (Postgres advisory lock).

@@ -366,6 +366,14 @@ export function ensureSchema() {
       DROP TRIGGER IF EXISTS picks_guard_trg ON picks;
       CREATE TRIGGER picks_guard_trg BEFORE UPDATE OR DELETE ON picks FOR EACH ROW EXECUTE FUNCTION picks_guard();
 
+      -- One row per Pacific day the built-in pickers ran (once-a-day schedule).
+      CREATE TABLE IF NOT EXISTS picker_runs (
+        day TEXT PRIMARY KEY,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        finished_at TIMESTAMPTZ,
+        summary JSONB
+      );
+
       -- Games a user starred for the Favorites tab. Team names and kickoff
       -- are stored with the star so the tab can still list a game after the
       -- sportsbooks drop it from the odds feed.

@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { pool, ensureSchema } from "../db.js";
 import { buildLeaderboard, rangeFilter, toPublic, toCsv, pickersDisagree } from "../services/picksService.js";
 import { savePick, gradePick } from "../services/ledgerService.js";
-import { runPickers } from "../services/pickerService.js";
+import { runPickers, runDailyIfDue } from "../services/pickerService.js";
 
 // Public picks ledger. Writes (ingest, grade) need PICKS_INGEST_TOKEN;
 // everything else is public on purpose — it's the trust page.
@@ -56,12 +56,15 @@ router.post("/grade", requireIngestToken, async (req, res) => {
   }
 });
 
-// POST /api/picks/run — run the three built-in pickers now: post picks on
-// games starting soon and grade finished ones. Called on a schedule.
-// Body: { dry?: true (show what would be posted, save nothing), post?: false, grade?: false }
+// POST /api/picks/run — run the three built-in pickers: pick games starting
+// in the next 24h and grade finished ones.
+// Body: { daily: true } = the scheduled once-a-day run (no-op if today's
+// already done or it's before the run hour); otherwise runs now.
+// { dry: true } previews without saving; post/grade: false skip a half.
 router.post("/run", requireIngestToken, async (req, res) => {
   if (needDb(res)) return;
   try {
+    if (req.body?.daily) return res.json(await runDailyIfDue());
     res.json(await runPickers({ dryRun: !!req.body?.dry, post: req.body?.post !== false, grade: req.body?.grade !== false }));
   } catch (err) {
     console.error("picks run:", err);

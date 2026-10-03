@@ -42,7 +42,7 @@ globalThis.fetch = async (url) => {
   throw new Error("Unmocked fetch: " + u);
 };
 const { pool, ensureSchema } = await import("../src/db.js");
-const { runPickers } = await import("../src/services/pickerService.js");
+const { runPickers, runDailyIfDue } = await import("../src/services/pickerService.js");
 await ensureSchema();
 await pool.query("TRUNCATE odds_snapshots");
 await pool.query("ALTER TABLE picks DISABLE TRIGGER picks_guard_trg"); await pool.query("DELETE FROM picks"); await pool.query("ALTER TABLE picks ENABLE TRIGGER picks_guard_trg");
@@ -93,6 +93,22 @@ await test("a second run doesn't double-post or re-grade", async () => {
 await test("only one run at a time", async () => {
   const [a, b] = await Promise.all([runPickers({ dryRun: true }), runPickers({ dryRun: true })]);
   assert.ok([a, b].some((x) => x.error === "A picker run is already in progress.") || [a, b].every((x) => x.ok));
+});
+await test("once a day: not before 8 AM Pacific, then exactly once", async () => {
+  await pool.query("DELETE FROM picker_runs");
+  const early = await runDailyIfDue({ now: Date.UTC(2026, 0, 5, 14) }); // 6 AM PST
+  assert.equal(early.due, false);
+  const first = await runDailyIfDue({ now: Date.UTC(2026, 0, 5, 17) }); // 9 AM PST
+  assert.equal(first.due, true, JSON.stringify(first));
+  assert.equal(first.day, "2026-01-05");
+  const again = await runDailyIfDue({ now: Date.UTC(2026, 0, 5, 22) });
+  assert.equal(again.due, false);
+  assert.match(again.reason, /Already ran today/);
+  const next = await runDailyIfDue({ now: Date.UTC(2026, 0, 6, 17) });
+  assert.equal(next.due, true);
+  const { rows } = await pool.query("SELECT day, finished_at FROM picker_runs ORDER BY day");
+  assert.deepEqual(rows.map((r) => r.day), ["2026-01-05", "2026-01-06"]);
+  assert.ok(rows.every((r) => r.finished_at));
 });
 await pool.end();
 if (failures) { console.log(`${failures} picker run test(s) failed`); process.exit(1); }
