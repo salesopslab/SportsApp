@@ -2017,6 +2017,7 @@ function openAuthModal(mode = 'login'){
   document.getElementById('authPassword').value = '';
   document.getElementById('authReferralCode').value = storedReferralCode();
   setAuthMode(mode);
+  if(window.resetPasswordToggles) window.resetPasswordToggles();
 }
 function closeAuthModal(){
   document.getElementById('authModal').classList.add('hidden');
@@ -6054,5 +6055,6 @@ if(authToken) favSyncFromServer();
 
 <script src="/fantasy-edge.js" defer></script>
 <script src="/record.js" defer></script>
+<script src="/password-toggle.js" defer></script>
 </body>
 </html>
