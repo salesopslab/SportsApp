@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { runPickers } from "../services/pickerService.js";
-import { prelaunchReset } from "../services/ledgerService.js";
 import { pool } from "../db.js";
 import { getLatestUsage, getUsageHistory } from "../services/usageService.js";
 import { TIERS, TIER_RANK, effectiveTier } from "../services/tierService.js";
@@ -408,19 +407,6 @@ router.post("/stripe/migrate-subscribers", requireAdminKey, async (req, res) => 
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "Subscriber migration failed.", detail: err.message });
-  }
-});
-
-// TEMPORARY (remove after use): pre-launch ledger reset. Body must be
-// { confirm: "RESET" }. Refuses once anything has been graded or started.
-router.post("/picks/prelaunch-reset", requireAdminKey, async (req, res) => {
-  if (req.body?.confirm !== "RESET") return res.status(400).json({ error: 'Send { "confirm": "RESET" }.' });
-  try {
-    const r = await prelaunchReset();
-    res.status(r.ok ? 200 : 409).json(r);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Reset failed.", detail: err.message });
   }
 });
 

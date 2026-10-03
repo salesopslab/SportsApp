@@ -72,39 +72,4 @@ export async function gradePick({ id, result, closing_odds }) {
   }
 }
 
-// One-time pre-launch reset (used once, then removed): clears the ledger only
-// if nothing has been graded, no pick's game has started, and every pick is
-// under 24 hours old — i.e. before anything could have counted.
-export async function prelaunchReset() {
-  await ensureSchema();
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("LOCK TABLE picks IN ACCESS EXCLUSIVE MODE");
-    const { rows } = await client.query(`SELECT count(*)::int AS total,
-        count(*) FILTER (WHERE result <> 'pending')::int AS graded,
-        count(*) FILTER (WHERE kickoff_at <= now())::int AS started,
-        count(*) FILTER (WHERE created_at < now() - interval '24 hours')::int AS old
-      FROM picks`);
-    const c = rows[0];
-    if (c.graded || c.started || c.old) {
-      await client.query("ROLLBACK");
-      return { ok: false, error: `Refused: ${c.graded} graded, ${c.started} already started, ${c.old} older than 24h.`, counts: c };
-    }
-    const { rows: removed } = await client.query("SELECT id, picker, bet, game, created_at FROM picks ORDER BY id");
-    await client.query("ALTER TABLE picks DISABLE TRIGGER picks_guard_trg");
-    await client.query("DELETE FROM picks");
-    await client.query("ALTER TABLE picks ENABLE TRIGGER picks_guard_trg");
-    await client.query("DELETE FROM picker_runs");
-    await client.query("COMMIT");
-    console.log(`[ledger] pre-launch reset removed ${removed.length} picks: ${removed.map((r) => r.id).join(",")}`);
-    return { ok: true, removed };
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
 export { CONFIDENCES };
