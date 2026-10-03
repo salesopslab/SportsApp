@@ -197,6 +197,13 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .mover-alert-close{ background:none; border:none; color:var(--sub); font-size:18px; line-height:1; cursor:pointer; padding:2px 4px; flex-shrink:0; }
 
 .big-move-badge{ display:inline-flex; align-items:center; gap:3px; font-size:10.5px; font-weight:700; color:var(--amber); background:rgba(199,127,29,0.12); border:1px solid var(--amber); padding:2px 7px; border-radius:20px; margin-left:6px; white-space:nowrap; }
+.bl-filters{ display:flex; gap:8px; overflow-x:auto; padding:10px 20px 4px; scrollbar-width:none; }
+.bl-filters::-webkit-scrollbar{ display:none; }
+.bl-filters .status-filter{ flex-shrink:0; font-family:inherit; }
+.bl-filters .status-filter .n{ opacity:.7; margin-left:3px; font-weight:500; }
+.bl-group{ font-size:11px; font-weight:700; letter-spacing:0.6px; color:var(--sub); text-transform:uppercase; padding:14px 20px 8px; }
+.mover-card-top{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.mover-card-top .sport-badge{ color:var(--text); }
 .mover-card{ background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px; margin:0 20px 12px; cursor:pointer; }
 .mover-card:active{ opacity:0.85; }
 .mover-card-top{ font-size:11px; color:var(--sub); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.3px; }
@@ -1334,6 +1341,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
   <div class="screen" id="bigLines">
     <button class="back-btn" id="bigLinesBackBtn">‹ Back</button>
     <div class="board-msg" style="text-align:left; padding:16px 20px 4px;">Games with the sharpest recent line moves — tap one for the full breakdown.</div>
+    <div class="bl-filters" id="bigLinesFilters" role="tablist" aria-label="Filter by sport"></div>
     <div id="bigLinesList"><div class="board-msg"><div class="spin"></div><div>Loading…</div></div></div>
   </div>
 
@@ -5199,8 +5207,39 @@ function spreadMoveRow(m){
 let bigLinesPaywalled = null; // null = not paywalled; else the requiredTier string
 let bigLinesSignedOut = false; // true when the 402 was "please log in", not "please upgrade"
 
+// Big Moves can be filtered by sport (All / NFL / CFB / ...). On "All" the
+// list is grouped under a heading per sport, sports in board-tab order.
+let bigLinesSport = 'all';
+const BIG_LINES_SPORT_ORDER = ALL_BOARD_SPORTS; // same order as the board's sport tabs
+function renderBigLinesFilters(){
+  const bar = document.getElementById('bigLinesFilters');
+  if(!bar) return;
+  const counts = {};
+  for(const m of bigLinesData) counts[m.sport] = (counts[m.sport] || 0) + 1;
+  const sports = Object.keys(counts).sort((a,b) => (BIG_LINES_SPORT_ORDER.indexOf(a)+99)%99 - (BIG_LINES_SPORT_ORDER.indexOf(b)+99)%99);
+  if(bigLinesSport !== 'all' && !counts[bigLinesSport]) bigLinesSport = 'all';
+  if(bigLinesPaywalled || sports.length < 2){ bar.innerHTML = ''; bar.style.display = 'none'; return; }
+  bar.style.display = '';
+  const btn = (key, label, n) => `<button type="button" class="status-filter${bigLinesSport === key ? ' active' : ''}" data-sport="${key}" role="tab" aria-selected="${bigLinesSport === key}">${label}<span class="n">${n}</span></button>`;
+  bar.innerHTML = btn('all', 'All', bigLinesData.length) + sports.map(sp => btn(sp, sportTabLabel(sp), counts[sp])).join('');
+  bar.querySelectorAll('.status-filter').forEach(b => b.addEventListener('click', () => {
+    bigLinesSport = b.dataset.sport;
+    renderBigLines();
+  }));
+}
+function bigLineCardHtml(m){
+  return `
+    <div class="mover-card" data-sport="${m.sport}" data-id="${m.gameId}" tabindex="0" role="button" aria-label="${sportTabLabel(m.sport)}: ${m.awayTeam} at ${m.homeTeam}, view breakdown">
+      <div class="mover-card-top">🔥 <span class="sport-badge">${sportTabLabel(m.sport)}</span> ${timeLabel(m.commenceTime)}</div>
+      <div class="mover-card-teams">${m.awayTeam} @ ${m.homeTeam}</div>
+      ${spreadMoveRow(m)}
+      <div class="mover-card-detail">${m.market}: ${m.movement}</div>
+      <div class="mover-card-time">Line moved ${formatMoveTime(m.lastSeen)}</div>
+    </div>`;
+}
 function renderBigLines(){
   const list = document.getElementById('bigLinesList');
+  renderBigLinesFilters();
   if(bigLinesPaywalled){
     list.innerHTML = bigLinesSignedOut
       ? upgradePromptHtml(bigLinesPaywalled, 'Sign in or create a free account to see sharp line moves across every sport.', { signedOut: true })
@@ -5212,15 +5251,18 @@ function renderBigLines(){
     list.innerHTML = '<div class="board-msg">No big line moves in the last few hours — check back soon.</div>';
     return;
   }
-  list.innerHTML = bigLinesData.map(m => `
-    <div class="mover-card" data-sport="${m.sport}" data-id="${m.gameId}" tabindex="0" role="button" aria-label="${m.awayTeam} at ${m.homeTeam}, view breakdown">
-      <div class="mover-card-top">🔥 ${m.sport.toUpperCase()} · ${timeLabel(m.commenceTime)}</div>
-      <div class="mover-card-teams">${m.awayTeam} @ ${m.homeTeam}</div>
-      ${spreadMoveRow(m)}
-      <div class="mover-card-detail">${m.market}: ${m.movement}</div>
-      <div class="mover-card-time">Line moved ${formatMoveTime(m.lastSeen)}</div>
-    </div>
-  `).join('');
+  const sportsPresent = [...new Set(bigLinesData.map(m => m.sport))];
+  if(bigLinesSport !== 'all'){
+    list.innerHTML = bigLinesData.filter(m => m.sport === bigLinesSport).map(bigLineCardHtml).join('');
+  }else if(sportsPresent.length < 2){
+    list.innerHTML = bigLinesData.map(bigLineCardHtml).join('');
+  }else{
+    const order = sportsPresent.sort((a,b) => (BIG_LINES_SPORT_ORDER.indexOf(a)+99)%99 - (BIG_LINES_SPORT_ORDER.indexOf(b)+99)%99);
+    list.innerHTML = order.map(sp => {
+      const ms = bigLinesData.filter(m => m.sport === sp);
+      return `<div class="bl-group">${sportTabLabel(sp)} · ${ms.length} move${ms.length === 1 ? '' : 's'}</div>` + ms.map(bigLineCardHtml).join('');
+    }).join('');
+  }
   list.querySelectorAll('.mover-card').forEach(card=>{
     const open = ()=>{
       const m = bigLinesData.find(x=>x.sport===card.dataset.sport && x.gameId===card.dataset.id);
@@ -5235,7 +5277,7 @@ function renderBigLines(){
 
 async function refreshBigLines(){
   try{
-    const res = await apiFetch('/api/movers?limit=10&minutes=180');
+    const res = await apiFetch('/api/movers?limit=30&minutes=180');
     if(res.status === 402){
       const data = await res.json().catch(()=>({}));
       bigLinesPaywalled = data.requiredTier || 'standard';
@@ -5264,7 +5306,10 @@ async function refreshBigLines(){
       // movers by the backend's scoring, so re-sorting by time doesn't
       // surface noise, just reorders what's already noteworthy).
       bigLinesData = (data.movers || []).slice().sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
-      bigMoverKeys = new Set(bigLinesData.map(m => moverKey(m.sport, m.gameId)));
+      // 🔥 badges on the board stay on the 10 sharpest moves (the API lists
+      // them sharpest first); the Big Moves screen shows up to 30 so each
+      // sport filter has some.
+      bigMoverKeys = new Set((data.movers || []).slice(0, 10).map(m => moverKey(m.sport, m.gameId)));
     }
     if(document.getElementById('bigLines').classList.contains('active')) renderBigLines();
     if(lastGames.length) renderBoardList(); // refresh flame badges on whatever's showing

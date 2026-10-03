@@ -27,7 +27,9 @@ function movementSummary(m) {
 // in the given window, across every sport, restricted to games that haven't
 // started yet (a move on a game already underway isn't actionable).
 router.get("/", withTier, requireTier("standard"), async (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 3, 10);
+  // Up to 30 so the Big Moves screen can filter by sport and still have a
+  // few per sport; the pop-up alerts ask for 3.
+  const limit = Math.min(Number(req.query.limit) || 3, 30);
   const minutes = Math.min(Number(req.query.minutes) || 60, 24 * 60);
 
   try {
