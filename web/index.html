@@ -262,6 +262,13 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .score-badge.live{ background:var(--red); color:#fff; }
 .score-num{ font-family:'Oswald',sans-serif; font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
 .game-row.final,.game-row.live{ opacity:0.9; }
+.board-search{ position:relative; padding:10px 20px 2px; }
+.board-search .chat-input{ padding:10px 38px 10px 38px; font-size:16px; }
+.board-search .bs-icon{ position:absolute; left:34px; top:50%; transform:translateY(-35%); color:var(--sub); pointer-events:none; display:flex; }
+.board-search .bs-clear{ position:absolute; right:28px; top:50%; transform:translateY(-35%); background:none; border:none; color:var(--sub); font-size:18px; line-height:1; padding:6px 8px; cursor:pointer; font-family:inherit; }
+.board-search .bs-clear[hidden]{ display:none; }
+.board-search input::-webkit-search-cancel-button, .board-search input::-webkit-search-decoration{ -webkit-appearance:none; appearance:none; display:none; }
+.search-note{ font-size:12px; color:var(--sub); padding:8px 20px 0; }
 .board-controls{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 20px 0; flex-wrap:wrap; }
 .status-filters{ display:flex; gap:6px; }
 .status-filter{ font-size:12px; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:6px 12px; border-radius:16px; cursor:pointer; }
@@ -1228,6 +1235,12 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
       <button type="button" class="sport-tab" data-sport="ncaaf">CFB</button>
       <button type="button" class="sport-tab" data-sport="ncaab">CBB</button>
     </div>
+    <div class="board-search" role="search">
+      <span class="bs-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+      <input class="chat-input" id="boardSearch" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search teams (e.g. Cowboys, Dodgers, Alabama)" aria-label="Search games by team name">
+      <button type="button" class="bs-clear" id="boardSearchClear" aria-label="Clear search" hidden>×</button>
+    </div>
+    <div class="search-note" id="boardSearchNote" hidden></div>
     <div class="board-controls">
       <div class="status-filters" id="statusFilters">
         <button class="status-filter active" data-filter="all">All</button>
@@ -4143,9 +4156,44 @@ let bigLinesData = [];
 let bigMoverKeys = new Set(); // `${sport}:${gameId}` currently flagged as a big move
 function moverKey(sport, gameId){ return `${sport}:${gameId}`; }
 
+// Team search: typing in the box searches every sport, not just the tab
+// you're on (so "Dodgers" works from the NFL tab). Matches city, nickname or
+// school, in any order: "la rams", "rams", "ohio st".
+let boardSearch = '';
+let searchAllGames = null;   // every sport's games, fetched when a search starts
+let searchAllAt = 0;
+let searchLoading = false;
+const TEAM_ALIASES = { niners:'49ers', bucs:'buccaneers', pats:'patriots', jags:'jaguars', cards:'cardinals', phins:'dolphins', commies:'commanders', sixers:'76ers', wolves:'timberwolves', mavs:'mavericks', cavs:'cavaliers', dbacks:'diamondbacks', 'd-backs':'diamondbacks', yanks:'yankees', bama:'alabama', st:'state', la:'los angeles', ny:'new york', sf:'san francisco', kc:'kansas city', tb:'tampa bay', lv:'las vegas', gb:'green bay', ne:'new england', okc:'oklahoma city', usc:'southern california', lsu:'louisiana state', ole:'ole miss' };
+function normTeam(t){ return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9& ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+function gameMatchesSearch(g, q){
+  const words = normTeam(`${g.awayTeam} ${g.homeTeam}`).split(' ');
+  const hay = words.join(' ');
+  return normTeam(q).split(' ').filter(Boolean).every(tok => {
+    return [tok, TEAM_ALIASES[tok]].filter(Boolean).some(t => words.some(w => w.startsWith(t)) || (t.length >= 3 && hay.includes(t)));
+  });
+}
+async function ensureSearchGames(){
+  if(currentSport === 'all' || searchLoading) return;
+  if(searchAllGames && Date.now() - searchAllAt < 3 * 60 * 1000) return;
+  searchLoading = true;
+  renderBoardList();
+  try{
+    const results = await Promise.allSettled(ALL_BOARD_SPORTS.map(sp =>
+      apiFetch(`/api/games/${sp}`).then(r => { if(!r.ok) throw new Error(r.status); return r.json(); }).then(d => (d.games || []).map(g => ({ ...g, sport: sp })))
+    ));
+    searchAllGames = results.filter(r => r.status === 'fulfilled').flatMap(r => r.value);
+    searchAllAt = Date.now();
+  }catch{ /* fall back to this tab's games */ }
+  finally{ searchLoading = false; }
+  if(boardSearch) renderBoardList();
+}
 function visibleGames(){
-  if(statusFilter === 'all') return lastGames;
-  return lastGames.filter(g => g.status === statusFilter);
+  let games = lastGames;
+  if(boardSearch){
+    games = (currentSport === 'all' ? lastGames : (searchAllGames || lastGames)).filter(g => gameMatchesSearch(g, boardSearch));
+  }
+  if(statusFilter === 'all') return games;
+  return games.filter(g => g.status === statusFilter);
 }
 
 function sortGames(games){
@@ -4165,6 +4213,20 @@ function sortGames(games){
 function renderBoardList(){
   const list = document.getElementById('boardList');
   const games = sortGames(visibleGames());
+  const note = document.getElementById('boardSearchNote');
+  if(note){
+    note.hidden = !boardSearch;
+    if(boardSearch) note.textContent = searchLoading && !searchAllGames ? 'Searching all sports…'
+      : `${games.length} game${games.length === 1 ? '' : 's'} matching “${boardSearch}” across all sports${statusFilter !== 'all' ? ` · ${statusFilter}` : ''}`;
+  }
+  if(boardSearch && searchLoading && !searchAllGames && games.length === 0){
+    list.innerHTML = '<div class="board-msg"><div class="spin"></div><div>Searching all sports…</div></div>';
+    return;
+  }
+  if(games.length === 0 && boardSearch){
+    list.innerHTML = `<div class="board-msg">No games found for “${escapeHtml(boardSearch)}”${statusFilter !== 'all' ? ` with status “${statusFilter}”` : ''}. Try a city or nickname — e.g. “Chiefs” or “Kansas City”. Games show up here once odds are posted (usually within a week of the game).</div>`;
+    return;
+  }
   if(games.length === 0){
     const msg = statusFilter === 'upcoming' ? 'No upcoming games in the next 7 days.'
       : statusFilter === 'live' ? 'No live games right now.'
@@ -4175,7 +4237,7 @@ function renderBoardList(){
     list.innerHTML = `<div class="board-msg">${msg}</div>`;
     return;
   }
-  list.innerHTML = games.map(g => renderGameRow(g)).join('');
+  list.innerHTML = games.map(g => renderGameRow(g, { showSport: !!boardSearch })).join('');
   wireFavStars(list, games);
   list.querySelectorAll('.game-row').forEach(row=>{
     const open = (e)=>{
@@ -4197,6 +4259,35 @@ function renderBoardList(){
     });
   });
   updateCountdowns();
+}
+
+// Search box wiring.
+(function(){
+  const input = document.getElementById('boardSearch');
+  const clear = document.getElementById('boardSearchClear');
+  let t = null;
+  input.addEventListener('input', () => {
+    clear.hidden = !input.value;
+    clearTimeout(t);
+    t = setTimeout(() => {
+      boardSearch = input.value.trim();
+      if(boardSearch) ensureSearchGames();
+      renderBoardList();
+    }, 150);
+  });
+  input.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape'){ clearBoardSearch(true); }
+    if(e.key === 'Enter'){ e.preventDefault(); input.blur(); }
+  });
+  clear.addEventListener('click', () => { clearBoardSearch(true); input.focus(); });
+})();
+function clearBoardSearch(render){
+  const input = document.getElementById('boardSearch');
+  input.value = '';
+  document.getElementById('boardSearchClear').hidden = true;
+  boardSearch = '';
+  if(render) renderBoardList();
+  else document.getElementById('boardSearchNote').hidden = true;
 }
 
 document.getElementById('sortToggle').addEventListener('click', ()=>{
@@ -5097,6 +5188,7 @@ document.querySelectorAll('.sport-tab').forEach(tab=>{
   tab.addEventListener('click', ()=>{
     document.querySelectorAll('.sport-tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
+    if(boardSearch) clearBoardSearch(false);
     loadBoard(tab.dataset.sport);
   });
 });
