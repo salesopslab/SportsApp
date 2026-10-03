@@ -166,12 +166,14 @@ export function lineMovementPick(sport, g, history) {
 }
 
 // ---- 2) Matchup Stats Picker ---------------------------------------------
+// Pro leagues only: in college, season point differential is dominated by
+// who you happened to play (FCS blowouts), so without a strength-of-schedule
+// model it would mislead. maxEdge: a gap this big vs the market is far more
+// likely missing information (injury, QB change) than a real edge — pass.
 const STATS_CFG = {
-  nfl: { minGames: 3, shrink: 4, hfa: 1.5, edge: 2.5 },
-  ncaaf: { minGames: 3, shrink: 3, hfa: 2.5, edge: 4 },
-  nba: { minGames: 8, shrink: 10, hfa: 2, edge: 3 },
-  ncaab: { minGames: 6, shrink: 8, hfa: 3, edge: 4 },
-  mlb: { minGames: 20, shrink: 30, hfaProb: 0.035, edge: 0.05 },
+  nfl: { minGames: 3, shrink: 4, hfa: 1.5, edge: 2.5, maxEdge: 8 },
+  nba: { minGames: 8, shrink: 10, hfa: 2, edge: 3, maxEdge: 9 },
+  mlb: { minGames: 20, shrink: 30, hfaProb: 0.035, edge: 0.05, maxEdge: 0.15 },
 };
 
 // ratings: { [normalized team name]: { games, pf, pa } } from season standings.
@@ -199,7 +201,7 @@ export function statsPick(sport, g, ratings) {
     const fair = mh && ma ? noVig(mh.price, ma.price) : null;
     if (!fair) return null;
     const edgeHome = pHome - fair.a;
-    if (Math.abs(edgeHome) < cfg.edge) return null;
+    if (Math.abs(edgeHome) < cfg.edge || Math.abs(edgeHome) > cfg.maxEdge) return null;
     const home = edgeHome > 0;
     const team = home ? g.homeTeam : g.awayTeam, price = (home ? mh : ma).price;
     const model = home ? pHome : 1 - pHome, market = home ? fair.a : fair.b;
@@ -218,7 +220,7 @@ export function statsPick(sport, g, ratings) {
   if (!sh || !sa || sh.point == null) return null;
   const marketHome = -sh.point; // market's projected home margin
   const edge = projHome - marketHome;
-  if (Math.abs(edge) < cfg.edge) return null;
+  if (Math.abs(edge) < cfg.edge || Math.abs(edge) > cfg.maxEdge) return null;
   const home = edge > 0;
   const side = home ? sh : sa, team = home ? g.homeTeam : g.awayTeam;
   if (side.price == null) return null;
@@ -277,8 +279,8 @@ export function valuePick(sport, g) {
 }
 
 // ---- Team ratings from ESPN standings ------------------------------------
-const ESPN_LEAGUE = { nfl: "football/nfl", ncaaf: "football/college-football", nba: "basketball/nba", ncaab: "basketball/mens-college-basketball", mlb: "baseball/mlb" };
-const ESPN_GROUP = { ncaaf: "80", ncaab: "50" }; // FBS / Division I
+const ESPN_LEAGUE = { nfl: "football/nfl", nba: "basketball/nba", mlb: "baseball/mlb" };
+const ESPN_GROUP = {};
 let standingsFetch = async (url) => {
   const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36", Accept: "application/json", Referer: "https://www.espn.com/" } });
   if (!res.ok) throw new Error(`ESPN standings ${res.status}`);
@@ -291,15 +293,22 @@ export function parseStandings(json) {
   const walk = (node) => {
     if (!node || typeof node !== "object") return;
     for (const e of node.standings?.entries || []) {
+      // Overall stats only: ESPN repeats every stat for home/away/division
+      // splits with a prefixed type ("homerecord_wins"); the overall one has
+      // type === its name, lowercased.
       const stat = (...names) => {
         for (const n of names) {
-          const s = (e.stats || []).find((x) => x.name === n || x.type === n);
+          const s = (e.stats || []).find((x) => x.name === n && (!x.type || x.type === n.toLowerCase()));
           if (s && Number.isFinite(Number(s.value))) return Number(s.value);
         }
         return null;
       };
-      const w = stat("wins"), l = stat("losses"), t = stat("ties") || 0;
-      const pf = stat("pointsFor", "runsFor", "runs"), pa = stat("pointsAgainst", "runsAgainst", "opponentRuns");
+      // Games from the overall "W-L(-T)" record when present (college
+      // standings often omit a separate losses stat).
+      const overall = (e.stats || []).find((x) => x.type === "total" || x.name === "overall");
+      const rec = String(overall?.displayValue || overall?.summary || "").match(/^(\d+)-(\d+)(?:-(\d+))?/);
+      const w = rec ? Number(rec[1]) : stat("wins"), l = rec ? Number(rec[2]) : stat("losses"), t = rec ? Number(rec[3] || 0) : stat("ties") || 0;
+      const pf = stat("pointsFor", "runsFor"), pa = stat("pointsAgainst", "runsAgainst");
       const games = (w ?? 0) + (l ?? 0) + t;
       const name = e.team?.displayName || [e.team?.location, e.team?.name].filter(Boolean).join(" ");
       if (!name || pf == null || pa == null || !games) continue;
@@ -312,6 +321,7 @@ export function parseStandings(json) {
 }
 
 export async function getTeamRatings(sport) {
+  if (!ESPN_LEAGUE[sport]) return null; // stats picker covers pro leagues only
   return cached(`picker-ratings:${sport}`, async () => {
     const group = ESPN_GROUP[sport] ? `?group=${ESPN_GROUP[sport]}` : "";
     const json = await standingsFetch(`https://site.api.espn.com/apis/v2/sports/${ESPN_LEAGUE[sport]}/standings${group}`);

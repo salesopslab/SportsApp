@@ -72,9 +72,12 @@ t("Matchup Stats: bets the side its power ratings like vs the spread", () => {
   assert.equal(statsPick("nfl", game({ spread: [{ name: H, point: -9.5, price: -110 }, { name: A, point: 9.5, price: -110 }] }), ratings), null); // edge too small
   assert.equal(statsPick("nfl", game(), { [H.toLowerCase()]: { games: 2, pf: 60, pa: 20 }, [A.toLowerCase()]: { games: 4, pf: 70, pa: 100 } }), null); // too few games
   assert.equal(statsPick("nfl", game(), {}), null);
+  assert.equal(statsPick("ncaaf", game(), ratings), null); // pro leagues only
+  const lopsided = { [H.toLowerCase()]: { games: 4, pf: 200, pa: 40 }, [A.toLowerCase()]: { games: 4, pf: 40, pa: 200 } };
+  assert.equal(statsPick("nfl", game(), lopsided), null); // gap too big vs market = missing info, pass
 });
 t("Matchup Stats: MLB uses run differential vs the no-vig moneyline", () => {
-  const ratings = { [H.toLowerCase()]: { games: 150, pf: 820, pa: 610 }, [A.toLowerCase()]: { games: 150, pf: 600, pa: 790 } };
+  const ratings = { [H.toLowerCase()]: { games: 150, pf: 760, pa: 680 }, [A.toLowerCase()]: { games: 150, pf: 690, pa: 720 } };
   const p = statsPick("mlb", game({ moneyline: [{ name: H, price: -120 }, { name: A, price: 100 }] }), ratings);
   assert.equal(p.bet, "Kansas City Chiefs ML");
   assert.match(p.reason, /no-vig market/);
@@ -101,6 +104,12 @@ t("ESPN standings parsing + team lookup", () => {
     { team: { displayName: "Denver Broncos" }, stats: [{ name: "wins", value: 1 }, { name: "losses", value: 3 }, { name: "pointsFor", value: 70 }, { name: "pointsAgainst", value: 95 }] },
   ] } }, { children: [{ standings: { entries: [{ team: { location: "Alabama", name: "Crimson Tide" }, stats: [{ name: "wins", value: 4 }, { name: "losses", value: 0 }, { name: "pointsFor", value: 160 }, { name: "pointsAgainst", value: 50 }] }] } }] }] };
   const r = parseStandings(json);
+  // College-style entry: overall record only via "total", split stats prefixed.
+  const cfb = parseStandings({ standings: { entries: [{ team: { displayName: "Michigan Wolverines" }, stats: [
+    { name: "wins", type: "wins", value: 4 }, { name: "pointsFor", type: "pointsfor", value: 150 }, { name: "pointsAgainst", type: "pointsagainst", value: 70 },
+    { name: "wins", type: "homerecord_wins", value: 3 }, { name: "pointsFor", type: "homerecord_pointsfor", value: 99 },
+    { name: "overall", type: "total", displayValue: "4-1" } ] }] } });
+  assert.deepEqual([cfb["michigan wolverines"].games, cfb["michigan wolverines"].pf], [5, 150]);
   assert.equal(r["kansas city chiefs"].games, 4);
   assert.equal(findTeam(r, "Alabama Crimson Tide").pf, 160);
   assert.equal(findTeam(r, "Nobody FC"), null);
