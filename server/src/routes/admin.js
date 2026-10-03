@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { Router } from "express";
 import { runPickers } from "../services/pickerService.js";
 import { toPublic, isRevealed } from "../services/picksService.js";
@@ -15,13 +16,17 @@ const router = Router();
 // rather than full accounts, since this isn't something regular users ever
 // need to reach. Set ADMIN_KEY in the environment; without it, these routes
 // stay locked (they never fall back to an open default).
+// Both sides are trimmed: the admin page already trims what's typed, so a
+// stray space or newline pasted into Render's ADMIN_KEY value used to make
+// the correct key look "invalid".
 function requireAdminKey(req, res, next) {
-  const configured = process.env.ADMIN_KEY;
+  const configured = String(process.env.ADMIN_KEY || "").trim();
   if (!configured) {
     return res.status(503).json({ error: "Admin dashboard isn't configured yet (set ADMIN_KEY)." });
   }
-  const provided = req.get("x-admin-key");
-  if (provided !== configured) {
+  const provided = Buffer.from(String(req.get("x-admin-key") || "").trim());
+  const want = Buffer.from(configured);
+  if (provided.length !== want.length || !crypto.timingSafeEqual(provided, want)) {
     return res.status(401).json({ error: "Invalid admin key." });
   }
   next();
