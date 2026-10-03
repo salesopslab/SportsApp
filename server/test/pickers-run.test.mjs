@@ -29,20 +29,20 @@ const scoresNfl = [
 const standings = { children: [{ standings: { entries: [
   [H, 4, 120, 80], [A, 4, 70, 100], [H2, 4, 100, 90], [A2, 4, 90, 100],
 ].map(([n, g, pf, pa]) => ({ team: { displayName: n }, stats: [{ name: "wins", value: g - 1 }, { name: "losses", value: 1 }, { name: "pointsFor", value: pf }, { name: "pointsAgainst", value: pa }] })) } }] };
-let oddsCalls = 0;
+let oddsCalls = 0, scoreCalls = 0;
 globalThis.fetch = async (url) => {
   const u = String(url);
   const ok = (body) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), headers: new Map() });
   if (u.includes("/sports/americanfootball_nfl/odds")) { oddsCalls++; return ok(oddsNfl); }
   if (u.endsWith("/odds") || u.includes("/odds?")) return ok([]);
-  if (u.includes("/sports/americanfootball_nfl/scores")) return ok(scoresNfl);
-  if (u.includes("/scores")) return ok([]);
+  if (u.includes("/sports/americanfootball_nfl/scores")) { scoreCalls++; return ok(scoresNfl); }
+  if (u.includes("/scores")) { scoreCalls++; return ok([]); }
   if (u.includes("espn.com") && u.includes("football/nfl")) return ok(standings);
   if (u.includes("espn.com")) return ok({});
   throw new Error("Unmocked fetch: " + u);
 };
 const { pool, ensureSchema } = await import("../src/db.js");
-const { runPickers, runDailyIfDue } = await import("../src/services/pickerService.js");
+const { runPickers, runDailyIfDue, gradeDueIfNeeded } = await import("../src/services/pickerService.js");
 await ensureSchema();
 await pool.query("TRUNCATE odds_snapshots");
 await pool.query("ALTER TABLE picks DISABLE TRIGGER picks_guard_trg"); await pool.query("DELETE FROM picks"); await pool.query("ALTER TABLE picks ENABLE TRIGGER picks_guard_trg");
@@ -129,6 +129,31 @@ await test("once a day: not before 8 AM Pacific, then exactly once", async () =>
   const { rows } = await pool.query("SELECT day, finished_at FROM picker_runs ORDER BY day");
   assert.deepEqual(rows.map((r) => r.day), ["2026-01-05", "2026-01-06"]);
   assert.ok(rows.every((r) => r.finished_at));
+});
+await test("frequent grading: grades a finished game soon after it ends, skips the scores API when nothing is due", async () => {
+  const { rows: cur } = await pool.query("SELECT COUNT(*)::int n FROM picks WHERE result='pending' AND kickoff_at < now() - interval '150 minutes'");
+  // Nothing finished is waiting: no scores calls at all.
+  if (!cur[0].n) {
+    const before = scoreCalls;
+    const idle = await gradeDueIfNeeded({ force: true });
+    assert.equal(idle.due, 0);
+    assert.equal(scoreCalls, before, "no API call when nothing is due");
+  }
+  // A pick on a game that ended: graded on the next check.
+  await pool.query(`INSERT INTO picks (picker, sport, game, game_id, kickoff_at, bet, odds, implied_prob, confidence, reason, created_at)
+    VALUES ('The Fader','nfl','Miami Dolphins @ Buffalo Bills','g-done', now() - interval '5 hours', 'Buffalo Bills -3', -110, 0.5238, 'Medium', 'Test.', now() - interval '6 hours')
+    ON CONFLICT DO NOTHING`);
+  const r = await gradeDueIfNeeded({ force: true });
+  assert.ok(r.due >= 1, JSON.stringify(r));
+  const { rows } = await pool.query("SELECT result FROM picks WHERE picker='The Fader' AND game_id='g-done' AND bet='Buffalo Bills -3'");
+  assert.equal(rows[0].result, "win");
+  // Throttled: an unforced check right after doesn't call the API again.
+  await pool.query(`INSERT INTO picks (picker, sport, game, game_id, kickoff_at, bet, odds, implied_prob, confidence, reason, created_at)
+    VALUES ('The Professor','nfl','Miami Dolphins @ Buffalo Bills','g-done', now() - interval '5 hours', 'Under 50.5', -110, 0.5238, 'Low', 'Test.', now() - interval '6 hours')`);
+  const before = scoreCalls;
+  const t = await gradeDueIfNeeded();
+  assert.match(t.reason || "", /Checked under/);
+  assert.equal(scoreCalls, before);
 });
 await pool.end();
 if (failures) { console.log(`${failures} picker run test(s) failed`); process.exit(1); }

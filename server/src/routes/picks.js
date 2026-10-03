@@ -4,7 +4,7 @@ import { pool, ensureSchema } from "../db.js";
 import { buildLeaderboard, rangeFilter, toPublic, toCsv, pickersDisagree, viewFor, isRevealed } from "../services/picksService.js";
 import { withTier } from "../middleware/tier.js";
 import { savePick, gradePick, hasPickAccess } from "../services/ledgerService.js";
-import { runPickers, runDailyIfDue } from "../services/pickerService.js";
+import { runPickers, runDailyIfDue, gradeDueIfNeeded } from "../services/pickerService.js";
 import { unlockedPickIds } from "../services/pickPackService.js";
 
 // Public picks ledger. Writes (ingest, grade) need PICKS_INGEST_TOKEN;
@@ -71,6 +71,19 @@ router.post("/run", requireIngestToken, async (req, res) => {
   } catch (err) {
     console.error("picks run:", err);
     res.status(500).json({ error: "Picker run failed.", detail: err.message });
+  }
+});
+
+// POST /api/picks/grade-due — grade any pending picks whose games have
+// finished (no new picks). Pinged every 30 min by GitHub Actions so results
+// land soon after the final whistle even when the server was asleep.
+router.post("/grade-due", requireIngestToken, async (_req, res) => {
+  if (needDb(res)) return;
+  try {
+    res.json(await gradeDueIfNeeded({ force: true }));
+  } catch (err) {
+    console.error("picks grade-due:", err);
+    res.status(500).json({ error: "Grading failed.", detail: err.message });
   }
 });
 

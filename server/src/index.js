@@ -16,7 +16,7 @@ import favoritesRouter from "./routes/favorites.js";
 import picksRouter from "./routes/picks.js";
 import pickPacksRouter from "./routes/pickPacks.js";
 import { timezoneMiddleware } from "./services/timeService.js";
-import { runDailyIfDue } from "./services/pickerService.js";
+import { runDailyIfDue, gradeDueIfNeeded } from "./services/pickerService.js";
 
 const app = express();
 // Render puts the app behind a reverse proxy, so without this every request
@@ -68,6 +68,13 @@ if (process.env.PICKERS_AUTO !== "off" && process.env.DATABASE_URL) {
   const check = () => runDailyIfDue().catch((err) => console.error("[pickers] daily check failed:", err.message));
   setTimeout(check, 5 * 60 * 1000);
   setInterval(check, 60 * 60 * 1000);
+  // Grade finished games every 10 minutes (only hits the scores API when a
+  // pending pick's game should be over), so the AI Record updates soon
+  // after each game instead of at the next morning run.
+  const grade = () => gradeDueIfNeeded().then((r) => { if (r.graded?.length) console.log(`[pickers] graded ${r.graded.length} finished pick(s)`); })
+    .catch((err) => console.error("[pickers] grading check failed:", err.message));
+  setTimeout(grade, 60 * 1000);
+  setInterval(grade, 10 * 60 * 1000);
 }
 
 const port = process.env.PORT || 8080;

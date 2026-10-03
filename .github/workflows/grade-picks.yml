@@ -1,0 +1,36 @@
+# Grades AI Record picks soon after their games finish (every 30 minutes).
+# The server also checks every 10 minutes while it's awake; this ping wakes
+# a sleeping Render free-tier server so results never wait until morning.
+# Only calls the scores API when a pending pick's game should be over.
+# Uses the same PICKS_INGEST_TOKEN repository secret as the daily pickers run.
+name: Grade finished picks
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: grade-picks
+  cancel-in-progress: false
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Wake the backend
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 60 https://betedge-ai-backend.onrender.com/health; then exit 0; fi
+            sleep 20
+          done
+          echo "Backend didn't wake up"; exit 1
+      - name: Grade finished games
+        env:
+          TOKEN: ${{ secrets.PICKS_INGEST_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "Add the PICKS_INGEST_TOKEN repository secret"; exit 1; fi
+          curl -fsS --max-time 240 -X POST https://betedge-ai-backend.onrender.com/api/picks/grade-due \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}' \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('reason') or ''); print('due', d.get('due'), 'graded', len(d.get('graded') or []), 'errors', d.get('errors'))"

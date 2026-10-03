@@ -475,6 +475,29 @@ export async function runDailyIfDue({ now = Date.now() } = {}) {
   return { ...result, due: true, day };
 }
 
+// Grade-only check, run every few minutes (server timer + GitHub Actions
+// ping) so a pick flips to win/loss shortly after its game ends instead of
+// waiting for the next 8 AM run. Only calls the scores API when some pending
+// pick's game should be over, and at most once per GRADE_MIN_INTERVAL_MIN.
+const GRADE_MIN_INTERVAL_MIN = Number(process.env.PICKS_GRADE_INTERVAL_MIN || 10);
+let lastGradeCheck = 0;
+export async function gradeDueIfNeeded({ now = Date.now(), force = false } = {}) {
+  if (!pool) return { ok: false, error: "No database." };
+  await ensureSchema();
+  const { rows } = await pool.query(
+    "SELECT COUNT(*)::int AS n FROM picks WHERE result = 'pending' AND kickoff_at < $1",
+    [new Date(now - hours(GRADE_AFTER_HOURS)).toISOString()]
+  );
+  const due = rows[0].n;
+  if (!due) return { ok: true, due: 0, graded: [], reason: "No finished games waiting to be graded." };
+  if (!force && now - lastGradeCheck < GRADE_MIN_INTERVAL_MIN * 60e3) {
+    return { ok: true, due, graded: [], reason: `Checked under ${GRADE_MIN_INTERVAL_MIN} min ago.` };
+  }
+  lastGradeCheck = now;
+  const r = await runPickers({ now, post: false, grade: true });
+  return { ...r, due };
+}
+
 // One run at a time across all server instances (Postgres advisory lock).
 const LOCK_ID = 74210931;
 export async function runPickers({ dryRun = false, post = true, grade = true, now = Date.now() } = {}) {
