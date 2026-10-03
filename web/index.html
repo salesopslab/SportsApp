@@ -1390,7 +1390,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
   <div class="screen" id="record">
     <div class="rec-wrap">
       <div class="rec-head">
-        <div class="rec-title">Record</div>
+        <div class="rec-title">AI Record</div>
         <div class="rec-sub">Every pick from our three AI pickers, posted before kickoff and graded in public. Losses stay up. Compare them, check the math, and make your own call.</div>
       </div>
       <div class="rec-controls">
@@ -1540,7 +1540,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
     </button>
     <button class="nav-btn" data-nav="record" data-screen="record">
       <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg></span>
-      Record
+      AI Record
     </button>
   </div>
 </div>
@@ -4126,7 +4126,7 @@ async function toggleMemoryPanel(){
   }
 }
 document.getElementById('memoryBtn').addEventListener('click', toggleMemoryPanel);
-// Bottom nav: Games | Favorites | BetEdge AI | Fantasy Edge | Ledger AI | Record.
+// Bottom nav: Games | Favorites | BetEdge AI | Fantasy Edge | Ledger AI | AI Record.
 // /live still works: it opens Games with the Live filter on.
 // "Live" is the Games board filtered to games in progress; Breakdown and Big
 // Moves live under Games (a game tap / the Big Moves button).
@@ -4156,10 +4156,10 @@ const PATH_ALIASES = {
   '/fantasy-edge':'fantasy', '/fantasy':'fantasy',
   '/ledger-ai':'ledger', '/ledger':'ledger', '/my-picks':'ledger', '/picks':'ledger',
   '/live':'live',
-  '/record':'record', '/track-record':'record',
+  '/record':'record', '/ai-record':'record', '/track-record':'record',
   '/big-moves':'bigMoves',
 };
-const NAV_TITLES = { games:'Games', favorites:'Favorites', record:'Record', ai:'BetEdge AI Chat', fantasy:'Fantasy Edge', ledger:'Ledger AI', live:'Live Games', bigMoves:'Big Moves' };
+const NAV_TITLES = { games:'Games', favorites:'Favorites', record:'AI Record', ai:'BetEdge AI Chat', fantasy:'Fantasy Edge', ledger:'Ledger AI', live:'Live Games', bigMoves:'Big Moves' };
 const NAV_SCREENS = { games:'board', favorites:'favorites', record:'record', ai:'chat', fantasy:'fantasy', ledger:'picks', live:'board', bigMoves:'bigLines' };
 function syncUrlForScreen(id){
   let key = navForScreen(id);
@@ -4960,7 +4960,7 @@ async function loadGamePickers(sport, game){
     const rec = (name) => (d.records || []).find(r => r.picker === name);
     const recLine = (r) => r && r.graded ? `${r.wins}-${r.losses}${r.pushes ? '-' + r.pushes : ''} · ${r.units > 0 ? '+' : ''}${r.units.toFixed(2)}u · ${r.graded} graded${r.smallSample ? ' (small sample)' : ''}` : 'No graded picks yet';
     if(!d.picks || !d.picks.length){
-      box.innerHTML = `${head}<div class="empty-note">None of our three pickers has posted a pick on this game. Their full records are on the <a href="/record" class="pk-link">Record page</a>.</div>`;
+      box.innerHTML = `${head}<div class="empty-note">None of our three pickers has posted a pick on this game. Their full records are on the <a href="/record" class="pk-link">AI Record page</a>.</div>`;
     }else{
       box.innerHTML = head + (d.disagree ? '<div class="pk-disagree">The pickers disagree on this game. That\'s useful: the case isn\'t one-sided.</div>' : '') +
         d.picks.map(p => `<div class="pk-row">

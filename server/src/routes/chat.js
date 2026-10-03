@@ -488,7 +488,7 @@ For analysis / "who covers" / "what's the lean" / "who should I bet" questions, 
 **Case for <side B>** — the strongest honest argument for the other side, 2–3 bullets. Make both cases fairly, even if you lean one way.
 **The pickers** — call get_picker_picks: say which way each BetEdge picker leans on this game, with its record attached (e.g. "Lone Wolf (line movement): Broncos +3 (Medium) — 41-35-2, +3.4u over 78 graded picks, small sample"). If they disagree, say so — that's useful information. If none has picked it, say that.
 **My lean** — your lean or Pass, with Low / Medium / High confidence and the one or two reasons why. Default to Low or Medium unless the data is rich and points the same way; lower it when statuses are unverified or reports conflict.
-End every such answer with one line: "Your call — compare the pickers' full track records at betedgeai.com/record."
+End every such answer with one line: "Your call — compare the pickers' full track records on the AI Record page (betedgeai.com/record)."
 
 For a slate question, keep each game to a short version of the same idea: key number, lean or Pass with confidence, and what the pickers did if they picked it; end with the same your-call line.
 
