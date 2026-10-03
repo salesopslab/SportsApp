@@ -3,7 +3,8 @@
 (function(){
   const $ = (id) => document.getElementById(id);
   const esc = (s) => escapeHtml(s == null ? '' : String(s));
-  const ICON = { 'Line Movement Picker':'📈', 'Matchup Stats Picker':'📊', 'Value Contrarian Picker':'🔄' };
+  const INFO = (typeof PICKER_INFO !== 'undefined') ? PICKER_INFO : {};
+  const ICON = Object.fromEntries(Object.entries(INFO).map(([k, v]) => [k, v.icon]));
   const CONF_RANK = { Low:1, Medium:2, High:3 };
   const state = { range:'all', sport:'all', picker:'', status:'', sort:'date:desc', shown:50, picks:[], board:null, loadedKey:'' };
 
@@ -47,6 +48,7 @@
           ${p.smallSample ? '<span class="rec-badge" title="Under 100 graded picks — results are mostly noise this early">Small sample, under 100 picks</span>' : ''}
         </div>
         <div class="rec-name">${ICON[p.picker] || '🤖'} ${esc(p.picker)}</div>
+        ${INFO[p.picker] ? `<div class="rec-style">${esc(INFO[p.picker].style)}</div>` : ''}
         <div class="rec-big">
           <span class="rec-units ${p.units > 0 ? 'pos' : p.units < 0 ? 'neg' : ''}">${fmtUnits(p.units)}</span>
           <span class="rec-rec">${p.wins}-${p.losses}${p.pushes ? '-' + p.pushes : ''}</span>
@@ -62,7 +64,7 @@
           <div class="rec-stat"><div class="l">Picks</div><div class="v">${p.picks}</div></div>
         </div>
         ${conf ? `<div class="rec-conf">By confidence — ${esc(conf)}</div>` : ''}
-        <button type="button" class="rec-card-link" data-picker="${esc(p.picker)}">See ${esc(p.picker.replace(' Picker',''))} picks ↓</button>
+        <button type="button" class="rec-card-link" data-picker="${esc(p.picker)}">See ${esc(p.picker)}'s picks ↓</button>
       </div>`;
     }).join('');
     box.querySelectorAll('.rec-card-link').forEach(btn => btn.onclick = () => {

@@ -173,7 +173,7 @@ const DATA_TOOLS = [
   },
   {
     name: "get_picker_picks",
-    description: "What BetEdge's three public pickers (Line Movement, Matchup Stats, Value Contrarian) picked on a game — bet, odds, confidence, reason, result — plus each picker's graded track record (W-L-P, units, ROI, sample size) and whether they disagree. Their full public record is at betedgeai.com/record.",
+    description: "What BetEdge's three public pickers — Lone Wolf (line movement), The Professor (matchup stats), The Fader (value contrarian) — picked on a game — bet, odds, confidence, reason, result — plus each picker's graded track record (W-L-P, units, ROI, sample size) and whether they disagree. Their full public record is at betedgeai.com/record.",
     input_schema: { type: "object", properties: { ...GAME_TARGET } },
   },
 ];
@@ -486,7 +486,7 @@ For analysis / "who covers" / "what's the lean" / "who should I bet" questions, 
 **The data** — current spread / ML / total with the implied probability (and no-vig fair probability) of each side; key line movement (open → current); the injuries and weather that matter, each with source + time. If any of these is missing or unavailable, say so plainly — never guess or fill it in.
 **Case for <side A>** — the strongest honest argument, 2–3 bullets tied to the data.
 **Case for <side B>** — the strongest honest argument for the other side, 2–3 bullets. Make both cases fairly, even if you lean one way.
-**The pickers** — call get_picker_picks: say which way each BetEdge picker leans on this game, with its record attached (e.g. "Line Movement Picker: Broncos +3 (Medium) — 41-35-2, +3.4u over 78 graded picks, small sample"). If they disagree, say so — that's useful information. If none has picked it, say that.
+**The pickers** — call get_picker_picks: say which way each BetEdge picker leans on this game, with its record attached (e.g. "Lone Wolf (line movement): Broncos +3 (Medium) — 41-35-2, +3.4u over 78 graded picks, small sample"). If they disagree, say so — that's useful information. If none has picked it, say that.
 **My lean** — your lean or Pass, with Low / Medium / High confidence and the one or two reasons why. Default to Low or Medium unless the data is rich and points the same way; lower it when statuses are unverified or reports conflict.
 End every such answer with one line: "Your call — compare the pickers' full track records at betedgeai.com/record."
 

@@ -1,12 +1,13 @@
 // Writes to the public picks ledger, shared by the token-protected API and
 // the built-in pickers so both follow exactly the same rules.
 import { pool, ensureSchema } from "../db.js";
-import { PICKERS, CONFIDENCES, SPORTS, impliedProb, validOdds, unitsFor, toPublic } from "./picksService.js";
+import { PICKERS, PICKER_ALIASES, CONFIDENCES, SPORTS, impliedProb, validOdds, unitsFor, toPublic } from "./picksService.js";
 
 // Validate one incoming pick. Returns { value } or { error }.
 export function cleanPick(p, now = Date.now()) {
   if (!p || typeof p !== "object") return { error: "Pick must be an object." };
-  const picker = String(p.picker || "").trim();
+  const rawPicker = String(p.picker || "").trim();
+  const picker = PICKER_ALIASES[rawPicker] || rawPicker;
   if (!PICKERS.includes(picker)) return { error: `picker must be one of: ${PICKERS.join(", ")}.` };
   const sport = String(p.sport || "").toLowerCase().trim();
   if (!SPORTS.includes(sport)) return { error: `sport must be one of: ${SPORTS.join(", ")}.` };

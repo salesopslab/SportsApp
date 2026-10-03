@@ -1,10 +1,10 @@
 // The three built-in BetEdge pickers. Each one is a plain, explainable rule
 // set over data BetEdge already collects, so every pick's reason can be
 // checked against the game page:
-//   - Line Movement Picker: follows a significant line move close to kickoff.
-//   - Matchup Stats Picker: power ratings from season point differential vs
-//     the market spread (MLB: run differential vs the moneyline).
-//   - Value Contrarian Picker: shops every book for an underdog / under
+//   - Lone Wolf (line movement): follows a significant line move.
+//   - The Professor (matchup stats): power ratings from season point
+//     differential vs the market spread (MLB: run differential vs the moneyline).
+//   - The Fader (value contrarian): shops every book for an underdog / under
 //     priced better than the market's own no-vig fair odds.
 // runPickers() posts picks on games starting soon (one per picker per game,
 // with daily caps) and grades finished picks from final scores.
@@ -15,9 +15,9 @@ import { impliedProb, noVig } from "./picksService.js";
 import { savePick, gradePick } from "./ledgerService.js";
 import { cached } from "./cache.js";
 
-export const LINE = "Line Movement Picker";
-export const STATS = "Matchup Stats Picker";
-export const VALUE = "Value Contrarian Picker";
+export const LINE = "Lone Wolf";      // line movement
+export const STATS = "The Professor"; // matchup stats
+export const VALUE = "The Fader";     // value contrarian
 const SPORTS = Object.keys(SPORT_KEYS);
 // Rough regular season + playoffs, [startMonth, startDay, endMonth, endDay]
 // (months 1-12). Out-of-season sports are skipped so scheduled runs don't
@@ -91,8 +91,9 @@ const americanToDecimal = (o) => (o > 0 ? 1 + o / 100 : 1 + 100 / Math.abs(o));
 const pct = (p) => `${(p * 100).toFixed(1)}%`;
 const fmtOdds = (o) => (o > 0 ? `+${o}` : String(o));
 const nick = (team) => String(team).split(" ").slice(-1)[0];
+const ptsLabel = (n) => `${n} ${Number(n) === 1 ? "pt" : "pts"}`;
 
-// ---- 1) Line Movement Picker ---------------------------------------------
+// ---- 1) Lone Wolf: line movement ---------------------------------------------
 const LM_SPREAD_MOVE = { nfl: 1, ncaaf: 1.5, nba: 1.5, ncaab: 1.5 };
 const LM_TOTAL_MOVE = { nfl: 1.5, ncaaf: 2, nba: 2.5, ncaab: 2.5, mlb: 0.5 };
 const LM_ML_MOVE = 0.04; // 4 points of implied probability (MLB and spread-less games)
@@ -124,7 +125,7 @@ export function lineMovementPick(sport, g, history) {
         const fromTo = `${nick(g.homeTeam)} ${fmtPoint(hs.openPoint)} → ${fmtPoint(hs.currentPoint)}`;
         options.push({
           market: "spread", bet: betText.spread(team, cur.point), odds: cur.price, strength,
-          reason: `The spread moved ${fromTo} since it opened (${Math.abs(delta)} pts${key ? ", through a key number" : ""}). Following the move toward ${team}.`,
+          reason: `The spread moved ${fromTo} since it opened (${ptsLabel(Math.abs(delta))}${key ? ", through a key number" : ""}). Following the move toward ${team}${Number(cur.point) !== Number(delta < 0 ? hs.currentPoint : -hs.currentPoint) ? ` — consensus line now ${fmtPoint(cur.point)}` : ""}.`,
         });
       }
     }
@@ -140,7 +141,7 @@ export function lineMovementPick(sport, g, history) {
       if (cur?.price != null && cur.point != null) {
         options.push({
           market: "total", bet: betText.total(side, cur.point), odds: cur.price, strength: Math.abs(delta) / minTotal,
-          reason: `The total moved ${ov.openPoint} → ${ov.currentPoint} since it opened (${round1(Math.abs(delta))} pts). Following the move to the ${side.toLowerCase()}.`,
+          reason: `The total moved ${ov.openPoint} → ${ov.currentPoint} since it opened (${ptsLabel(round1(Math.abs(delta)))}). Following the move to the ${side.toLowerCase()}${Number(cur.point) !== Number(ov.currentPoint) ? ` — consensus total now ${cur.point}` : ""}.`,
         });
       }
     }
@@ -167,7 +168,7 @@ export function lineMovementPick(sport, g, history) {
   return { picker: LINE, ...best, confidence: best.strength >= 2 ? "High" : best.strength >= 1.5 ? "Medium" : "Low" };
 }
 
-// ---- 2) Matchup Stats Picker ---------------------------------------------
+// ---- 2) The Professor: matchup stats ---------------------------------------------
 // Pro leagues only: in college, season point differential is dominated by
 // who you happened to play (FCS blowouts), so without a strength-of-schedule
 // model it would mislead. maxEdge: a gap this big vs the market is far more
@@ -236,7 +237,7 @@ export function statsPick(sport, g, ratings) {
   };
 }
 
-// ---- 3) Value Contrarian Picker ------------------------------------------
+// ---- 3) The Fader: value contrarian ------------------------------------------
 const VALUE_MIN_EV = 0.015;   // 1.5% expected value vs the no-vig consensus
 const VALUE_MAX_DOG = 250;    // skip long shots
 

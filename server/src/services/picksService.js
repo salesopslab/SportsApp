@@ -1,7 +1,15 @@
 // Public picks ledger: the math (implied probability, units, no-vig, CLV)
 // and the leaderboard. Pure functions so the tests and the routes agree.
 
-export const PICKERS = ["Line Movement Picker", "Matchup Stats Picker", "Value Contrarian Picker"];
+// The three public pickers (display names) and what each one does.
+export const PICKERS = ["Lone Wolf", "The Professor", "The Fader"];
+export const PICKER_STYLE = {
+  "Lone Wolf": "Line movement: follows sharp moves in the line",
+  "The Professor": "Matchup stats: power ratings vs the spread",
+  "The Fader": "Value contrarian: underdogs and unders priced better than fair",
+};
+// Original working names, still accepted by the ingest API.
+export const PICKER_ALIASES = { "Line Movement Picker": "Lone Wolf", "Matchup Stats Picker": "The Professor", "Value Contrarian Picker": "The Fader" };
 export const CONFIDENCES = ["Low", "Medium", "High"];
 export const RESULTS = ["pending", "win", "loss", "push", "void"];
 export const SPORTS = ["nfl", "nba", "mlb", "ncaaf", "ncaab"];

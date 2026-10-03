@@ -52,7 +52,7 @@ for (const [h, pt] of [[-20, -4.5], [-14, -4.5], [-8, -4], [-3, -3.5], [-1, -3]]
 }
 // A finished game with a pending pick + closing prices before its kickoff.
 await pool.query(`INSERT INTO picks (picker, sport, game, game_id, kickoff_at, bet, odds, implied_prob, confidence, reason, created_at)
-  VALUES ('Matchup Stats Picker','nfl',$1,'g-done',$2,'Buffalo Bills -3',-110,0.5238,'Medium','test',$3)`, [`${A2} @ ${H2}`, iso(-5), iso(-9)]);
+  VALUES ('The Professor','nfl',$1,'g-done',$2,'Buffalo Bills -3',-110,0.5238,'Medium','test',$3)`, [`${A2} @ ${H2}`, iso(-5), iso(-9)]);
 for (const [b, price] of [["Alpha", -118], ["Beta", -120], ["Gamma", -122]]) {
   await pool.query("INSERT INTO odds_snapshots (sport, game_id, book, market, side, point, price, captured_at) VALUES ('nfl','g-done',$1,'spread',$2,-3,$3,$4)", [b, H2, price, iso(-5.5)]);
 }
@@ -72,10 +72,10 @@ let first;
 await test("a run posts one pick per picker on the game starting soon", async () => {
   first = await runPickers();
   const byPicker = Object.fromEntries(first.posted.map((p) => [p.picker, p]));
-  assert.equal(byPicker["Line Movement Picker"]?.bet, "Denver Broncos +3", JSON.stringify(first, null, 1));
-  assert.equal(byPicker["Matchup Stats Picker"]?.bet, "Kansas City Chiefs -3");
-  assert.equal(byPicker["Value Contrarian Picker"]?.bet, "Denver Broncos +3");
-  assert.equal(byPicker["Value Contrarian Picker"]?.odds, 105);
+  assert.equal(byPicker["Lone Wolf"]?.bet, "Denver Broncos +3", JSON.stringify(first, null, 1));
+  assert.equal(byPicker["The Professor"]?.bet, "Kansas City Chiefs -3");
+  assert.equal(byPicker["The Fader"]?.bet, "Denver Broncos +3");
+  assert.equal(byPicker["The Fader"]?.odds, 105);
   assert.ok(first.posted.every((p) => p.game_id === "g-soon"), "game 30h out is outside every window");
 });
 await test("the finished game is graded with units and closing odds", async () => {

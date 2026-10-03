@@ -865,6 +865,8 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
 .pk-row:last-child{ border-bottom:none; }
 .pk-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
 .pk-name{ font-size:13px; font-weight:700; }
+.pk-style{ display:block; font-size:11.5px; font-weight:500; color:var(--sub); }
+.rec-style{ font-size:12px; color:var(--sub); margin-top:-4px; }
 .pk-bet{ font-size:14px; margin-top:4px; }
 .pk-sub{ font-size:12px; color:var(--sub); }
 .pk-reason{ font-size:13px; line-height:1.45; margin:4px 0; }
@@ -4939,7 +4941,13 @@ function lineMovementSection(lm){
   return `<div class="section"><h3>Line movement${lm.book ? ' · ' + escapeHtml(lm.book) : ''}</h3>
     <div class="ob-note">Open → current${since}.</div>${html}</div>`;
 }
-const PICKER_ICON = { 'Line Movement Picker':'📈', 'Matchup Stats Picker':'📊', 'Value Contrarian Picker':'🔄' };
+// The three public pickers: icon + what each one does (shared with record.js).
+const PICKER_INFO = {
+  'Lone Wolf':     { icon:'🐺', style:'Line movement — follows sharp moves in the line' },
+  'The Professor': { icon:'🎓', style:'Matchup stats — power ratings vs the spread' },
+  'The Fader':     { icon:'🔄', style:'Value contrarian — underdogs & unders priced better than fair' },
+};
+const PICKER_ICON = Object.fromEntries(Object.entries(PICKER_INFO).map(([k, v]) => [k, v.icon]));
 async function loadGamePickers(sport, game){
   const box = document.getElementById('bdPickers');
   if(!box) return;
@@ -4956,7 +4964,7 @@ async function loadGamePickers(sport, game){
     }else{
       box.innerHTML = head + (d.disagree ? '<div class="pk-disagree">The pickers disagree on this game. That\'s useful: the case isn\'t one-sided.</div>' : '') +
         d.picks.map(p => `<div class="pk-row">
-          <div class="pk-top"><span class="pk-name">${PICKER_ICON[p.picker] || '🤖'} ${escapeHtml(p.picker)}</span><span class="rec-res ${escapeHtml(p.result)}">${escapeHtml(p.result)}</span></div>
+          <div class="pk-top"><span class="pk-name">${PICKER_ICON[p.picker] || '🤖'} ${escapeHtml(p.picker)}${PICKER_INFO[p.picker] ? `<span class="pk-style">${escapeHtml(PICKER_INFO[p.picker].style)}</span>` : ''}</span><span class="rec-res ${escapeHtml(p.result)}">${escapeHtml(p.result)}</span></div>
           <div class="pk-bet"><b>${escapeHtml(p.bet)}</b> at ${formatPrice(p.odds)} <span class="pk-sub">(${pctLabel(p.implied_prob)} implied) · ${escapeHtml(p.confidence)} confidence</span></div>
           <div class="pk-reason">${escapeHtml(p.reason)}</div>
           <div class="pk-sub">Posted ${new Date(p.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short' })} · Record: <a href="/record" class="pk-link">${escapeHtml(recLine(rec(p.picker)))}</a></div>

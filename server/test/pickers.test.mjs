@@ -52,6 +52,12 @@ t("Line Movement: follows a spread move toward the side the money hit", () => {
   assert.equal(p.odds, -110);
   assert.equal(p.confidence, "High"); // 1.5 pts + through the 3
   assert.match(p.reason, /Chiefs -4.5 → -3/);
+  assert.match(p.reason, /\(1\.5 pts, through a key number\)/);
+  assert.doesNotMatch(p.reason, /consensus line now/); // tracked book matches consensus
+  const differ = lineMovementPick("nfl", game({ spread: [{ name: H, point: -2.5, price: -110 }, { name: A, point: 2.5, price: -110 }] }), hist([{ market: "spread", side: H, openPoint: -4.5, currentPoint: -3 }]));
+  assert.match(differ.reason, /consensus line now \+2\.5/);
+  const onePt = lineMovementPick("mlb", game({ spread: [] }), hist([{ market: "total", side: "Over", openPoint: 9, currentPoint: 8 }]));
+  assert.match(onePt.reason, /\(1 pt\)/);
 });
 t("Line Movement: total move, ML move for MLB, ignores noise and thin history", () => {
   assert.equal(lineMovementPick("nfl", game(), hist([{ market: "total", side: "Over", openPoint: 45, currentPoint: 42.5 }])).bet, "Under 42.5");
