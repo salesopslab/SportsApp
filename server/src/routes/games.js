@@ -16,6 +16,16 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 // noticeably longer than "today" for anyone watching. "Commenced today"
 // is simple, deterministic, and matches what "still showing old games"
 // actually means: something that didn't happen today.
+// ?finals=24h (used by the Favorites tab) keeps finished games for 24 hours
+// after kickoff instead of only through today's UTC date (which drops a
+// game played this afternoon in California once it's past 5 PM there).
+// The scores feed already covers the last 3 days, so no extra provider calls.
+const FAVORITES_FINALS_MS = 24 * 60 * 60 * 1000;
+function keepFinal(commenceTime, now, wide) {
+  if (wide) return now - new Date(commenceTime).getTime() <= FAVORITES_FINALS_MS;
+  return commencedToday(commenceTime, now);
+}
+
 function commencedToday(commenceTime, now) {
   const c = new Date(commenceTime);
   const n = new Date(now);
@@ -43,6 +53,7 @@ router.get("/:sport", withTier, async (req, res) => {
     ]);
 
     const now = Date.now();
+    const wideFinals = req.query.finals === "24h";
     const enriched = games
       .map((g) => {
         const commence = new Date(g.commenceTime).getTime();
@@ -57,7 +68,7 @@ router.get("/:sport", withTier, async (req, res) => {
 
         const score = scores[g.id];
         if (score && score.completed) {
-          if (!commencedToday(g.commenceTime, now)) return null; // finished on a previous day
+          if (!keepFinal(g.commenceTime, now, wideFinals)) return null; // finished on a previous day
           return {
             ...g,
             status: "final",
@@ -89,7 +100,7 @@ router.get("/:sport", withTier, async (req, res) => {
     const backfilled = Object.entries(scores)
       .filter(([id, s]) => {
         if (seenIds.has(id) || !s.completed || !s.homeTeam || !s.awayTeam) return false;
-        return commencedToday(s.commenceTime, now);
+        return keepFinal(s.commenceTime, now, wideFinals);
       })
       .map(([id, s]) => ({
         id,

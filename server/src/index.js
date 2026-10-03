@@ -12,6 +12,7 @@ import adminRouter from "./routes/admin.js";
 import billingRouter, { handleStripeWebhook } from "./routes/billing.js";
 import hotPicksRouter from "./routes/hotpicks.js";
 import fantasyRouter from "./routes/fantasy.js";
+import favoritesRouter from "./routes/favorites.js";
 
 const app = express();
 // Render puts the app behind a reverse proxy, so without this every request
@@ -45,6 +46,7 @@ app.use("/api/admin", adminRouter);
 app.use("/api/billing", billingRouter);
 app.use("/api/hot-picks", hotPicksRouter);
 app.use("/api/fantasy", fantasyRouter);
+app.use("/api/favorites", favoritesRouter);
 
 const port = process.env.PORT || 8080;
 app.listen(port, () => {

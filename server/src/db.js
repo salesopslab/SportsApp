@@ -316,6 +316,20 @@ export function ensureSchema() {
         cleared_at TIMESTAMPTZ,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+
+      -- Games a user starred for the Favorites tab. Team names and kickoff
+      -- are stored with the star so the tab can still list a game after the
+      -- sportsbooks drop it from the odds feed.
+      CREATE TABLE IF NOT EXISTS user_favorites (
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        sport TEXT NOT NULL,
+        game_id TEXT NOT NULL,
+        home_team TEXT,
+        away_team TEXT,
+        commence_time TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, sport, game_id)
+      );
     `);
   }
   return schemaReady;

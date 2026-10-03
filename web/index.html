@@ -215,6 +215,25 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
    says which sport you're looking at. */
 .sport-badge{ font-size:9.5px; font-weight:700; color:var(--sub); border:1px solid var(--line); border-radius:8px; padding:1px 6px; letter-spacing:0.3px; }
 .game-row:active{ background:var(--surface); }
+/* Favorites star: on every game row (Games, Live, Favorites) and the Breakdown. */
+.fav-star{ background:none; border:none; padding:0 2px; margin:-6px -4px -6px 0; min-width:32px; min-height:28px; font-size:18px; line-height:1; color:var(--sub); cursor:pointer; font-family:inherit; flex-shrink:0; }
+.fav-star.on{ color:var(--amber); }
+.fav-star:hover{ color:var(--amber); }
+.game-meta .meta-right{ display:flex; align-items:center; gap:8px; margin-left:auto; min-width:0; justify-content:flex-end; }
+.game-meta .meta-venue{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.game-meta > span:first-child{ flex-shrink:0; }
+.bd-title-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.bd-title-row .fav-star{ font-size:22px; margin:0 -4px 0 0; }
+.fav-head{ padding:18px 20px 6px; }
+.fav-title{ font-family:'Oswald',sans-serif; font-size:22px; }
+.fav-sub{ font-size:12.5px; color:var(--sub); margin-top:4px; line-height:1.45; }
+.fav-group{ font-size:11px; font-weight:700; letter-spacing:0.6px; color:var(--sub); text-transform:uppercase; padding:14px 20px 6px; border-bottom:1px solid var(--line); }
+.fav-empty{ padding:28px 20px; text-align:center; color:var(--sub); font-size:14px; line-height:1.55; }
+.fav-empty .fav-cta{ margin-top:14px; padding:10px 18px; border-radius:10px; border:1px solid var(--amber); background:none; color:var(--amber); font-weight:600; cursor:pointer; font-family:inherit; font-size:13px; }
+.fav-note{ font-size:12px; color:var(--sub); padding:12px 20px; line-height:1.5; }
+.fav-note button{ background:none; border:none; color:var(--amber); font:inherit; font-weight:600; cursor:pointer; padding:0; text-decoration:underline; }
+.fav-missing .book-note{ color:var(--sub); }
+
 .game-meta{ display:flex; justify-content:space-between; font-size:12px; color:var(--sub); margin-bottom:10px; gap:10px; }
 .game-meta span:last-child{ text-align:right; }
 .matchup{ display:flex; flex-direction:column; gap:8px; }
@@ -801,6 +820,9 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
   .fe-players{ grid-template-columns:1fr; }
   .nav-btn{ font-size:10.5px; }
 }
+@media (max-width:440px){
+  .nav-btn{ font-size:9.5px; line-height:1.15; gap:3px; padding:0 1px; }
+}
 
 /* ---------- Pricing: Free | Edge | Edge+ | Edge Pro ---------- */
 .pricing-modal-card{ max-width:1120px !important; }
@@ -1235,6 +1257,15 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
     </div>
   </div>
 
+  <!-- FAVORITES -->
+  <div class="screen" id="favorites">
+    <div class="fav-head">
+      <div class="fav-title">Favorites</div>
+      <div class="fav-sub">Your starred games: upcoming in the next 7 days, live now, and finished in the last 24 hours. Tap ☆ on any game to add it.</div>
+    </div>
+    <div id="favoritesList"></div>
+  </div>
+
   <!-- GAME BREAKDOWN -->
   <div class="screen" id="gameBreakdown">
     <button class="back-btn" id="gameBreakdownBackBtn">‹ Back</button>
@@ -1310,6 +1341,10 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
     <button class="nav-btn active" data-nav="games" data-screen="board">
       <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="13" y2="18"/></svg></span>
       Games
+    </button>
+    <button class="nav-btn" data-nav="favorites" data-screen="favorites">
+      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg></span>
+      Favorites
     </button>
     <button class="nav-btn" data-nav="ai" data-screen="chat">
       <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4V4z"/></svg></span>
@@ -1841,6 +1876,7 @@ document.getElementById('accountLogoutBtn').addEventListener('click', ()=>{
   updateProfileButton();
   closeAccountModal();
   if(document.getElementById('picks').classList.contains('active')) loadPicks();
+  favOnLogout();
 });
 document.getElementById('referralCopyBtn').addEventListener('click', async ()=>{
   const input = document.getElementById('referralLinkInput');
@@ -1900,6 +1936,7 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
     updateProfileButton();
     closeAuthModal();
     if(document.getElementById('picks').classList.contains('active')) loadPicks();
+    favOnLogin();
   }catch(e){
     errEl.textContent = e.message;
   }
@@ -3904,13 +3941,15 @@ async function toggleMemoryPanel(){
   }
 }
 document.getElementById('memoryBtn').addEventListener('click', toggleMemoryPanel);
-// Bottom nav: Games | BetEdge AI | Fantasy Edge | Ledger AI | Live.
+// Bottom nav: Games | Favorites | BetEdge AI | Fantasy Edge | Ledger AI | Live.
 // "Live" is the Games board filtered to games in progress; Breakdown and Big
 // Moves live under Games (a game tap / the Big Moves button).
 let liveNavMode = false;
 function navForScreen(id){
   if(id === 'board') return liveNavMode ? 'live' : 'games';
-  return { chat:'ai', fantasy:'fantasy', picks:'ledger', gameBreakdown:'games', bigLines:'games' }[id] || null;
+  // A Breakdown opened from Favorites keeps the Favorites tab lit.
+  if(id === 'gameBreakdown' && screenHistory[0] === 'favorites') return 'favorites';
+  return { chat:'ai', fantasy:'fantasy', picks:'ledger', gameBreakdown:'games', bigLines:'games', favorites:'favorites' }[id] || null;
 }
 function setActiveNav(key){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.nav===key));
@@ -3922,17 +3961,18 @@ function setBoardFilter(filter){
 // Shareable URLs for each product: betedgeai.com/fantasy-edge etc.
 // (The host rewrites unknown paths to index.html; real files like
 // /terms.html are still served as-is.)
-const NAV_PATHS = { games:'/games', ai:'/betedge-ai', fantasy:'/fantasy-edge', ledger:'/ledger-ai', live:'/live', bigMoves:'/big-moves' };
+const NAV_PATHS = { games:'/games', favorites:'/favorites', ai:'/betedge-ai', fantasy:'/fantasy-edge', ledger:'/ledger-ai', live:'/live', bigMoves:'/big-moves' };
 const PATH_ALIASES = {
   '/games':'games', '/board':'games',
+  '/favorites':'favorites', '/favourites':'favorites',
   '/betedge-ai':'ai', '/ai':'ai', '/chat':'ai',
   '/fantasy-edge':'fantasy', '/fantasy':'fantasy',
   '/ledger-ai':'ledger', '/ledger':'ledger', '/my-picks':'ledger', '/picks':'ledger',
   '/live':'live',
   '/big-moves':'bigMoves',
 };
-const NAV_TITLES = { games:'Games', ai:'BetEdge AI Chat', fantasy:'Fantasy Edge', ledger:'Ledger AI', live:'Live Games', bigMoves:'Big Moves' };
-const NAV_SCREENS = { games:'board', ai:'chat', fantasy:'fantasy', ledger:'picks', live:'board', bigMoves:'bigLines' };
+const NAV_TITLES = { games:'Games', favorites:'Favorites', ai:'BetEdge AI Chat', fantasy:'Fantasy Edge', ledger:'Ledger AI', live:'Live Games', bigMoves:'Big Moves' };
+const NAV_SCREENS = { games:'board', favorites:'favorites', ai:'chat', fantasy:'fantasy', ledger:'picks', live:'board', bigMoves:'bigLines' };
 function syncUrlForScreen(id){
   let key = navForScreen(id);
   if(id === 'bigLines') key = 'bigMoves';
@@ -3951,6 +3991,7 @@ function goToNav(nav, opts={}){
   if(screen === 'picks') loadPicks();
   if(screen === 'bigLines') renderBigLines();
   if(nav === 'fantasy' && window.__feOnShow) window.__feOnShow();
+  if(nav === 'favorites') loadFavoritesScreen();
   if(opts.noUrl) document.title = nav === 'games' && location.pathname === '/' ? 'BetEdge AI' : `${NAV_TITLES[nav]} · BetEdge AI`;
 }
 function navFromPath(pathname){
@@ -4122,8 +4163,10 @@ function renderBoardList(){
     return;
   }
   list.innerHTML = games.map(g => renderGameRow(g)).join('');
+  wireFavStars(list, games);
   list.querySelectorAll('.game-row').forEach(row=>{
-    const open = ()=>{
+    const open = (e)=>{
+      if(e && e.target && e.target.closest && e.target.closest('.fav-star')) return;
       const id = row.dataset.id;
       const game = games.find(x=>x.id===id);
       // On "All Games" a row can belong to any of the merged sports, so the
@@ -4136,6 +4179,7 @@ function renderBoardList(){
     // template) but a div doesn't natively activate on Enter/Space the way a
     // real <button> does, so that has to be wired up by hand.
     row.addEventListener('keydown', (e)=>{
+      if(e.target !== row) return; // Enter on the star button toggles the star instead
       if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); }
     });
   });
@@ -4259,15 +4303,16 @@ function defaultTrackSport(){
   return (currentSport && currentSport !== 'all') ? currentSport : 'nfl';
 }
 
-function renderGameRow(g){
+function renderGameRow(g, opts = {}){
   const gameSport = g.sport || currentSport;
+  const star = favStarHtml(gameSport, g);
   const bigMove = bigMoverKeys.has(moverKey(gameSport, g.id));
   const bigMoveBadge = bigMove ? '<span class="big-move-badge">🔥 Big move</span>' : '';
   const divisionClass = g.divisionGame ? ' division-game' : '';
   const divisionBadge = g.divisionGame ? '<span class="division-badge">DIVISION</span>' : '';
   // Only on the merged "All Games" tab -- a single-sport tab already says
   // which sport every row is via the tab itself.
-  const sportBadge = currentSport === 'all' ? `<span class="sport-badge">${sportTabLabel(gameSport)}</span>` : '';
+  const sportBadge = (currentSport === 'all' || opts.showSport) ? `<span class="sport-badge">${sportTabLabel(gameSport)}</span>` : '';
   if(g.status === 'final' || g.status === 'live'){
     const score = g.status === 'final' ? g.finalScore : g.liveScore;
     // g.liveState (quarter/inning + clock, down-distance or balls-strikes-outs)
@@ -4278,8 +4323,8 @@ function renderGameRow(g){
       ? 'Game finished — tap for the full breakdown'
       : (g.liveState?.detail || 'Game in progress — score may be a few minutes behind');
     return `
-    <div class="game-row ${g.status}${divisionClass}" data-id="${g.id}" tabindex="0" role="button" aria-label="${g.awayTeam} at ${g.homeTeam}, view breakdown">
-      <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="score-badge ${g.status}">${badge}</span>${sportBadge}${divisionBadge}${bigMoveBadge}</div>
+    <div class="game-row ${g.status}${divisionClass}" data-id="${g.id}" data-sport="${gameSport}" tabindex="0" role="button" aria-label="${g.awayTeam} at ${g.homeTeam}, view breakdown">
+      <div class="game-meta"><span>${timeLabel(g.commenceTime)}</span><span class="meta-right"><span class="score-badge ${g.status}">${badge}</span>${sportBadge}${divisionBadge}${bigMoveBadge}${star}</span></div>
       <div class="matchup">
         <div class="team-line">
           ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher, g.awayPitcherStats, g.status === 'final')}
@@ -4309,8 +4354,8 @@ function renderGameRow(g){
   const openAwayLabel = openAway !== null ? `<div class="open">open ${fmtOdds(openAway)}</div>` : '';
   const openHomeLabel = openHome !== null ? `<div class="open">open ${fmtOdds(openHome)}</div>` : '';
   return `
-  <div class="game-row${divisionClass}" data-id="${g.id}" tabindex="0" role="button" aria-label="${g.awayTeam} at ${g.homeTeam}, view breakdown">
-    <div class="game-meta">${gameMetaTime(g)}<span>${venueLabel(g.homeTeam) || 'BetEdge AI Market Odds'}</span>${sportBadge}${divisionBadge}${bigMoveBadge}</div>
+  <div class="game-row${divisionClass}" data-id="${g.id}" data-sport="${gameSport}" tabindex="0" role="button" aria-label="${g.awayTeam} at ${g.homeTeam}, view breakdown">
+    <div class="game-meta">${gameMetaTime(g)}<span class="meta-right"><span class="meta-venue">${venueLabel(g.homeTeam) || 'BetEdge AI Market Odds'}</span>${sportBadge}${divisionBadge}${bigMoveBadge}${star}</span></div>
     <div class="matchup">
       <div class="team-line">
         ${teamInfoBlock(g.awayTeam, g.awayRank, false, g.awayPitcher, g.awayPitcherStats, g.status === 'final')}
@@ -4362,6 +4407,7 @@ async function openGameBreakdown(sport, game){
     const gameBreakdown = await res.json();
     currentGameBreakdown = gameBreakdown;
     body.innerHTML = renderGameBreakdown(gameBreakdown);
+    wireFavStars(body, [game]);
     startBreakdownScoreRefresh(sport, game.id);
     wireInjurySection(body);
     wireTrackButtons();
@@ -4482,7 +4528,7 @@ function renderGameBreakdown(d){
       <button class="send-btn" id="bdAskSend" type="submit" title="Ask">➤</button>
     </form>
     <div class="game-breakdown-hero">
-      <div class="game-breakdown-title">${g.awayTeam} @ ${g.homeTeam}</div>
+      <div class="bd-title-row"><div class="game-breakdown-title">${g.awayTeam} @ ${g.homeTeam}</div>${favStarHtml(currentGameSport, Object.assign({}, g, { id: (currentGame && currentGame.id) || g.id, commenceTime: g.commenceTime || (currentGame && currentGame.commenceTime) }))}</div>
       <div id="bdScoreBox">${breakdownScoreHtml(currentGame, g)}</div>
       <div class="game-breakdown-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
     </div>
@@ -5266,6 +5312,211 @@ setInterval(refreshBigLines, 3 * 60 * 1000);
     finally{ save.disabled = false; }
   });
 })();
+
+// ---------------------------------------------------------------------------
+// Favorites: games a user starred (☆ on any game row or Breakdown).
+// Saved to the account when logged in (so they follow you across devices)
+// and mirrored on this device; signed-out stars live on this device only and
+// are merged into the account at login. The Favorites tab shows the same
+// window as the Games board: upcoming in the next 7 days, live, and games
+// that finished in the last 24 hours.
+// (var, not let: favStarHtml can be called by the board before this block runs.)
+var FAV_STORE = 'betedge_favorites';
+var favItems = null; // [{ sport, gameId, homeTeam, awayTeam, commenceTime }]
+var favTimer = null;
+function favLoad(){
+  if(favItems) return favItems;
+  try{ favItems = JSON.parse(localStorage.getItem(FAV_STORE) || '[]'); }catch{ favItems = []; }
+  if(!Array.isArray(favItems)) favItems = [];
+  return favItems;
+}
+function favSave(){ try{ localStorage.setItem(FAV_STORE, JSON.stringify(favLoad())); }catch{} }
+function favKey(sport, id){ return `${sport}:${id}`; }
+function isFav(sport, id){ return favLoad().some(f => f.sport === sport && f.gameId === id); }
+function favStarHtml(sport, g){
+  if(!g || !g.id || !sport || sport === 'all') return '';
+  const on = isFav(sport, g.id);
+  return `<button type="button" class="fav-star${on ? ' on' : ''}" data-fav-key="${escapeHtml(favKey(sport, g.id))}" aria-pressed="${on}" aria-label="${on ? 'Remove from' : 'Add to'} Favorites" title="${on ? 'Remove from Favorites' : 'Add to Favorites'}">${on ? '★' : '☆'}</button>`;
+}
+function favPaintStars(){
+  document.querySelectorAll('.fav-star[data-fav-key]').forEach(b => {
+    const [sport, ...rest] = b.dataset.favKey.split(':');
+    const on = isFav(sport, rest.join(':'));
+    b.classList.toggle('on', on);
+    b.textContent = on ? '★' : '☆';
+    b.setAttribute('aria-pressed', String(on));
+    b.setAttribute('aria-label', (on ? 'Remove from' : 'Add to') + ' Favorites');
+    b.title = on ? 'Remove from Favorites' : 'Add to Favorites';
+  });
+}
+// Wire every star inside `root`. `games` is the list the rows were drawn from.
+function wireFavStars(root, games){
+  root.querySelectorAll('.fav-star[data-fav-key]').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation(); e.preventDefault();
+      const [sport, ...rest] = b.dataset.favKey.split(':');
+      const id = rest.join(':');
+      const g = (games || []).find(x => x.id === id) || (currentGame && currentGame.id === id ? currentGame : { id });
+      toggleFav(sport, g);
+    });
+  });
+}
+function favToast(msg){
+  let t = document.getElementById('favToast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'favToast';
+    t.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:70;background:var(--surface2);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:9px 14px;font-size:13px;max-width:calc(100% - 32px);text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.25);transition:opacity .2s;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.style.opacity = '0'; }, 2200);
+}
+async function toggleFav(sport, g){
+  const list = favLoad();
+  const was = isFav(sport, g.id);
+  const before = list.slice();
+  if(was) favItems = list.filter(f => !(f.sport === sport && f.gameId === g.id));
+  else favItems = list.concat([{ sport, gameId: g.id, homeTeam: g.homeTeam || null, awayTeam: g.awayTeam || null, commenceTime: g.commenceTime || null }]);
+  favSave(); favPaintStars();
+  favToast(was ? 'Removed from Favorites' : (authToken ? 'Added to Favorites ★' : 'Added to Favorites ★ — log in to keep them on all your devices'));
+  if(document.getElementById('favorites').classList.contains('active')) renderFavoritesScreen();
+  if(!authToken) return;
+  try{
+    const res = was
+      ? await apiFetch(`/api/favorites/${encodeURIComponent(sport)}/${encodeURIComponent(g.id)}`, { method:'DELETE' })
+      : await apiFetch('/api/favorites', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sport, gameId: g.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, commenceTime: g.commenceTime }) });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || 'save failed');
+    if(Array.isArray(data.favorites)){ favItems = data.favorites; favSave(); favPaintStars(); }
+  }catch(e){
+    favItems = before; favSave(); favPaintStars();
+    favToast(e.message && e.message !== 'save failed' ? e.message : "Couldn't save that — try again.");
+    if(document.getElementById('favorites').classList.contains('active')) renderFavoritesScreen();
+  }
+}
+// Pull the account's favorites, merging in anything starred on this device.
+var favSyncing = null; // in-flight sync, so the Favorites tab can wait for it
+function favSyncFromServer(){
+  if(!authToken) return Promise.resolve();
+  if(!favSyncing) favSyncing = favSyncOnce().finally(() => { favSyncing = null; });
+  return favSyncing;
+}
+async function favSyncOnce(){
+  try{
+    const res = await apiFetch('/api/favorites/sync', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ favorites: favLoad() }) });
+    if(!res.ok) return;
+    const data = await res.json();
+    if(Array.isArray(data.favorites)){ favItems = data.favorites; favSave(); favPaintStars(); }
+  }catch{ /* keep this device's copy */ }
+}
+async function favOnLogin(){
+  await favSyncFromServer();
+  if(document.getElementById('favorites').classList.contains('active')) loadFavoritesScreen();
+}
+function favOnLogout(){
+  favItems = []; favSave(); favPaintStars();
+  if(document.getElementById('favorites').classList.contains('active')) loadFavoritesScreen();
+}
+
+var favGames = {}; // `${sport}:${id}` -> latest board game object
+var favLoadedAt = 0;
+async function loadFavoritesScreen(){
+  const list = document.getElementById('favoritesList');
+  if(favSyncing) await favSyncing; // stars from other devices may still be arriving
+  else if(!favLoad().length && authToken) await favSyncFromServer();
+  const items = favLoad();
+  if(!items.length){ renderFavoritesScreen(); return; }
+  if(!favLoadedAt) list.innerHTML = '<div class="board-msg"><div class="spin"></div><div>Loading your games…</div></div>';
+  const sports = [...new Set(items.map(f => f.sport))];
+  const results = await Promise.allSettled(sports.map(sp =>
+    apiFetch(`/api/games/${sp}?finals=24h`).then(r => { if(!r.ok) throw new Error(r.status); return r.json(); }).then(d => ({ sp, d }))
+  ));
+  favGames = {};
+  for(const r of results){
+    if(r.status !== 'fulfilled') continue;
+    for(const g of (r.value.d.games || [])) favGames[favKey(r.value.sp, g.id)] = Object.assign({}, g, { sport: r.value.sp });
+  }
+  favLoadedAt = Date.now();
+  renderFavoritesScreen(results.some(r => r.status === 'rejected'));
+  clearInterval(favTimer);
+  favTimer = setInterval(() => {
+    if(document.getElementById('favorites').classList.contains('active') && document.visibilityState === 'visible') loadFavoritesScreen();
+    else { clearInterval(favTimer); favTimer = null; }
+  }, 60000);
+}
+function renderFavoritesScreen(someFailed){
+  const list = document.getElementById('favoritesList');
+  const items = favLoad();
+  if(!items.length){
+    list.innerHTML = `<div class="fav-empty">No favorites yet.<br>Tap the ☆ on any game on the Games board and it shows up here.<br><button type="button" class="fav-cta" id="favGoGames">Browse games</button>${authToken ? '' : '<div class="fav-note" style="padding:12px 0 0">Favorites are saved on this device. <button type="button" id="favLoginBtn">Log in</button> to keep them on all your devices.</div>'}</div>`;
+    const go = document.getElementById('favGoGames'); if(go) go.onclick = () => goToNav('games');
+    const li = document.getElementById('favLoginBtn'); if(li) li.onclick = () => document.getElementById('profileBtn').click();
+    return;
+  }
+  const now = Date.now();
+  const WEEK = 7 * 24 * 3600e3, DAY = 24 * 3600e3;
+  const shown = [];
+  let later = 0;
+  for(const f of items){
+    const live = favGames[favKey(f.sport, f.gameId)];
+    if(live){ shown.push(live); continue; }
+    // Not in the feed: work out why from the saved kickoff time.
+    const t = Date.parse(f.commenceTime);
+    if(Number.isFinite(t) && t - now > WEEK){ later++; continue; }
+    if(Number.isFinite(t) && now - t > DAY) continue; // finished more than 24h ago
+    if(!favLoadedAt) continue;
+    shown.push({ id: f.gameId, sport: f.sport, homeTeam: f.homeTeam || 'Home', awayTeam: f.awayTeam || 'Away', commenceTime: f.commenceTime, status: 'missing' });
+  }
+  const groups = [
+    ['Live now', shown.filter(g => g.status === 'live')],
+    ['Upcoming', shown.filter(g => g.status === 'upcoming').sort((a,b) => Date.parse(a.commenceTime) - Date.parse(b.commenceTime))],
+    ['Final', shown.filter(g => g.status === 'final').sort((a,b) => Date.parse(b.commenceTime) - Date.parse(a.commenceTime))],
+    ['Waiting for an update', shown.filter(g => g.status === 'missing')],
+  ].filter(([, gs]) => gs.length);
+  let html = '';
+  for(const [label, gs] of groups){
+    html += `<div class="fav-group">${label}</div>`;
+    html += gs.map(g => g.status === 'missing' ? favMissingRow(g) : renderGameRow(g, { showSport: true })).join('');
+  }
+  if(!groups.length) html += '<div class="fav-empty">None of your starred games are on right now.</div>';
+  if(later) html += `<div class="fav-note">${later} starred game${later === 1 ? ' is' : 's are'} more than 7 days away and will show up here closer to game time.</div>`;
+  if(someFailed) html += '<div class="fav-note">Some scores couldn\'t load just now — they\'ll refresh in a minute.</div>';
+  if(!authToken) html += '<div class="fav-note">Favorites are saved on this device. <button type="button" id="favLoginBtn">Log in</button> to keep them on all your devices.</div>';
+  list.innerHTML = html;
+  const li = document.getElementById('favLoginBtn'); if(li) li.onclick = () => document.getElementById('profileBtn').click();
+  wireFavStars(list, shown);
+  list.querySelectorAll('.game-row').forEach(row => {
+    const g = shown.find(x => x.id === row.dataset.id && (!row.dataset.sport || x.sport === row.dataset.sport));
+    if(!g || g.status === 'missing') return;
+    const open = (e) => {
+      if(e && e.target && e.target.closest && e.target.closest('.fav-star')) return;
+      openGameBreakdown(g.sport, g);
+    };
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', (e) => {
+      if(e.target !== row) return;
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); }
+    });
+  });
+  updateCountdowns();
+}
+function favMissingRow(g){
+  const started = Date.parse(g.commenceTime) <= Date.now();
+  return `
+    <div class="game-row fav-missing" data-id="${escapeHtml(g.id)}" data-sport="${escapeHtml(g.sport)}">
+      <div class="game-meta"><span>${g.commenceTime ? timeLabel(g.commenceTime) : ''}</span><span class="meta-right"><span class="sport-badge">${sportTabLabel(g.sport)}</span>${favStarHtml(g.sport, g)}</span></div>
+      <div class="matchup">
+        <div class="team-line"><div class="team-info"><span class="team-name">${escapeHtml(g.awayTeam)}</span></div></div>
+        <div class="team-line"><div class="team-info"><span class="team-name">${escapeHtml(g.homeTeam)}${homeTag}</span></div></div>
+      </div>
+      <div class="book-note">${started ? 'Score not posted yet — checking again every minute' : 'Odds not posted right now — check back closer to game time'}</div>
+    </div>`;
+}
+// Bring in this account's favorites on open, so stars on the board are right.
+if(authToken) favSyncFromServer();
 
 // Admin "Log in as" banner — shown while an impersonation session is active.
 (function(){
