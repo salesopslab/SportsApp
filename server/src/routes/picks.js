@@ -1,8 +1,9 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import { pool, ensureSchema } from "../db.js";
-import { buildLeaderboard, rangeFilter, toPublic, toCsv, pickersDisagree } from "../services/picksService.js";
-import { savePick, gradePick } from "../services/ledgerService.js";
+import { buildLeaderboard, rangeFilter, toPublic, toCsv, pickersDisagree, viewFor, isRevealed } from "../services/picksService.js";
+import { withTier } from "../middleware/tier.js";
+import { savePick, gradePick, hasPickAccess } from "../services/ledgerService.js";
 import { runPickers, runDailyIfDue } from "../services/pickerService.js";
 
 // Public picks ledger. Writes (ingest, grade) need PICKS_INGEST_TOKEN;
@@ -88,7 +89,9 @@ function whereFor(q) {
 }
 
 // GET /api/picks?picker=&sport=&status=&from=&to=&range=&page=&limit=
-router.get("/", async (req, res) => {
+// Picks whose games haven't started are locked (picker, sport, posted time
+// only) unless the viewer bought the current Hot Picks bundle.
+router.get("/", withTier, async (req, res) => {
   if (!pool) return res.json({ available: false, picks: [], total: 0 });
   try {
     await ensureSchema();
@@ -97,8 +100,15 @@ router.get("/", async (req, res) => {
     const { where, params } = whereFor(req.query);
     let { rows } = await pool.query(`SELECT * FROM picks ${where} ORDER BY kickoff_at DESC, id DESC`, params);
     if (req.query.range === "season") rows = rows.filter(rangeFilter("season"));
+    const entitled = req.user ? await hasPickAccess(req.user.id) : false;
+    const now = Date.now();
     const total = rows.length;
-    res.json({ available: true, total, page, limit, pages: Math.max(Math.ceil(total / limit), 1), picks: rows.slice((page - 1) * limit, page * limit).map(toPublic) });
+    const lockedCount = rows.filter((r) => !isRevealed(r, now)).length;
+    res.json({
+      available: true, total, page, limit, pages: Math.max(Math.ceil(total / limit), 1),
+      access: { entitled, loggedIn: !!req.user, lockedCount },
+      picks: rows.slice((page - 1) * limit, page * limit).map((r) => viewFor(r, { entitled, now })),
+    });
   } catch (err) {
     console.error("picks list:", err);
     res.status(500).json({ error: "Couldn't load picks." });
@@ -121,7 +131,8 @@ router.get("/leaderboard", async (req, res) => {
   }
 });
 
-// GET /api/picks/export.csv — the whole public ledger (same filters as the list, optional).
+// GET /api/picks/export.csv — the whole public ledger (same filters as the
+// list, optional). Only revealed picks: one is added when its game starts.
 router.get("/export.csv", async (req, res) => {
   if (needDb(res)) return;
   try {
@@ -129,6 +140,7 @@ router.get("/export.csv", async (req, res) => {
     const { where, params } = whereFor(req.query);
     let { rows } = await pool.query(`SELECT * FROM picks ${where} ORDER BY kickoff_at DESC, id DESC`, params);
     if (req.query.range === "season") rows = rows.filter(rangeFilter("season"));
+    rows = rows.filter((r) => isRevealed(r)); // the public ledger: picks are added once their games start
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="betedge-picks-ledger-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send(toCsv(rows.map(toPublic)));
@@ -141,27 +153,34 @@ router.get("/export.csv", async (req, res) => {
 // GET /api/picks/game?sport=&game_id=&home=&away=&kickoff= — the pickers'
 // picks on one game (by id, or by team names within 12h of kickoff), plus
 // each picker's all-time record, for the game page and the AI chat.
-export async function picksForGame({ sport, gameId, home, away, kickoff }) {
+// Not entitled + game not started: no picks at all (not even whether there
+// are any — that would give away which games the pickers chose).
+export async function picksForGame({ sport, gameId, home, away, kickoff, entitled = false }) {
   if (!pool) return { available: false, picks: [], records: [], disagree: false };
   await ensureSchema();
+  const now = Date.now();
+  const { rows: all } = await pool.query("SELECT * FROM picks");
+  const records = buildLeaderboard(all).map(({ series, byConfidence, ...r }) => r);
+  const t = Date.parse(kickoff);
+  const started = Number.isFinite(t) && t <= now;
+  if (!entitled && !started) return { available: true, hidden: true, picks: [], records, disagree: false };
   const params = [String(sport || "").toLowerCase()];
   const ors = [];
   if (gameId) { params.push(String(gameId)); ors.push(`game_id = $${params.length}`); }
-  const t = Date.parse(kickoff);
   if (home && away && Number.isFinite(t)) {
     params.push(new Date(t - 12 * 3600e3).toISOString(), new Date(t + 12 * 3600e3).toISOString(), `%${String(home).toLowerCase()}%`, `%${String(away).toLowerCase()}%`);
     const n = params.length;
     ors.push(`(kickoff_at BETWEEN $${n - 3} AND $${n - 2} AND lower(game) LIKE $${n - 1} AND lower(game) LIKE $${n})`);
   }
-  if (!ors.length) return { available: true, picks: [], records: [], disagree: false };
-  const { rows } = await pool.query(`SELECT * FROM picks WHERE sport = $1 AND (${ors.join(" OR ")}) ORDER BY created_at`, params);
-  const { rows: all } = await pool.query("SELECT * FROM picks");
-  const records = buildLeaderboard(all).map(({ series, byConfidence, ...r }) => r);
-  return { available: true, picks: rows.map(toPublic), records, disagree: pickersDisagree(rows, home, away) };
+  if (!ors.length) return { available: true, picks: [], records, disagree: false };
+  let { rows } = await pool.query(`SELECT * FROM picks WHERE sport = $1 AND (${ors.join(" OR ")}) ORDER BY created_at`, params);
+  if (!entitled) rows = rows.filter((r) => isRevealed(r, now));
+  return { available: true, picks: rows.map((r) => viewFor(r, { entitled, now })), records, disagree: pickersDisagree(rows, home, away), early: entitled && !started };
 }
-router.get("/game", async (req, res) => {
+router.get("/game", withTier, async (req, res) => {
   try {
-    res.json(await picksForGame({ sport: req.query.sport, gameId: req.query.game_id, home: req.query.home, away: req.query.away, kickoff: req.query.kickoff }));
+    const entitled = req.user ? await hasPickAccess(req.user.id) : false;
+    res.json(await picksForGame({ sport: req.query.sport, gameId: req.query.game_id, home: req.query.home, away: req.query.away, kickoff: req.query.kickoff, entitled }));
   } catch (err) {
     console.error("picks for game:", err);
     res.status(500).json({ error: "Couldn't load picks for this game." });

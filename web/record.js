@@ -6,7 +6,7 @@
   const INFO = (typeof PICKER_INFO !== 'undefined') ? PICKER_INFO : {};
   const ICON = Object.fromEntries(Object.entries(INFO).map(([k, v]) => [k, v.icon]));
   const CONF_RANK = { Low:1, Medium:2, High:3 };
-  const state = { range:'all', sport:'all', picker:'', status:'', sort:'date:desc', shown:50, picks:[], board:null, loadedKey:'' };
+  const state = { range:'all', sport:'all', picker:'', status:'', sort:'date:desc', shown:50, picks:[], board:null, loadedKey:'', access:null };
 
   const fmtUnits = (u) => u == null ? '—' : `${u > 0 ? '+' : ''}${Number(u).toFixed(2)}u`;
   const fmtOdds = (o) => o == null ? '—' : (o > 0 ? `+${o}` : String(o));
@@ -83,10 +83,10 @@
     if(state.status) rows = rows.filter(p => p.result === state.status);
     const [key, dir] = state.sort.split(':');
     const val = {
-      date: p => Date.parse(p.kickoff_at) + p.id / 1e6,
+      date: p => Date.parse(p.kickoff_at || p.created_at) + p.id / 1e6,
       units: p => p.units == null ? -Infinity : p.units,
-      odds: p => p.odds,
-      implied: p => p.implied_prob ?? 0,
+      odds: p => p.odds ?? -Infinity,
+      implied: p => p.implied_prob ?? -1,
       picker: p => p.picker,
       confidence: p => CONF_RANK[p.confidence] || 0,
     }[key] || (p => Date.parse(p.kickoff_at));
@@ -116,13 +116,25 @@
     const [key, dir] = state.sort.split(':');
     const th = (k, label) => `<th data-sort="${k}" class="${key === k ? 'sorted' + (dir === 'asc' ? ' asc' : '') : ''}" scope="col">${label}</th>`;
     const shown = rows.slice(0, state.shown);
-    box.innerHTML = `<table class="rec-table">
+    const a = state.access || {};
+    const lockbar = a.entitled && a.lockedCount ? `<div class="rec-lockbar open">🔓 You're seeing today's picks early with Hot Picks. Everyone else sees them at kickoff.</div>`
+      : a.lockedCount ? `<div class="rec-lockbar"><span>🔒 ${a.lockedCount} pick${a.lockedCount === 1 ? '' : 's'} locked until kickoff. Results are always public.</span><button type="button" class="rec-unlock">Unlock with Hot Picks</button></div>` : '';
+    const lockedRow = (p) => `<tr class="locked">
+        <td class="c-date">Posted ${esc(new Date(p.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short' }))}</td>
+        <td class="c-picker">${ICON[p.picker] || ''} ${esc(p.picker)}</td>
+        <td class="c-game"><span class="sport-badge">${esc(sportName(p.sport))}</span> 🔒 Locked until kickoff</td>
+        <td class="c-bet"><button type="button" class="rec-unlock">Unlock with Hot Picks</button></td>
+        <td class="c-odds num">—</td><td class="c-imp num">—</td><td class="c-conf">—</td>
+        <td class="c-res"><span class="rec-res pending">pending</span><div class="rec-mob-units"></div></td>
+        <td class="c-units num">—</td>
+      </tr>`;
+    box.innerHTML = lockbar + `<table class="rec-table">
       <thead><tr>${th('date','Date')}${th('picker','Picker')}<th scope="col">Game</th><th scope="col">Bet</th>${th('odds','Odds')}${th('implied','Implied')}${th('confidence','Conf.')}<th scope="col">Result</th>${th('units','Units')}</tr></thead>
-      <tbody>${shown.map(p => `<tr>
+      <tbody>${shown.map(p => p.locked ? lockedRow(p) : `<tr>
         <td class="c-date">${esc(dateLabel(p.kickoff_at))}</td>
         <td class="c-picker">${ICON[p.picker] || ''} ${esc(p.picker)}</td>
         <td class="c-game"><span class="sport-badge">${esc(sportName(p.sport))}</span> ${esc(p.game)}</td>
-        <td class="c-bet"><b>${esc(p.bet)}</b><div class="rec-reason">${esc(p.reason)}</div><div class="rec-mob-meta">${fmtOdds(p.odds)} · ${fmtPct(p.implied_prob * 100)} implied · ${esc(p.confidence)} confidence</div></td>
+        <td class="c-bet"><b>${esc(p.bet)}</b>${p.early ? ' <span class="rec-res pending" title="Hot Picks early access — public at kickoff">early</span>' : ''}<div class="rec-reason">${esc(p.reason)}</div><div class="rec-mob-meta">${fmtOdds(p.odds)} · ${fmtPct(p.implied_prob * 100)} implied · ${esc(p.confidence)} confidence</div></td>
         <td class="c-odds num">${fmtOdds(p.odds)}${p.closing_odds != null ? `<div class="rec-reason">close ${fmtOdds(p.closing_odds)}</div>` : ''}</td>
         <td class="c-imp num">${fmtPct(p.implied_prob * 100)}</td>
         <td class="c-conf">${esc(p.confidence)}</td>
@@ -137,6 +149,7 @@
       renderTable();
     });
     const more = $('recMore'); if(more) more.onclick = () => { state.shown += 100; renderTable(); };
+    box.querySelectorAll('.rec-unlock').forEach(b => b.onclick = () => { if(typeof openHotPicksModal === 'function') openHotPicksModal(); });
   }
 
   async function load(){
@@ -157,7 +170,7 @@
       }
       if(state.loadedKey !== key) return; // a newer filter won
       if(lbRes.error) throw new Error(lbRes.error);
-      state.board = lbRes; state.picks = picks;
+      state.board = lbRes; state.picks = picks; state.access = first.access || null;
     }catch(e){
       if(state.loadedKey !== key) return;
       state.board = { error: "Couldn't load the record right now — try again in a minute." };

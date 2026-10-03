@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { runPickers } from "../services/pickerService.js";
+import { toPublic, isRevealed } from "../services/picksService.js";
 import { pool } from "../db.js";
 import { getLatestUsage, getUsageHistory } from "../services/usageService.js";
 import { TIERS, TIER_RANK, effectiveTier } from "../services/tierService.js";
@@ -412,6 +413,23 @@ router.post("/stripe/migrate-subscribers", requireAdminKey, async (req, res) => 
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "Subscriber migration failed.", detail: err.message });
+  }
+});
+
+// GET /api/admin/picks?status=pending|all — every pick in full, including
+// ones still locked to the public (games not started).
+router.get("/picks", requireAdminKey, async (req, res) => {
+  try {
+    if (!pool) return res.json({ picks: [] });
+    const all = req.query.status === "all";
+    const { rows } = await pool.query(
+      all ? "SELECT * FROM picks ORDER BY kickoff_at DESC, id DESC LIMIT 300"
+          : "SELECT * FROM picks WHERE result = 'pending' ORDER BY kickoff_at ASC, id ASC",
+    );
+    res.json({ picks: rows.map((r) => ({ ...toPublic(r), revealed: isRevealed(r) })) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load picks.", detail: err.message });
   }
 });
 

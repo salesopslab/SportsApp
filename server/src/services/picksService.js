@@ -104,7 +104,8 @@ export function buildLeaderboard(rows) {
     for (const p of mine) {
       addTo(s, p);
       if (byConf[p.confidence]) addTo(byConf[p.confidence], p);
-      if (p.result !== "void" && p.implied_prob != null) { impliedSum += Number(p.implied_prob); impliedN++; }
+      // Unrevealed picks' prices stay out of the public averages.
+      if (p.result !== "void" && p.implied_prob != null && isRevealed(p)) { impliedSum += Number(p.implied_prob); impliedN++; }
       if (p.closing_odds != null && p.result !== "void") {
         const c = clvPoints(p.odds, p.closing_odds);
         if (c != null) { clvSum += c; clvN++; }
@@ -160,6 +161,22 @@ export function pickersDisagree(picks, homeTeam, awayTeam) {
     (sides[s.market] ||= new Set()).add(s.side);
   }
   return Object.values(sides).some((set) => set.size > 1);
+}
+
+// Paid-picks privacy: a pick is revealed to everyone once its game starts
+// (or it's graded). Before that only Hot Picks buyers and the admin see it;
+// everyone else gets lockedView() — picker, sport and when it was posted.
+export function isRevealed(p, now = Date.now()) {
+  return p.result !== "pending" || new Date(p.kickoff_at).getTime() <= now;
+}
+export function lockedView(p) {
+  return { id: Number(p.id), picker: p.picker, sport: p.sport, created_at: new Date(p.created_at).toISOString(), result: "pending", locked: true };
+}
+// Full row for a revealed pick (or an entitled viewer), teaser otherwise.
+export function viewFor(row, { entitled = false, now = Date.now() } = {}) {
+  const p = toPublic(row);
+  if (isRevealed(p, now)) return { ...p, locked: false };
+  return entitled ? { ...p, locked: false, early: true } : lockedView(p);
 }
 
 // Public row shape (numbers as numbers).

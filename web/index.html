@@ -865,6 +865,13 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
 .pk-row:last-child{ border-bottom:none; }
 .pk-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
 .pk-name{ font-size:13px; font-weight:700; }
+.pk-locked{ font-size:13px; line-height:1.55; color:var(--text); background:var(--surface2); border-radius:10px; padding:10px 12px; }
+.pk-unlock, .rec-unlock{ background:none; border:1px solid var(--amber); color:var(--amber); font:600 12.5px 'Inter',sans-serif; border-radius:8px; padding:2px 8px; cursor:pointer; }
+.pk-early{ font-size:12px; color:var(--green); margin-bottom:6px; font-weight:600; }
+.rec-lockbar{ display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; background:var(--surface2); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:10px 0; }
+.rec-lockbar.open{ color:var(--green); font-weight:600; }
+.rec-lockbar .rec-unlock{ padding:6px 12px; }
+.rec-table tr.locked td{ color:var(--sub); }
 .pk-style{ display:block; font-size:11.5px; font-weight:500; color:var(--sub); }
 .rec-style{ font-size:12px; color:var(--sub); margin-top:-4px; }
 .pk-bet{ font-size:14px; margin-top:4px; }
@@ -1437,6 +1444,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
           <li><b>Timestamped before kickoff.</b> Each pick is saved with the time it was made, the bet and the odds at that moment. The server refuses any pick made at or after kickoff.</li>
           <li><b>Can't be edited or deleted.</b> Once posted, a pick is locked. Only its result is added after the game. A cancelled game is marked void, never removed.</li>
           <li><b>Flat 1-unit stakes.</b> A win at +150 is +1.50 units, a win at −110 is +0.91, a loss is −1, and a push or void is 0. ROI is units ÷ graded picks.</li>
+          <li><b>Revealed at kickoff.</b> Picks on games that haven't started are locked here. Hot Picks buyers see them as soon as they're posted. Either way, the posted time proves each pick was made before the game.</li>
           <li><b>Losses stay up.</b> Every result counts. Download the CSV and check our math.</li>
           <li><b>Small samples are noisy.</b> Under 100 picks, a record says more about luck than skill. CLV (closing-line value) shows whether a picker beat the final market price, which is a faster signal than wins.</li>
         </ul>
@@ -3641,7 +3649,10 @@ function renderHotPicksModalBody(){
         ${p.locked ? '<div class="hotpick-card-locked-tag">Game has started</div>' : ''}
       </div>
     `).join('');
-    body.innerHTML = `<div class="hotpicks-list">${cards || '<div class="board-msg">No picks left today.</div>'}</div>`;
+    body.innerHTML = `<div class="hotpicks-list">${cards || '<div class="board-msg">No picks left today.</div>'}</div>
+      <div class="hotpicks-promo-sub" style="margin-top:10px;">🔓 Your purchase also unlocks today's AI Record picks before kickoff — <a href="/record" id="hpToRecord" style="color:var(--amber);font-weight:600;">see them on AI Record</a>.</div>`;
+    const hp = document.getElementById('hpToRecord');
+    if(hp) hp.addEventListener('click', (e) => { e.preventDefault(); document.getElementById('hotPicksModal').classList.add('hidden'); goToNav('record'); });
     return;
   }
 
@@ -3666,6 +3677,7 @@ function renderHotPicksModalBody(){
 
   body.innerHTML = `
     <div class="hotpicks-promo-sub">${t.pickCount} AI-selected pick${t.pickCount===1?'':'s'} for today, each kicking off within 24 hours. Unlock all of them for ${price}.</div>
+    <div class="hotpicks-promo-sub" style="margin-top:6px;">Also unlocks today's AI Record picks from 🐺 Lone Wolf, 🎓 The Professor and 🔄 The Fader before kickoff.</div>
     <div class="hotpicks-list">${teasers}</div>
     <div class="hotpicks-slots">${t.slotsLeft} of ${t.maxPurchasers} slots left today</div>
     <button class="hotpicks-buy-btn" id="hotPicksBuyBtn">Unlock Today's Hot Picks — ${price}</button>
@@ -3675,6 +3687,11 @@ function renderHotPicksModalBody(){
 
 function openHotPicksModal(){
   document.getElementById('hotPicksModal').classList.remove('hidden');
+  if(!hotPicksTeaser){
+    document.getElementById('hotPicksBody').innerHTML = '<div class="board-msg"><div class="spin"></div><div>Loading…</div></div>';
+    loadHotPicksTeaser(); // re-renders the modal when it arrives
+    return;
+  }
   renderHotPicksModalBody();
 }
 document.getElementById('hotPicksModalClose').addEventListener('click', ()=>{
@@ -4959,10 +4976,12 @@ async function loadGamePickers(sport, game){
     if(document.getElementById('bdPickers') !== box) return;
     const rec = (name) => (d.records || []).find(r => r.picker === name);
     const recLine = (r) => r && r.graded ? `${r.wins}-${r.losses}${r.pushes ? '-' + r.pushes : ''} · ${r.units > 0 ? '+' : ''}${r.units.toFixed(2)}u · ${r.graded} graded${r.smallSample ? ' (small sample)' : ''}` : 'No graded picks yet';
-    if(!d.picks || !d.picks.length){
+    if(d.hidden){
+      box.innerHTML = `${head}<div class="pk-locked">🔒 The pickers' calls on upcoming games are revealed at kickoff. Get today's picks now with <button type="button" class="pk-unlock">Hot Picks</button>. Their full track records are on the <a href="/record" class="pk-link">AI Record page</a>.</div>`;
+    }else if(!d.picks || !d.picks.length){
       box.innerHTML = `${head}<div class="empty-note">None of our three pickers has posted a pick on this game. Their full records are on the <a href="/record" class="pk-link">AI Record page</a>.</div>`;
     }else{
-      box.innerHTML = head + (d.disagree ? '<div class="pk-disagree">The pickers disagree on this game. That\'s useful: the case isn\'t one-sided.</div>' : '') +
+      box.innerHTML = head + (d.early ? '<div class="pk-early">🔓 Early access with your Hot Picks — the public sees these at kickoff.</div>' : '') + (d.disagree ? '<div class="pk-disagree">The pickers disagree on this game. That\'s useful: the case isn\'t one-sided.</div>' : '') +
         d.picks.map(p => `<div class="pk-row">
           <div class="pk-top"><span class="pk-name">${PICKER_ICON[p.picker] || '🤖'} ${escapeHtml(p.picker)}${PICKER_INFO[p.picker] ? `<span class="pk-style">${escapeHtml(PICKER_INFO[p.picker].style)}</span>` : ''}</span><span class="rec-res ${escapeHtml(p.result)}">${escapeHtml(p.result)}</span></div>
           <div class="pk-bet"><b>${escapeHtml(p.bet)}</b> at ${formatPrice(p.odds)} <span class="pk-sub">(${pctLabel(p.implied_prob)} implied) · ${escapeHtml(p.confidence)} confidence</span></div>
@@ -4974,6 +4993,7 @@ async function loadGamePickers(sport, game){
     box.innerHTML = `${head}<div class="empty-note">Couldn't load the pickers' calls right now.</div>`;
   }
   box.querySelectorAll('.pk-link').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); goToNav('record'); }));
+  box.querySelectorAll('.pk-unlock').forEach(b => b.addEventListener('click', openHotPicksModal));
 }
 
 // ---- Freshness helpers (shared by the Breakdown, chat and Live pill) ----

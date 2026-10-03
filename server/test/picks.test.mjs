@@ -75,6 +75,20 @@ t("season start per sport", () => {
   assert.equal(seasonStart("ncaab", now).toISOString().slice(0, 10), "2025-11-01");
   assert.equal(seasonStart("mlb", now).toISOString().slice(0, 10), "2026-03-01");
 });
+const { viewFor, isRevealed, lockedView } = await import("../src/services/picksService.js");
+t("paid-picks privacy: pending picks are locked until kickoff unless entitled", () => {
+  const now = Date.UTC(2026, 9, 3, 15);
+  const row = { id: 7, picker: "Lone Wolf", sport: "nfl", game: "A @ B", game_id: "g", kickoff_at: new Date(now + 3600e3).toISOString(), bet: "A +3", odds: -110, implied_prob: 0.5238, confidence: "High", reason: "secret", result: "pending", units: null, closing_odds: null, created_at: new Date(now - 3600e3).toISOString() };
+  const locked = viewFor(row, { now });
+  assert.deepEqual(Object.keys(locked).sort(), ["created_at", "id", "locked", "picker", "result", "sport"]);
+  assert.equal(locked.locked, true);
+  assert.equal(JSON.stringify(locked).includes("secret") || JSON.stringify(locked).includes("A +3") || JSON.stringify(locked).includes("A @ B"), false);
+  const early = viewFor(row, { now, entitled: true });
+  assert.equal(early.bet, "A +3"); assert.equal(early.early, true);
+  const started = viewFor(row, { now: now + 2 * 3600e3 });
+  assert.equal(started.bet, "A +3"); assert.equal(started.locked, false);
+  assert.equal(isRevealed({ ...row, result: "void" }, now), true); // graded/void before kickoff => public
+});
 const { cleanPick } = await import("../src/services/ledgerService.js");
 t("old picker names are still accepted and mapped to the new ones", () => {
   const base = { sport: "nfl", game: "A @ B", kickoff_at: new Date(Date.now() + 3600e3).toISOString(), bet: "A +3", odds: -110, confidence: "Low", reason: "x" };

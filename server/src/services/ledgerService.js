@@ -72,4 +72,17 @@ export async function gradePick({ id, result, closing_odds }) {
   }
 }
 
+// Who can see picks before kickoff: anyone who bought the current Hot
+// Picks bundle (bundles last 24 hours from when they were generated).
+export async function hasPickAccess(userId) {
+  if (!pool || !userId) return false;
+  await ensureSchema();
+  const { rows } = await pool.query(
+    `SELECT 1 FROM hot_pick_purchases hp JOIN hot_pick_days d ON d.id = hp.hot_pick_day_id
+     WHERE hp.user_id = $1 AND d.generated_at > now() - interval '24 hours' LIMIT 1`,
+    [userId]
+  );
+  return rows.length > 0;
+}
+
 export { CONFIDENCES };
