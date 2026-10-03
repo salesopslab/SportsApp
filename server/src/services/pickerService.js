@@ -34,8 +34,10 @@ export function inSeason(sport, d = new Date()) {
 // in the next 24 hours and grades everything that has finished.
 const WINDOW = { [LINE]: [0.5, 24], [STATS]: [0.5, 24], [VALUE]: [0.5, 24] };
 export const DAILY_HOUR = Number(process.env.PICKERS_DAILY_HOUR || 8); // Pacific
-const DAILY_CAP = 8;       // per picker, per Pacific day (by posting time)
-const DAILY_SPORT_CAP = 4; // per picker, per sport, per day
+// At most 3 picks per picker per Pacific day (by posting time). Candidates
+// are ranked by signal strength first, so each picker keeps its best 3.
+export const DAILY_CAP = Number(process.env.PICKS_PER_PICKER_PER_DAY || 3);
+const DAILY_SPORT_CAP = DAILY_CAP; // no separate per-sport limit
 const GRADE_AFTER_HOURS = 2.5; // start checking for a final this long after kickoff
 const VOID_AFTER_DAYS = 4;     // no final score after this long => void (postponed/cancelled)
 

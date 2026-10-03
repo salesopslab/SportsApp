@@ -90,6 +90,26 @@ await test("a second run doesn't double-post or re-grade", async () => {
   assert.equal(r.graded.length, 0);
   assert.ok(r.skipped.some((s) => /already picked/.test(s)));
 });
+await test("daily cap: at most 3 picks per picker, strongest first", async () => {
+  const { DAILY_CAP } = await import("../src/services/pickerService.js");
+  assert.equal(DAILY_CAP, 3);
+  // Eight more games starting soon, each with a bigger line move than the last.
+  for (let i = 1; i <= 8; i++) {
+    oddsNfl.push({ id: `cap-${i}`, sport_key: "americanfootball_nfl", commence_time: iso(4 + i / 10), home_team: `Home ${i}`, away_team: `Away ${i}`, bookmakers: [
+      { key: "alpha", title: "Alpha", markets: [{ key: "spreads", outcomes: [{ name: `Away ${i}`, point: 3, price: -110 }, { name: `Home ${i}`, point: -3, price: -110 }] }] }] });
+    for (const [h, pt] of [[-20, -3 - i], [-10, -3 - i], [-1, -3]]) {
+      await pool.query("INSERT INTO odds_snapshots (sport, game_id, book, market, side, point, price, captured_at) VALUES ('nfl',$1,'Alpha','spread',$2,$3,-110,$4)", [`cap-${i}`, `Home ${i}`, pt, iso(h)]);
+    }
+  }
+  const { invalidate } = await import("../src/services/cache.js");
+  invalidate("odds:nfl");
+  const r = await runPickers();
+  const { rows } = await pool.query("SELECT picker, game_id FROM picks WHERE picker = 'Lone Wolf' ORDER BY id");
+  assert.equal(rows.length, 3, JSON.stringify(rows));
+  // Lone Wolf already had 1 today (g-soon) -> 2 more, the two biggest moves.
+  assert.deepEqual(rows.slice(1).map((x) => x.game_id).sort(), ["cap-7", "cap-8"]);
+  assert.ok(r.skipped.some((s) => /daily cap/.test(s)));
+});
 await test("only one run at a time", async () => {
   const [a, b] = await Promise.all([runPickers({ dryRun: true }), runPickers({ dryRun: true })]);
   assert.ok([a, b].some((x) => x.error === "A picker run is already in progress.") || [a, b].every((x) => x.ok));
