@@ -95,9 +95,14 @@ select.tier-select.flash-error{ border-color:var(--red); }
 .pager button{ font-size:12px; padding:5px 10px; border-radius:6px; border:1px solid var(--line); background:none; color:var(--sub); cursor:pointer; }
 .pager button:disabled{ opacity:0.4; cursor:default; }
 
-.bars{ display:flex; align-items:flex-end; gap:3px; height:80px; }
-.bar{ flex:1; background:var(--amber); border-radius:2px 2px 0 0; min-height:2px; position:relative; }
-.bar-labels{ display:flex; justify-content:space-between; font-size:10px; color:var(--sub); margin-top:6px; }
+.chart{ display:grid; grid-template-columns:auto 1fr; column-gap:8px; }
+.chart-y{ display:flex; flex-direction:column; justify-content:space-between; font-size:10px; color:var(--sub); text-align:right; height:96px; line-height:1; font-variant-numeric:tabular-nums; }
+/* Bars are sized as a % of this box and can never draw outside it. */
+.bars{ display:flex; align-items:flex-end; gap:3px; height:96px; overflow:hidden; border-bottom:1px solid var(--line); background:linear-gradient(to bottom, var(--line) 1px, transparent 1px) top / 100% 50% repeat-y; }
+.bar{ flex:1; min-width:0; background:var(--amber); border-radius:2px 2px 0 0; position:relative; }
+.bar.zero{ background:var(--line); }
+.bar-labels{ grid-column:2; display:flex; justify-content:space-between; font-size:10px; color:var(--sub); margin-top:6px; line-height:1.2; }
+.chart-total{ font-size:12px; color:var(--sub); margin-bottom:8px; }
 
 .spin{ width:22px; height:22px; border:2.5px solid var(--line); border-top-color:var(--amber); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto; }
 @keyframes spin{ to{ transform:rotate(360deg); } }
@@ -147,7 +152,8 @@ select.tier-select.flash-error{ border-color:var(--red); }
   .archived-badge{ font-size:9px; }
   .pager button{ font-size:11px; padding:4px 8px; }
 
-  .bars{ height:60px; }
+  .bars, .chart-y{ height:72px; }
+  .bars{ gap:2px; }
   .bar-labels{ font-size:9px; }
 
   .health-grid{ grid-template-columns:repeat(2, 1fr); gap:7px; }
@@ -511,12 +517,26 @@ function renderGrowth(growth){
     el.innerHTML = '<div class="empty-note">No signup data yet.</div>';
     return;
   }
-  const max = Math.max(...growth.days.map(d => d.signups), 1);
-  const bars = growth.days.map(d => `<div class="bar" style="height:${Math.max(2, (d.signups/max)*80)}px" title="${fmtDate(d.date)}: ${d.signups}"></div>`).join('');
-  const first = growth.days[0], last = growth.days[growth.days.length-1];
+  // "2026-09-26" is a calendar day: format it as that day, not as UTC
+  // midnight (which shows the previous day in US time zones).
+  const day = (d) => { const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { month:'short', day:'numeric' }) : fmtDate(d); };
+  const counts = growth.days.map(d => Number(d.signups) || 0);
+  const total = counts.reduce((a, b) => a + b, 0);
+  // Round the scale up to a whole number that splits evenly in half.
+  const top = Math.max(2, Math.ceil(Math.max(...counts) / 2) * 2);
+  const bars = growth.days.map((d, i) => {
+    const n = counts[i];
+    const pct = n ? Math.max(3, (n / top) * 100) : 2; // % of the chart box, never more than 100
+    return `<div class="bar${n ? '' : ' zero'}" style="height:${pct}%" title="${day(d.date)}: ${n} signup${n === 1 ? '' : 's'}"></div>`;
+  }).join('');
+  const first = growth.days[0], mid = growth.days[Math.floor(growth.days.length / 2)], last = growth.days[growth.days.length-1];
   el.innerHTML = `
-    <div class="bars">${bars}</div>
-    <div class="bar-labels"><span>${fmtDate(first.date)}</span><span>${fmtDate(last.date)}</span></div>
+    <div class="chart-total">${total} signup${total === 1 ? '' : 's'} in the last ${growth.days.length} days</div>
+    <div class="chart">
+      <div class="chart-y" aria-hidden="true"><span>${top}</span><span>${top / 2}</span><span>0</span></div>
+      <div class="bars" role="img" aria-label="Signups per day, ${total} total">${bars}</div>
+      <div class="bar-labels"><span>${day(first.date)}</span><span>${day(mid.date)}</span><span>${day(last.date)}</span></div>
+    </div>
   `;
 }
 
