@@ -1,0 +1,35 @@
+# Runs BetEdge's three built-in pickers every 2 hours: posts picks on games
+# starting soon and grades finished ones. The backend may be asleep (Render
+# free tier), so this wakes it first.
+# Needs one repository secret: PICKS_INGEST_TOKEN (same value as on Render).
+name: Run pickers
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: pickers
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wake the backend
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 60 https://betedge-ai-backend.onrender.com/health; then exit 0; fi
+            sleep 20
+          done
+          echo "Backend didn't wake up"; exit 1
+      - name: Run pickers
+        env:
+          TOKEN: ${{ secrets.PICKS_INGEST_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "Add the PICKS_INGEST_TOKEN repository secret"; exit 1; fi
+          curl -fsS --max-time 240 -X POST https://betedge-ai-backend.onrender.com/api/picks/run \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}' \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print('posted', len(d.get('posted',[])), 'graded', len(d.get('graded',[])), 'errors', d.get('errors')); [print(' +', p['picker'], '|', p['bet'], p['odds'], '|', p['game']) for p in d.get('posted',[])]"

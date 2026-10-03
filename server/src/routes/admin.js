@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { runPickers } from "../services/pickerService.js";
 import { pool } from "../db.js";
 import { getLatestUsage, getUsageHistory } from "../services/usageService.js";
 import { TIERS, TIER_RANK, effectiveTier } from "../services/tierService.js";
@@ -406,6 +407,17 @@ router.post("/stripe/migrate-subscribers", requireAdminKey, async (req, res) => 
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: "Subscriber migration failed.", detail: err.message });
+  }
+});
+
+// POST /api/admin/picks/run — run the built-in pickers now (same as the
+// scheduled run). Body: { dry: true } to preview without saving anything.
+router.post("/picks/run", requireAdminKey, async (req, res) => {
+  try {
+    res.json(await runPickers({ dryRun: !!req.body?.dry, post: req.body?.post !== false, grade: req.body?.grade !== false }));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Picker run failed.", detail: err.message });
   }
 });
 

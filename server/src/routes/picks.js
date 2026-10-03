@@ -1,10 +1,9 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import { pool, ensureSchema } from "../db.js";
-import {
-  PICKERS, CONFIDENCES, SPORTS, impliedProb, validOdds, unitsFor, buildLeaderboard,
-  rangeFilter, toPublic, toCsv, pickersDisagree,
-} from "../services/picksService.js";
+import { buildLeaderboard, rangeFilter, toPublic, toCsv, pickersDisagree } from "../services/picksService.js";
+import { savePick, gradePick } from "../services/ledgerService.js";
+import { runPickers } from "../services/pickerService.js";
 
 // Public picks ledger. Writes (ingest, grade) need PICKS_INGEST_TOKEN;
 // everything else is public on purpose — it's the trust page.
@@ -24,29 +23,6 @@ function needDb(res) {
   return true;
 }
 
-// Validate one incoming pick. Returns { value } or { error }.
-function cleanPick(p) {
-  if (!p || typeof p !== "object") return { error: "Pick must be an object." };
-  const picker = String(p.picker || "").trim();
-  if (!PICKERS.includes(picker)) return { error: `picker must be one of: ${PICKERS.join(", ")}.` };
-  const sport = String(p.sport || "").toLowerCase().trim();
-  if (!SPORTS.includes(sport)) return { error: `sport must be one of: ${SPORTS.join(", ")}.` };
-  const game = String(p.game || "").trim();
-  if (!game || game.length > 200) return { error: "game is required (e.g. \"Dallas Cowboys @ Kansas City Chiefs\")." };
-  const kickoff = new Date(p.kickoff_at);
-  if (!Number.isFinite(kickoff.getTime())) return { error: "kickoff_at must be an ISO date-time." };
-  const bet = String(p.bet || "").trim();
-  if (!bet || bet.length > 120) return { error: "bet is required (e.g. \"Denver Broncos +3\")." };
-  if (!validOdds(p.odds)) return { error: "odds must be whole American odds like -110 or +150." };
-  const confidence = String(p.confidence || "").trim();
-  if (!CONFIDENCES.includes(confidence)) return { error: "confidence must be Low, Medium or High." };
-  const reason = String(p.reason || "").trim();
-  if (!reason || reason.length > 2000) return { error: "reason is required." };
-  if (Date.now() >= kickoff.getTime()) return { error: "Pick rejected: it must be posted before kickoff." };
-  const gameId = p.game_id ? String(p.game_id).slice(0, 100) : null;
-  return { value: { picker, sport, game, gameId, kickoff: kickoff.toISOString(), bet, odds: Number(p.odds), implied: impliedProb(p.odds), confidence, reason } };
-}
-
 // POST /api/picks/ingest — one pick or an array. Idempotent on
 // (picker, game, bet, kickoff_at): re-sending returns the original row.
 router.post("/ingest", requireIngestToken, async (req, res) => {
@@ -54,32 +30,10 @@ router.post("/ingest", requireIngestToken, async (req, res) => {
   const list = Array.isArray(req.body) ? req.body : [req.body];
   if (!list.length || list.length > 200) return res.status(400).json({ error: "Send 1–200 picks." });
   try {
-    await ensureSchema();
     const results = [];
-    for (const raw of list) {
-      const { value: v, error } = cleanPick(raw);
-      if (error) { results.push({ status: "rejected", error }); continue; }
-      try {
-        const ins = await pool.query(
-          `INSERT INTO picks (picker, sport, game, game_id, kickoff_at, bet, odds, implied_prob, confidence, reason)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-           ON CONFLICT (picker, game, bet, kickoff_at) DO NOTHING RETURNING *`,
-          [v.picker, v.sport, v.game, v.gameId, v.kickoff, v.bet, v.odds, v.implied.toFixed(4), v.confidence, v.reason]
-        );
-        if (ins.rows.length) { results.push({ status: "created", pick: toPublic(ins.rows[0]) }); continue; }
-        const { rows } = await pool.query(
-          "SELECT * FROM picks WHERE picker=$1 AND game=$2 AND bet=$3 AND kickoff_at=$4",
-          [v.picker, v.game, v.bet, v.kickoff]
-        );
-        results.push({ status: "duplicate", pick: rows[0] ? toPublic(rows[0]) : null });
-      } catch (err) {
-        // The DB's own before-kickoff check is the last line of defence.
-        results.push({ status: "rejected", error: /picks_before_kickoff/.test(err.message) ? "Pick rejected: it must be posted before kickoff." : err.message });
-      }
-    }
+    for (const raw of list) results.push(await savePick(raw));
     const anyOk = results.some((r) => r.status !== "rejected");
-    const body = Array.isArray(req.body) ? { results } : results[0];
-    res.status(anyOk ? 200 : 400).json(body);
+    res.status(anyOk ? 200 : 400).json(Array.isArray(req.body) ? { results } : results[0]);
   } catch (err) {
     console.error("picks ingest:", err);
     res.status(500).json({ error: "Couldn't save picks." });
@@ -92,35 +46,26 @@ router.post("/grade", requireIngestToken, async (req, res) => {
   if (needDb(res)) return;
   const list = Array.isArray(req.body) ? req.body : [req.body];
   try {
-    await ensureSchema();
     const results = [];
-    for (const g of list) {
-      const id = Number(g?.id);
-      const result = String(g?.result || "").toLowerCase();
-      if (!Number.isInteger(id) || id <= 0) { results.push({ status: "rejected", error: "id is required." }); continue; }
-      if (!["win", "loss", "push", "void"].includes(result)) { results.push({ id, status: "rejected", error: "result must be win, loss, push or void." }); continue; }
-      if (g.closing_odds != null && !validOdds(g.closing_odds)) { results.push({ id, status: "rejected", error: "closing_odds must be American odds like -115." }); continue; }
-      const { rows: cur } = await pool.query("SELECT * FROM picks WHERE id=$1", [id]);
-      if (!cur.length) { results.push({ id, status: "rejected", error: "No pick with that id." }); continue; }
-      if (cur[0].result !== "pending") { results.push({ id, status: "rejected", error: `Pick ${id} is already graded (${cur[0].result}) and can't be changed.` }); continue; }
-      const units = unitsFor(result, cur[0].odds);
-      try {
-        const { rows } = await pool.query(
-          `UPDATE picks SET result=$2, units=$3, closing_odds=$4, graded_at=now()
-           WHERE id=$1 AND result='pending' RETURNING *`,
-          [id, result, units, g.closing_odds == null ? null : Number(g.closing_odds)]
-        );
-        if (!rows.length) results.push({ id, status: "rejected", error: `Pick ${id} is already graded and can't be changed.` });
-        else results.push({ id, status: "graded", pick: toPublic(rows[0]) });
-      } catch (err) {
-        results.push({ id, status: "rejected", error: err.message });
-      }
-    }
+    for (const g of list) results.push(await gradePick(g || {}));
     const anyOk = results.some((r) => r.status === "graded");
     res.status(anyOk ? 200 : (results.some((r) => /already graded/.test(r.error || "")) ? 409 : 400)).json(Array.isArray(req.body) ? { results } : results[0]);
   } catch (err) {
     console.error("picks grade:", err);
     res.status(500).json({ error: "Couldn't grade picks." });
+  }
+});
+
+// POST /api/picks/run — run the three built-in pickers now: post picks on
+// games starting soon and grade finished ones. Called on a schedule.
+// Body: { dry?: true (show what would be posted, save nothing), post?: false, grade?: false }
+router.post("/run", requireIngestToken, async (req, res) => {
+  if (needDb(res)) return;
+  try {
+    res.json(await runPickers({ dryRun: !!req.body?.dry, post: req.body?.post !== false, grade: req.body?.grade !== false }));
+  } catch (err) {
+    console.error("picks run:", err);
+    res.status(500).json({ error: "Picker run failed.", detail: err.message });
   }
 });
 

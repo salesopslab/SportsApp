@@ -78,6 +78,13 @@ select.tier-select.flash-error{ border-color:var(--red); }
 .search-row input{ flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:13px; font-family:inherit; }
 .search-row select{ padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:13px; font-family:inherit; }
 .row-actions{ display:flex; gap:6px; flex-wrap:wrap; }
+.pk-actions{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.pk-actions button{ font-size:12.5px; padding:7px 12px; border-radius:8px; border:1px solid var(--line); background:none; color:var(--text); cursor:pointer; font-family:inherit; font-weight:600; }
+.pk-actions button:disabled{ opacity:.5; cursor:default; }
+.pk-actions a{ font-size:12.5px; color:var(--amber); text-decoration:none; font-weight:600; }
+.pk-out{ font-size:12.5px; line-height:1.5; margin-top:10px; }
+.pk-out .pk-item{ padding:6px 0; border-bottom:1px dashed var(--line); }
+.pk-out .pk-sub{ color:var(--sub); font-size:11.5px; }
 .row-actions button{ font-size:11px; padding:4px 8px; border-radius:6px; border:1px solid var(--line); background:none; color:var(--sub); cursor:pointer; font-family:inherit; white-space:nowrap; }
 .row-actions button:hover{ color:var(--text); border-color:var(--sub); }
 .row-actions button.danger{ color:var(--red); border-color:var(--red); }
@@ -188,6 +195,16 @@ select.tier-select.flash-error{ border-color:var(--red); }
       <div class="section" id="hotpicksSection">
         <h2>Hot Picks <span class="tag" id="hotpicksTag"></span></h2>
         <div id="hotpicksBody"></div>
+      </div>
+
+      <div class="section" id="pickersSection">
+        <h2>Pickers <span class="tag">post picks ~0.5–10h before kickoff · grade finals · runs every 2h</span></h2>
+        <div class="pk-actions">
+          <button type="button" id="pickersPreview">Preview (saves nothing)</button>
+          <button type="button" id="pickersRun">Run pickers now</button>
+          <a href="/record" target="_blank" rel="noopener">Open Record page ↗</a>
+        </div>
+        <div id="pickersOut" class="pk-out"></div>
       </div>
 
       <div class="section" id="referralsSection">
@@ -530,6 +547,33 @@ function renderUsage(usage){
     </div>
   `;
 }
+
+// Pickers: preview or run the built-in pickers now.
+async function runPickersFromAdmin(dry){
+  const out = document.getElementById('pickersOut');
+  const btns = [document.getElementById('pickersPreview'), document.getElementById('pickersRun')];
+  btns.forEach(b => b.disabled = true);
+  out.textContent = dry ? 'Checking games starting in the next 10 hours…' : 'Running the pickers…';
+  try{
+    const res = await fetch(`${API}/api/admin/picks/run`, { method:'POST', headers:{ 'Content-Type':'application/json', 'x-admin-key': currentKey }, body: JSON.stringify({ dry }) });
+    const d = await res.json().catch(() => ({}));
+    if(!res.ok || d.ok === false) throw new Error(d.error || d.detail || `Request failed (${res.status})`);
+    const posts = dry ? d.wouldPost : d.posted;
+    const grades = dry ? d.wouldGrade : d.graded;
+    const item = (p) => `<div class="pk-item"><b>${escA(p.picker)}</b>: ${escA(p.bet)} (${p.odds > 0 ? '+' : ''}${escA(p.odds)}, ${escA(p.confidence)}) — ${escA(p.game)}<div class="pk-sub">${escA(p.reason)}</div></div>`;
+    out.innerHTML = `<div><b>${dry ? 'Would post' : 'Posted'} ${posts.length} pick${posts.length === 1 ? '' : 's'}</b>, ${dry ? 'would grade' : 'graded'} ${grades.length}.${d.skipped.length ? ` ${d.skipped.length} skipped (already picked / daily cap).` : ''}</div>`
+      + posts.map(item).join('')
+      + grades.map(g => `<div class="pk-item">Graded #${escA(g.id)} ${escA(g.bet || '')}: <b>${escA(g.result)}</b>${g.units != null ? ` (${g.units > 0 ? '+' : ''}${escA(g.units)}u)` : ''}${g.closing_odds != null ? ` · closed ${g.closing_odds > 0 ? '+' : ''}${escA(g.closing_odds)}` : ''}</div>`).join('')
+      + (d.errors.length ? `<div class="pk-item pk-sub">Notes: ${d.errors.map(escA).join(' · ')}</div>` : '')
+      + (!posts.length && !grades.length ? '<div class="pk-sub">Nothing qualified right now. Each picker only bets when its rule is met, on games starting within its window.</div>' : '');
+  }catch(e){
+    out.textContent = 'Picker run failed: ' + e.message;
+  }finally{
+    btns.forEach(b => b.disabled = false);
+  }
+}
+document.getElementById('pickersPreview').addEventListener('click', () => runPickersFromAdmin(true));
+document.getElementById('pickersRun').addEventListener('click', () => runPickersFromAdmin(false));
 
 async function adminAction(path, method){
   const res = await fetch(`${API}${path}`, {
