@@ -127,16 +127,21 @@ router.get("/growth", requireAdminKey, async (req, res) => {
   try {
     if (!pool) return res.json({ available: false, days: [] });
     const days = Math.min(Number(req.query.days) || 30, 365);
+    // Every calendar day in the range (zero-signup days included), counted
+    // in the admin's time zone, as "YYYY-MM-DD".
+    const tz = process.env.ADMIN_TIMEZONE || "America/Los_Angeles";
     const { rows } = await pool.query(
-      `SELECT date_trunc('day', created_at) AS day, COUNT(*) AS signups
-       FROM users
-       WHERE created_at >= now() - ($1 * interval '1 day')
-       GROUP BY day
-       ORDER BY day ASC`,
-      [days]
+      `WITH d AS (
+         SELECT generate_series((now() AT TIME ZONE $2)::date - ($1::int - 1), (now() AT TIME ZONE $2)::date, interval '1 day')::date AS day
+       )
+       SELECT to_char(d.day, 'YYYY-MM-DD') AS day, COUNT(u.id) AS signups
+       FROM d LEFT JOIN users u ON (u.created_at AT TIME ZONE $2)::date = d.day
+       GROUP BY d.day ORDER BY d.day ASC`,
+      [days, tz]
     );
     res.json({
       available: true,
+      timeZone: tz,
       days: rows.map((r) => ({ date: r.day, signups: Number(r.signups) })),
     });
   } catch (err) {
