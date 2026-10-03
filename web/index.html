@@ -2202,6 +2202,23 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
   errEl.textContent = '';
   if(!email || !password){ errEl.textContent = 'Enter an email and password.'; return; }
 
+  // Admin shortcut: "admin" (anything that isn't an email) + the ADMIN_KEY
+  // as the password opens the admin dashboard, same check as /admin.html.
+  if(mode === 'login' && !email.includes('@')){
+    const key = password.trim();
+    errEl.textContent = 'Checking admin key…';
+    try{
+      const res = await fetch(`${API}/api/admin/usage`, { headers: { 'x-admin-key': key } });
+      if(res.status === 401){ errEl.textContent = 'Invalid admin key.'; return; }
+      if(!res.ok){ errEl.textContent = res.status === 503 ? "Admin isn't configured on the server (ADMIN_KEY)." : `Admin check failed (${res.status}).`; return; }
+      try{ sessionStorage.setItem('betedge_admin_key', key); }catch{}
+      window.location.href = '/admin.html';
+    }catch(e){
+      errEl.textContent = "Couldn't reach the server — it may be waking up. Try again in a minute.";
+    }
+    return;
+  }
+
   const body = { email, password };
   if(mode === 'signup'){
     const referralCode = document.getElementById('authReferralCode').value.trim();
