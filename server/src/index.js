@@ -13,6 +13,7 @@ import billingRouter, { handleStripeWebhook } from "./routes/billing.js";
 import hotPicksRouter from "./routes/hotpicks.js";
 import fantasyRouter from "./routes/fantasy.js";
 import favoritesRouter from "./routes/favorites.js";
+import { timezoneMiddleware } from "./services/timeService.js";
 
 const app = express();
 // Render puts the app behind a reverse proxy, so without this every request
@@ -34,6 +35,10 @@ app.post("/api/billing/webhook", express.raw({ type: "application/json" }), hand
 app.use(express.json({ limit: "15mb" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+// Each user's own time zone (from their device), for AI answers and anything
+// else the server words for them.
+app.use("/api", timezoneMiddleware);
 
 app.use("/api/games", gamesRouter);
 app.use("/api/dossier", dossierRouter);

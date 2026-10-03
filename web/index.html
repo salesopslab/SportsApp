@@ -1438,9 +1438,14 @@ try{
   if(refFromUrl) localStorage.setItem('betedge_ref_code', refFromUrl);
 }catch{ /* best-effort */ }
 
+// The viewer's own time zone, from their phone/computer (which sets it from
+// where they are). Every screen formats times in it, and it's sent to the
+// server so AI answers use it too and it's saved on the account.
+const USER_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { return null; } })();
 function apiFetch(path, opts = {}) {
   const headers = Object.assign({}, opts.headers || {});
   if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  if (USER_TZ) headers['X-Timezone'] = USER_TZ;
   return fetch(`${API}${path}`, Object.assign({}, opts, { headers }));
 }
 
@@ -4046,7 +4051,7 @@ function renderLivePill(){
   const short = age === null ? '' : age < 1 ? 'just now' : age < 60 ? `${Math.round(age)}m ago` : `${Math.round(age/60)}h ago`;
   pill.className = 'status-pill' + (stale ? ' stale' : '');
   document.getElementById('apiStatusLabel').innerHTML = `${stale ? 'Delayed' : 'Live'} <span class="status-age">• Updated ${short}</span>`;
-  pill.title = `Odds last pulled from the provider ${new Date(dataUpdatedAt).toLocaleTimeString()}`;
+  pill.title = `Odds last pulled from the provider ${new Date(dataUpdatedAt).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZoneName:'short' })}`;
 }
 setInterval(renderLivePill, 30000);
 
@@ -4630,7 +4635,7 @@ function renderInjuryTeam(r, side, fallbackName, gameId){
     const bits = [];
     if(p.injury) bits.push(`<b>Injury:</b> ${escapeHtml(p.injury)}`);
     bits.push(`<b>Practice:</b> ${escapeHtml(p.practiceStatus || 'Not reported')}`);
-    if(p.returnDate) bits.push(`<b>Est. return:</b> ${escapeHtml(new Date(p.returnDate).toLocaleDateString())}`);
+    if(p.returnDate) bits.push(`<b>Est. return:</b> ${escapeHtml(new Date(p.returnDate).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }))}`);
     return `<div class="inj-row${idx >= INJ_PREVIEW_COUNT ? ' extra' : ''}">
       <div class="inj-top"><span class="inj-name">${escapeHtml(p.name || 'Unnamed player')}<span class="inj-pos">${escapeHtml(p.position || '')}</span></span><span class="inj-desig ${designationClass(p.gameDesignation)}">${escapeHtml(desig)}</span></div>
       <div class="inj-detail">${bits.join(' · ')}</div>

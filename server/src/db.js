@@ -66,6 +66,8 @@ export function ensureSchema() {
       -- whatever tier/subscription the account already has.
       ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code TEXT UNIQUE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by_user_id BIGINT REFERENCES users(id);
+      -- IANA time zone from the user's device (e.g. America/Los_Angeles).
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_access_until TIMESTAMPTZ;
       -- Captured at signup for referral self-abuse checks (see referralService.js
       -- isSelfReferral) — not used for anything else, and never shown to users.

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { localDay, localLabel, userTimeLine, addLocalTimes } from "../services/timeService.js";
 import { withTier, requireTier } from "../middleware/tier.js";
 import { dailyLimit } from "../middleware/limits.js";
 import { SPORT_KEYS, getOddsForSportWithMeta, getScoresForSportWithMeta } from "../services/oddsService.js";
@@ -123,12 +124,12 @@ const DATA_TOOLS = [
   {
     name: "find_games",
     description:
-      "Find games on any date or date range, for any supported sport (nfl, ncaaf, nba, ncaab, mlb) or 'all', optionally filtered by team. Returns each game's id, start time (UTC and US Eastern), teams, status (upcoming / live / final), score if started, and current consensus moneyline/spread/total when posted. Covers games with posted odds (typically the next 1-2 weeks) and games from the last 3 days. Use this whenever the user asks about a day, a slate, a team, or a game other than the selected one, then call the other tools with that game_id. Games outside this window: use web_search.",
+      "Find games on any date or date range, for any supported sport (nfl, ncaaf, nba, ncaab, mlb) or 'all', optionally filtered by team. Returns each game's id, start time (UTC and the user's local time), teams, status (upcoming / live / final), score if started, and current consensus moneyline/spread/total when posted. Covers games with posted odds (typically the next 1-2 weeks) and games from the last 3 days. Use this whenever the user asks about a day, a slate, a team, or a game other than the selected one, then call the other tools with that game_id. Games outside this window: use web_search.",
     input_schema: {
       type: "object",
       properties: {
         sport: { type: "string", enum: ["nfl", "ncaaf", "nba", "ncaab", "mlb", "all"] },
-        date: { type: "string", description: "YYYY-MM-DD (US Eastern game day). Omit for the next few days." },
+        date: { type: "string", description: "YYYY-MM-DD (a date in the user's time zone). Omit for the next few days." },
         date_to: { type: "string", description: "Optional end date YYYY-MM-DD for a range (inclusive)." },
         team: { type: "string", description: "Optional team name or city to filter by, e.g. 'Eagles' or 'Dallas'." },
       },
@@ -203,10 +204,6 @@ function injuryForModel(r) {
   };
 }
 
-const easternDay = (iso) =>
-  new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
-const easternLabel = (iso) =>
-  new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso)) + " ET";
 
 // find_games: any sport/date/team from BetEdge's own feeds (odds = upcoming
 // with lines; scores = last 3 days). Not limited to what's on the Board.
@@ -228,7 +225,7 @@ export async function findGames(input = {}, addSource = () => {}) {
       const seen = new Set();
       const push = (id, g, sc, lines) => {
         if (!g?.commenceTime || seen.has(id)) return;
-        const day = easternDay(g.commenceTime);
+        const day = localDay(g.commenceTime);
         if (from && day < from) return;
         if (to && day > to) return;
         if (!from && !to && (Date.parse(g.commenceTime) < now - 36 * 3600e3 || Date.parse(g.commenceTime) > now + 4 * 86400e3)) return;
@@ -240,8 +237,8 @@ export async function findGames(input = {}, addSource = () => {}) {
           sport: sp,
           game_id: id,
           start_utc: g.commenceTime,
-          start_et: easternLabel(g.commenceTime),
-          game_day_et: day,
+          start_local: localLabel(g.commenceTime),
+          game_day_local: day,
           away: g.awayTeam,
           home: g.homeTeam,
           status,
@@ -417,14 +414,14 @@ ${recent ? `RECENT QUESTIONS FROM EARLIER SESSIONS (newest first):\n${recent}` :
 function buildSystemPrompt({ context, freshness, nowIso, webSearchOn, memory }) {
   return `You are BetEdge AI, a professional sports betting desk analyst inside the BetEdge AI product.
 
-Current date/time: ${nowIso} (UTC). Treat anything older than today's practice/injury news as potentially outdated.
+Current date/time: ${nowIso} (UTC). ${userTimeLine(nowIso)} Treat anything older than today's practice/injury news as potentially outdated.
 
 ## Mission
 Help the user reason about games and bets. The game they have open (MATCHUP_CONTEXT) is the default focus, but they can ask about ANY game, team, day or slate (e.g. "who do you like Sunday?", "Dodgers tomorrow?", "best NBA bets tonight") — even if it's not on their Board and no game is selected. Sound like a calm, precise betting desk note — not a tipster, hype account, or sports-radio host.
 
 ## Your data (in priority order)
 A. BetEdge live data tools (run on BetEdge's servers): find_games (any sport/date/team), then get_injury_report, get_odds_and_line_movement, get_game_status, get_weather — pass sport + game_id for any game other than the selected one. These are the primary source for schedules, injuries, practice participation, game designations, odds, line movement, scores and game status.
-   Dates: "today", "tonight", "tomorrow", "Sunday" etc. mean US Eastern game days relative to the current date/time below; convert to YYYY-MM-DD for find_games.
+   Dates: "today", "tonight", "tomorrow", "Sunday" etc. mean days in the user's time zone relative to the current date/time above; convert to YYYY-MM-DD for find_games.
 B. ${webSearchOn ? "web_search: use it on every analysis or advice question, not only for injuries — game previews, expert and beat-writer analysis, matchup notes, recent form, starting pitchers/goalies/QBs, betting trends, and news newer than the structured feeds (e.g. today's practice reports, a starter being ruled out, a QB change). Also use it for games outside find_games' window (older results, games further out). Summarize what credible outlets are saying and attribute it; never copy a tout's pick as fact. Prefer, in order: official team sites and team beat accounts' published articles, NFL/league sources (nfl.com, league injury reports), then established sports outlets (ESPN, The Athletic, AP, CBS Sports, NBC Sports, Yahoo Sports, Pro Football Talk). Avoid unsourced rumor, fantasy-content farms and betting-tout sites." : "Web search is currently unavailable on this server — rely on the data tools, and say plainly when something could not be verified."}
 C. MATCHUP_CONTEXT: the Breakdown snapshot the user was viewing. Useful, but it may be stale — check DATA_FRESHNESS.
 
@@ -622,6 +619,7 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
       }
     }
     if (context && state.injuries) context.injuries = state.injuries;
+    if (context) addLocalTimes(context); // kickoff in the user's own time zone
     for (const side of ["homeTeam", "awayTeam"]) {
       const r = state.injuries?.[side];
       if (r?.status === "ok") sources.push({ label: `${r.source} injury report — ${r.team}`, url: r.source_url, retrieved_at: r.retrieved_at, kind: "data" });
@@ -679,7 +677,7 @@ router.post("/", withTier, dailyLimit("aiChat"), async (req, res) => {
         toolUses.map(async (tu) => {
           try {
             toolsUsed.push(tu.name);
-            const out = await runTool(tu.name, tu.input);
+            const out = addLocalTimes(await runTool(tu.name, tu.input));
             return { type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out) };
           } catch (err) {
             console.error(`chat tool ${tu.name} failed:`, err.message);

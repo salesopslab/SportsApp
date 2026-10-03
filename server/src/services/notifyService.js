@@ -54,6 +54,6 @@ export function notifyNewSignup(user) {
   const referredNote = user.referredByUserId ? ` (referred by user #${user.referredByUserId})` : "";
   sendAdminAlert(
     "New BetEdge AI signup",
-    `New signup: ${user.email}${referredNote}\nUser ID: ${user.id}\nSigned up: ${new Date(user.createdAt).toLocaleString()}`
+    `New signup: ${user.email}${referredNote}\nUser ID: ${user.id}\nSigned up: ${new Date(user.createdAt).toLocaleString("en-US", { timeZone: process.env.ADMIN_TIMEZONE || "America/Los_Angeles", timeZoneName: "short" })}`
   );
 }

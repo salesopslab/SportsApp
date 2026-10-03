@@ -521,7 +521,7 @@ function renderUsage(usage){
     el.innerHTML = '<div class="empty-note">No usage snapshots recorded yet — this fills in once the odds feed has been polled at least once.</div>';
     return;
   }
-  tagEl.textContent = snapshot.recorded_at ? ('as of ' + new Date(snapshot.recorded_at).toLocaleString()) : '';
+  tagEl.textContent = snapshot.recorded_at ? ('as of ' + new Date(snapshot.recorded_at).toLocaleString('en-US', { timeZoneName:'short' })) : '';
   el.innerHTML = `
     <div class="cards" style="margin-bottom:0;">
       <div class="card"><div class="label">Requests used</div><div class="value">${snapshot.requests_used ?? '—'}</div></div>
@@ -732,7 +732,7 @@ async function loadChatLogs(){
     if(!d.rows.length){ body.innerHTML = `<div class="empty-note">${escA(d.note || 'No chats in this window yet.')}</div>`; return; }
     body.innerHTML = d.rows.map(r => `
       <div class="chatlog">
-        <div class="meta"><span>${escA(new Date(r.created_at).toLocaleString())}</span>${r.game_label ? `<span>${escA(r.game_label)}</span>` : '<span>No game open</span>'}${r.user_id ? `<span>user #${escA(r.user_id)}</span>` : '<span>guest</span>'}<span>${escA(r.prompt_version || '')}</span>${r.response_ms ? `<span>${(r.response_ms/1000).toFixed(1)}s</span>` : ''}${r.used_web_search ? '<span>web search</span>' : ''}${(r.tools||[]).length ? `<span>tools: ${escA([...new Set(r.tools)].join(', '))}</span>` : ''}</div>
+        <div class="meta"><span>${escA(new Date(r.created_at).toLocaleString('en-US', { timeZoneName:'short' }))}</span>${r.game_label ? `<span>${escA(r.game_label)}</span>` : '<span>No game open</span>'}${r.user_id ? `<span>user #${escA(r.user_id)}</span>` : '<span>guest</span>'}<span>${escA(r.prompt_version || '')}</span>${r.response_ms ? `<span>${(r.response_ms/1000).toFixed(1)}s</span>` : ''}${r.used_web_search ? '<span>web search</span>' : ''}${(r.tools||[]).length ? `<span>tools: ${escA([...new Set(r.tools)].join(', '))}</span>` : ''}</div>
         <div class="q">${escA(r.question)}</div>
         ${r.error ? `<div class="err">Failed: ${escA(r.error)}</div>` : `<details><summary>Answer</summary><div class="a">${escA(r.reply)}</div></details>`}
       </div>`).join('');

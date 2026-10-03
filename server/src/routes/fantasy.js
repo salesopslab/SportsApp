@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { userTimeLine, addLocalTimes } from "../services/timeService.js";
 import { withTier, requireTier } from "../middleware/tier.js";
 import { dailyLimit } from "../middleware/limits.js";
 import {
@@ -173,7 +174,7 @@ function makeToolRunner(state) {
 }
 
 function baseSystemPrompt({ scoringLabel, webSearchOn, nowIso }) {
-  return `You are Fantasy Edge, BetEdge AI's fantasy football (NFL) analyst. Current time: ${nowIso}. League scoring: ${scoringLabel}.
+  return `You are Fantasy Edge, BetEdge AI's fantasy football (NFL) analyst. Current time: ${nowIso} (UTC). ${userTimeLine(nowIso)} League scoring: ${scoringLabel}.
 
 ## Data rules (non-negotiable)
 1. Use the tools. Call get_player_report for every player you evaluate before you judge him. Do not rely on memory for injuries, depth charts, roles or recent stats — rosters and injuries change weekly.
@@ -220,7 +221,7 @@ async function runFantasyAI({ system, userContent, state, expectJson = true, max
     const results = await Promise.all(
       toolUses.map(async (tu) => {
         try {
-          return { type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(await runTool(tu.name, tu.input)) };
+          return { type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(addLocalTimes(await runTool(tu.name, tu.input))) };
         } catch (err) {
           console.error(`fantasy tool ${tu.name} failed:`, err.message);
           return {
