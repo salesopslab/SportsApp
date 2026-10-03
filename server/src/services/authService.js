@@ -30,6 +30,8 @@ export function toPublicUser(row) {
     billingInterval: row.billing_interval ?? null,
     cancelAtPeriodEnd: !!row.cancel_at_period_end,
     currentPeriodEnd: row.current_period_end ?? null,
+    pickCredits: row.pick_credits ?? 0,
+    freePickClaimed: !!row.free_pick_claimed_at,
   };
 }
 

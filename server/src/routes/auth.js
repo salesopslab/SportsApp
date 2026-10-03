@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { signup, login, changePassword, setMarketingOptIn, accountsAvailable, toPublicUser } from "../services/authService.js";
 import { requireAuth } from "../middleware/auth.js";
-import { pool } from "../db.js";
+import { pool, ensureSchema } from "../db.js";
 import { ensureReferralCode } from "../services/referralService.js";
 
 const router = Router();
@@ -32,8 +32,9 @@ router.post("/login", async (req, res) => {
 
 router.get("/me", requireAuth, async (req, res) => {
   try {
+    await ensureSchema();
     const { rows } = await pool.query(
-      "SELECT id, email, created_at, tier, trial_ends_at, subscription_status, referral_code, bonus_access_until, marketing_opt_in, billing_interval, cancel_at_period_end, current_period_end FROM users WHERE id = $1",
+      "SELECT id, email, created_at, tier, trial_ends_at, subscription_status, referral_code, bonus_access_until, marketing_opt_in, billing_interval, cancel_at_period_end, current_period_end, pick_credits, free_pick_claimed_at FROM users WHERE id = $1",
       [req.user.id]
     );
     if (!rows.length) return res.status(404).json({ error: "User not found." });

@@ -14,6 +14,7 @@ import hotPicksRouter from "./routes/hotpicks.js";
 import fantasyRouter from "./routes/fantasy.js";
 import favoritesRouter from "./routes/favorites.js";
 import picksRouter from "./routes/picks.js";
+import pickPacksRouter from "./routes/pickPacks.js";
 import { timezoneMiddleware } from "./services/timeService.js";
 import { runDailyIfDue } from "./services/pickerService.js";
 
@@ -55,6 +56,7 @@ app.use("/api/hot-picks", hotPicksRouter);
 app.use("/api/fantasy", fantasyRouter);
 app.use("/api/favorites", favoritesRouter);
 app.use("/api/picks", picksRouter);
+app.use("/api/pick-packs", pickPacksRouter);
 
 // Built-in pickers run once a day, at about 8 AM Pacific (PICKERS_DAILY_HOUR):
 // they pick games starting in the next 24 hours and grade finished ones.

@@ -996,6 +996,85 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
   .vb-new{ margin-top:6px; font-size:11.5px; }
   .value-banner-btn, .value-banner-demo-btn{ padding-top:8px; padding-bottom:8px; }
 }
+/* ---------- AI Pick Packs (credits) — mobile first ---------- */
+.credit-chip{ font-size:10.5px; font-weight:700; padding:5px 9px; border-radius:20px; background:none; cursor:pointer; font-family:inherit; white-space:nowrap; border:1px solid var(--teal); color:var(--teal); font-variant-numeric:tabular-nums; }
+.pp-free-cta{ margin:14px 20px 0; padding:16px; border-radius:14px; position:relative; border:1px solid var(--teal); background:linear-gradient(135deg, color-mix(in srgb, var(--teal) 16%, transparent), color-mix(in srgb, var(--teal) 4%, transparent)); }
+.pp-free-cta.compact{ padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.pp-free-title{ font-family:'Oswald',sans-serif; font-size:21px; font-weight:700; letter-spacing:0.3px; line-height:1.15; }
+.pp-free-cta.compact .pp-free-title{ font-size:15px; }
+.pp-free-text{ font-size:13px; color:var(--sub); line-height:1.45; margin:6px 0 12px; }
+.pp-free-cta.compact .pp-free-text{ margin:2px 0 0; }
+.pp-free-btn{ display:block; width:100%; padding:13px; border:none; border-radius:22px; background:var(--teal); color:#fff; font:700 14.5px 'Inter',sans-serif; cursor:pointer; letter-spacing:0.2px; }
+.pp-free-cta.compact .pp-free-btn{ width:auto; padding:9px 16px; font-size:13px; }
+.pp-free-close{ position:absolute; top:6px; right:8px; background:none; border:none; color:var(--sub); font-size:18px; cursor:pointer; padding:4px 6px; line-height:1; }
+.pp-free-fine{ font-size:11px; color:var(--sub); text-align:center; margin-top:8px; }
+
+.pp-modal-card{ max-width:420px !important; }
+#pickPacksBody > .pp-success:first-child, #pickPacksBody > .pp-note:first-child{ margin-top:22px; }
+@media (max-width:600px){ .credit-chip .cc-l{ display:none; } .credit-chip{ padding:5px 8px; } }
+/* The phone topbar is already full when logged in; there the balance lives on AI Record, the account window and Pick Packs. */
+@media (max-width:480px){ .credit-chip{ display:none; } }
+.pp-modal-card h2{ font-family:'Oswald',sans-serif; font-size:22px; line-height:1.15; margin:2px 28px 6px 0; }
+.pp-sub{ font-size:13px; color:var(--sub); line-height:1.45; margin-bottom:12px; }
+.pp-note{ font-size:12.5px; color:var(--amber); border:1px solid var(--amber); border-radius:10px; padding:8px 10px; margin-bottom:12px; }
+.pp-success{ font-size:13px; color:var(--green); border:1px solid var(--green); border-radius:10px; padding:10px 12px; margin-bottom:12px; line-height:1.45; }
+.pp-balance{ display:flex; justify-content:space-between; align-items:center; font-size:13.5px; background:var(--surface2); border-radius:10px; padding:10px 12px; margin-bottom:12px; }
+.pp-balance b{ font-family:'Oswald',sans-serif; font-size:18px; font-variant-numeric:tabular-nums; }
+.pp-hero{ margin:0 0 14px; }
+.pp-cards{ display:flex; flex-direction:column; gap:12px; }
+.pp-card{ position:relative; border:1px solid var(--line); border-radius:14px; padding:14px 14px 14px; background:var(--surface); display:grid; grid-template-columns:1fr auto; grid-template-areas:"name price" "per price" "btn btn"; gap:2px 12px; align-items:center; }
+.pp-card .pp-name{ grid-area:name; font-family:'Oswald',sans-serif; font-size:17px; font-weight:600; }
+.pp-card .pp-price{ grid-area:price; font-family:'Oswald',sans-serif; font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; }
+.pp-card .pp-per{ grid-area:per; font-size:12px; color:var(--sub); font-variant-numeric:tabular-nums; }
+.pp-card .pp-buy{ grid-area:btn; margin-top:10px; width:100%; padding:12px; border-radius:22px; font:700 14px 'Inter',sans-serif; letter-spacing:0.3px; cursor:pointer; background:none; color:var(--text); border:1px solid var(--text); }
+.pp-card .pp-buy:disabled{ opacity:0.6; cursor:default; }
+.pp-badge{ position:absolute; top:-10px; left:14px; font-size:10px; font-weight:800; letter-spacing:0.6px; padding:3px 9px; border-radius:10px; color:#fff; }
+.pp-card.popular{ border:2px solid var(--amber); background:linear-gradient(180deg, color-mix(in srgb, var(--amber) 9%, var(--surface)), var(--surface)); padding-top:18px; }
+.pp-card.popular .pp-badge{ background:var(--amber); }
+.pp-card.popular .pp-buy{ background:var(--amber); border-color:var(--amber); color:var(--bg); }
+.pp-card.value{ border:2px solid var(--teal); background:linear-gradient(180deg, color-mix(in srgb, var(--teal) 10%, var(--surface)), var(--surface)); padding-top:18px; }
+.pp-card.value .pp-badge{ background:var(--teal); }
+.pp-card.value .pp-buy{ background:var(--teal); border-color:var(--teal); color:#fff; }
+.pp-trust{ margin-top:16px; border:1px dashed var(--line); border-radius:12px; padding:12px 14px; text-align:center; }
+.pp-trust-btn{ background:none; border:1px solid var(--teal); color:var(--teal); border-radius:20px; padding:9px 18px; font:700 13px 'Inter',sans-serif; letter-spacing:0.4px; cursor:pointer; }
+.pp-trust-text{ font-size:12.5px; color:var(--sub); margin-top:6px; line-height:1.45; }
+.pp-trust-stat{ font-size:12.5px; margin-top:6px; font-variant-numeric:tabular-nums; }
+.pp-member-link{ display:block; margin:14px auto 0; background:none; border:none; color:var(--amber); font:600 13px 'Inter',sans-serif; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+.pp-foot{ font-size:11px; color:var(--sub); text-align:center; margin-top:12px; line-height:1.5; }
+.pp-history{ margin-top:10px; font-size:12.5px; }
+.pp-history summary{ cursor:pointer; color:var(--sub); }
+.pp-history-row{ display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px dashed var(--line); font-variant-numeric:tabular-nums; }
+.pp-nudge{ margin-top:14px; border:1px solid var(--line); border-radius:12px; padding:12px 14px; position:relative; background:var(--surface2); }
+.pp-nudge-title{ font-family:'Oswald',sans-serif; font-size:16px; font-weight:600; }
+.pp-nudge-text{ font-size:12.5px; color:var(--sub); margin:4px 0 10px; line-height:1.45; }
+.pp-nudge-btn{ background:none; border:1px solid var(--amber); color:var(--amber); border-radius:18px; padding:7px 14px; font:700 12px 'Inter',sans-serif; letter-spacing:0.4px; cursor:pointer; }
+.pp-nudge .pp-free-close{ top:4px; right:6px; }
+.rec-credits{ margin:4px 20px 0; }
+.rec-credits .pp-nudge{ margin-top:10px; }
+.rec-credit-line{ display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; background:var(--surface2); border:1px solid var(--line); border-radius:12px; padding:9px 12px; }
+.rec-credit-line b{ font-variant-numeric:tabular-nums; }
+.rec-credit-line button{ background:none; border:1px solid var(--teal); color:var(--teal); font:600 12.5px 'Inter',sans-serif; border-radius:8px; padding:4px 10px; cursor:pointer; white-space:nowrap; }
+.rec-unlock-credit{ background:var(--teal); border:1px solid var(--teal); color:#fff; font:600 12.5px 'Inter',sans-serif; border-radius:8px; padding:5px 10px; cursor:pointer; white-space:nowrap; }
+.rec-unlock-credit:disabled{ opacity:0.6; }
+.rec-res.unlocked{ color:var(--teal); border:1px solid var(--teal); }
+.pp-confirm-card{ max-width:340px !important; text-align:center; }
+.pp-confirm-card h2{ font-family:'Oswald',sans-serif; margin:4px 0 8px; }
+.pp-confirm-actions{ display:flex; flex-direction:column; gap:8px; margin-top:14px; }
+.pp-confirm-actions .modal-submit{ background:var(--teal); color:#fff; }
+.pp-cancel{ background:none; border:none; color:var(--sub); font:600 13px 'Inter',sans-serif; cursor:pointer; padding:8px; }
+.account-credits-row button{ background:none; border:none; color:var(--teal); font:600 12.5px 'Inter',sans-serif; cursor:pointer; padding:0 0 0 8px; }
+.pricing-packs-link{ display:block; margin:0 auto 12px; background:none; border:none; color:var(--teal); font:600 13px 'Inter',sans-serif; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+@media (min-width:720px){
+  .pp-modal-card{ max-width:760px !important; }
+  .pp-cards{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); align-items:stretch; }
+  .pp-card{ grid-template-columns:1fr; grid-template-areas:"name" "price" "per" "btn"; text-align:center; align-content:start; }
+  .pp-card.popular, .pp-card.value{ transform:translateY(-6px); }
+  .pp-card .pp-buy{ align-self:end; }
+  .pp-badge{ left:50%; transform:translateX(-50%); white-space:nowrap; }
+  .pp-free-cta:not(.compact){ display:flex; align-items:center; gap:18px; }
+  .pp-free-cta:not(.compact) .pp-free-btn{ width:auto; padding:12px 22px; white-space:nowrap; flex-shrink:0; }
+  .pp-free-cta:not(.compact) .pp-free-text{ margin-bottom:0; }
+}
 </style>
 <body>
 
@@ -1012,6 +1091,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
     <div style="display:flex; align-items:center; gap:8px;">
       <div class="status-pill waking" id="apiStatus"><span class="status-dot"></span><span id="apiStatusLabel">Connecting…</span></div>
       <button class="topbar-demo-btn" id="topbarDemoBtn" aria-label="Watch demo" title="Watch demo"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></button>
+      <button class="credit-chip hidden" id="creditChip" type="button" title="AI Pick Credits"></button>
       <button class="tier-badge hidden" id="tierBadge"></button>
       <button class="profile-btn" id="profileBtn">Log in</button>
     </div>
@@ -1045,6 +1125,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
       <h2>Choose your plan</h2>
       <div class="pricing-intro">Every new account gets a 7-day free trial with full Edge Pro access — no card required.</div>
       <button class="auth-demo-link" id="pricingDemoLink"><span class="play-ic"><svg viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg></span>Not ready to commit? Watch a 2-min demo first</button>
+      <button type="button" class="pricing-packs-link" id="pricingPacksLink">Not ready for a monthly plan? Try AI Pick Packs</button>
       <div class="pricing-error" id="pricingError"></div>
       <div class="billing-toggle" id="billingToggle" role="radiogroup" aria-label="Billing period">
         <button type="button" role="radio" data-interval="monthly" class="active" aria-checked="true">Monthly</button>
@@ -1078,6 +1159,8 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
       <h2>Your account</h2>
       <div class="account-row"><span class="account-label">Email</span><span id="accountEmail"></span></div>
       <div class="account-row"><span class="account-label">Plan</span><span id="accountTier"></span></div>
+      <div class="account-row account-credits-row"><span class="account-label">AI Pick Credits</span><span><b id="accountCredits">0</b><button type="button" id="accountCreditsBtn">Get more</button></span></div>
+      <div id="accountPurchases"></div>
       <div class="referral-block">
         <div class="referral-title">Give 30 days, get 30 days</div>
         <div class="referral-sub">Share your link — when a friend subscribes, you both get 30 free days of Edge Pro.</div>
@@ -1334,6 +1417,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
         <button class="value-banner-close" id="valueBannerClose" aria-label="Dismiss">×</button>
       </div>
     </div>
+    <div id="freePickCta"></div>
     <div class="sport-tabs" id="sportTabs">
       <button type="button" class="sport-tab" data-sport="all">All Games</button>
       <button type="button" class="sport-tab active" data-sport="nfl">NFL</button>
@@ -1400,6 +1484,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
         <div class="rec-title">AI Record</div>
         <div class="rec-sub">Every pick from our three AI pickers, posted before kickoff and graded in public. Losses stay up. Compare them, check the math, and make your own call.</div>
       </div>
+      <div class="rec-credits" id="recCredits"></div>
       <div class="rec-controls">
         <div class="rec-seg" id="recRange" role="radiogroup" aria-label="Time range">
           <button type="button" data-range="7d">7 days</button>
@@ -1444,7 +1529,7 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
           <li><b>Timestamped before kickoff.</b> Each pick is saved with the time it was made, the bet and the odds at that moment. The server refuses any pick made at or after kickoff.</li>
           <li><b>Can't be edited or deleted.</b> Once posted, a pick is locked. Only its result is added after the game. A cancelled game is marked void, never removed.</li>
           <li><b>Flat 1-unit stakes.</b> A win at +150 is +1.50 units, a win at −110 is +0.91, a loss is −1, and a push or void is 0. ROI is units ÷ graded picks.</li>
-          <li><b>Revealed at kickoff.</b> Picks on games that haven't started are locked here. Hot Picks buyers see them as soon as they're posted. Either way, the posted time proves each pick was made before the game.</li>
+          <li><b>Revealed at kickoff.</b> Picks on games that haven't started are locked here. Hot Picks buyers see them as soon as they're posted, and anyone can unlock a single pick early with an AI pick credit. Either way, the posted time proves each pick was made before the game.</li>
           <li><b>Losses stay up.</b> Every result counts. Download the CSV and check our math.</li>
           <li><b>Small samples are noisy.</b> Under 100 picks, a record says more about luck than skill. CLV (closing-line value) shows whether a picker beat the final market price, which is a faster signal than wins.</li>
         </ul>
@@ -1668,6 +1753,7 @@ function updateProfileButton(){
   btn.textContent = currentUser ? currentUser.email.split('@')[0] : 'Log in';
   updateTierBadge();
   updateValueBanner();
+  if(window.__updateCreditUi) window.__updateCreditUi();
 }
 
 // First-run value prop banner: only for logged-out visitors, and only until
@@ -1872,6 +1958,10 @@ function closePricingModal(){
   document.getElementById('pricingModal').classList.add('hidden');
 }
 document.getElementById('pricingModalClose').addEventListener('click', closePricingModal);
+document.getElementById('pricingPacksLink').addEventListener('click', ()=>{
+  closePricingModal();
+  if(window.BetEdgePickPacks) window.BetEdgePickPacks.open();
+});
 document.getElementById('tierBadge').addEventListener('click', openPricingModal);
 
 async function startCheckout(tierId, btnEl){
@@ -2048,6 +2138,8 @@ function openAccountModal(){
   copyBtn.textContent = 'Copy';
   copyBtn.classList.remove('copied');
   copyBtn.disabled = !link;
+  document.getElementById('accountCredits').textContent = String(currentUser.pickCredits ?? 0);
+  if(window.__renderAccountCredits) window.__renderAccountCredits();
   document.getElementById('accountModal').classList.remove('hidden');
   // Referral codes are backfilled lazily server-side, so an older account
   // might not have one on its cached currentUser yet — refresh once to pick
@@ -2060,6 +2152,10 @@ function closeAccountModal(){
   document.getElementById('accountModal').classList.add('hidden');
 }
 document.getElementById('accountModalClose').addEventListener('click', closeAccountModal);
+document.getElementById('accountCreditsBtn').addEventListener('click', ()=>{
+  closeAccountModal();
+  if(window.BetEdgePickPacks) window.BetEdgePickPacks.open();
+});
 document.getElementById('accountUpgradeBtn').addEventListener('click', ()=>{
   closeAccountModal();
   openPricingModal();
@@ -2071,6 +2167,7 @@ document.getElementById('accountLogoutBtn').addEventListener('click', ()=>{
   closeAccountModal();
   if(document.getElementById('picks').classList.contains('active')) loadPicks();
   favOnLogout();
+  if(window.__afterLogout) window.__afterLogout();
 });
 document.getElementById('referralCopyBtn').addEventListener('click', async ()=>{
   const input = document.getElementById('referralLinkInput');
@@ -2131,6 +2228,7 @@ document.getElementById('authSubmit').addEventListener('click', async ()=>{
     closeAuthModal();
     if(document.getElementById('picks').classList.contains('active')) loadPicks();
     favOnLogin();
+    if(window.__afterAuth) window.__afterAuth(mode); // Pick Packs: resume a free-pick claim / checkout / unlock
   }catch(e){
     errEl.textContent = e.message;
   }
@@ -4978,11 +5076,11 @@ async function loadGamePickers(sport, game){
     const rec = (name) => (d.records || []).find(r => r.picker === name);
     const recLine = (r) => r && r.graded ? `${r.wins}-${r.losses}${r.pushes ? '-' + r.pushes : ''} · ${r.units > 0 ? '+' : ''}${r.units.toFixed(2)}u · ${r.graded} graded${r.smallSample ? ' (small sample)' : ''}` : 'No graded picks yet';
     if(d.hidden){
-      box.innerHTML = `${head}<div class="pk-locked">🔒 The pickers' calls on upcoming games are revealed at kickoff. Get today's picks now with <button type="button" class="pk-unlock">Hot Picks</button>. Their full track records are on the <a href="/record" class="pk-link">AI Record page</a>.</div>`;
+      box.innerHTML = `${head}<div class="pk-locked">🔒 The pickers' calls on upcoming games are revealed at kickoff. Unlock a single pick early with an AI pick credit on the <a href="/record" class="pk-link">AI Record page</a>${(d.credits || 0) > 0 ? ` (you have ${d.credits} credit${d.credits === 1 ? '' : 's'})` : ''}, or get all of today's with <button type="button" class="pk-unlock">Hot Picks</button>. Their full track records are there too.</div>`;
     }else if(!d.picks || !d.picks.length){
       box.innerHTML = `${head}<div class="empty-note">None of our three pickers has posted a pick on this game. Their full records are on the <a href="/record" class="pk-link">AI Record page</a>.</div>`;
     }else{
-      box.innerHTML = head + (d.early ? '<div class="pk-early">🔓 Early access with your Hot Picks — the public sees these at kickoff.</div>' : '') + (d.disagree ? '<div class="pk-disagree">The pickers disagree on this game. That\'s useful: the case isn\'t one-sided.</div>' : '') +
+      box.innerHTML = head + (d.early ? '<div class="pk-early">🔓 Early access with your Hot Picks — the public sees these at kickoff.</div>' : '') + (d.unlockedEarly ? '<div class="pk-early">🔓 Unlocked with your AI pick credit — the public sees this at kickoff.</div>' : '') + (d.disagree ? '<div class="pk-disagree">The pickers disagree on this game. That\'s useful: the case isn\'t one-sided.</div>' : '') +
         d.picks.map(p => `<div class="pk-row">
           <div class="pk-top"><span class="pk-name">${PICKER_ICON[p.picker] || '🤖'} ${escapeHtml(p.picker)}${PICKER_INFO[p.picker] ? `<span class="pk-style">${escapeHtml(PICKER_INFO[p.picker].style)}</span>` : ''}</span><span class="rec-res ${escapeHtml(p.result)}">${escapeHtml(p.result)}</span></div>
           <div class="pk-bet"><b>${escapeHtml(p.bet)}</b> at ${formatPrice(p.odds)} <span class="pk-sub">(${pctLabel(p.implied_prob)} implied) · ${escapeHtml(p.confidence)} confidence</span></div>
@@ -6054,6 +6152,7 @@ if(authToken) favSyncFromServer();
 </script>
 
 <script src="/fantasy-edge.js" defer></script>
+<script src="/pick-packs.js" defer></script>
 <script src="/record.js" defer></script>
 <script src="/password-toggle.js" defer></script>
 </body>

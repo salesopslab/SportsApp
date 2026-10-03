@@ -17,6 +17,7 @@ import {
   constructWebhookEvent,
 } from "../services/stripeService.js";
 import { grantReferralRewardIfEligible } from "../services/referralService.js";
+import { fulfillPickPackSession } from "../services/pickPackService.js";
 
 const router = Router();
 const LIVE_STATUSES = ["active", "trialing", "past_due"];
@@ -250,6 +251,14 @@ export async function handleStripeWebhook(req, res) {
       case "checkout.session.completed": {
         const session = event.data.object;
 
+        // AI Pick Pack — adds credits once Stripe says it's paid. Idempotent
+        // on the Checkout session id, so retried deliveries add nothing.
+        if (session.mode === "payment" && session.metadata?.kind === "pick_pack") {
+          const r = await fulfillPickPackSession(session);
+          if (r.status === "ignored") console.log(`Pick pack session ${session.id} not fulfilled yet: ${r.reason}`);
+          break;
+        }
+
         // One-time Hot Picks purchase — separate from the recurring
         // subscription flow below. ON CONFLICT DO NOTHING makes a retried
         // webhook delivery a no-op instead of a duplicate purchase record.
@@ -288,6 +297,14 @@ export async function handleStripeWebhook(req, res) {
         } catch (err) {
           console.error(`grantReferralRewardIfEligible failed for user ${userId}:`, err.message);
         }
+        break;
+      }
+
+      // A delayed payment method (e.g. bank debit) cleared after checkout
+      // completed unpaid — this is when a pick pack's credits are earned.
+      case "checkout.session.async_payment_succeeded": {
+        const session = event.data.object;
+        if (session.metadata?.kind === "pick_pack") await fulfillPickPackSession(session);
         break;
       }
 
