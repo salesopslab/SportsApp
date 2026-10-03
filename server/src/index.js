@@ -13,6 +13,7 @@ import billingRouter, { handleStripeWebhook } from "./routes/billing.js";
 import hotPicksRouter from "./routes/hotpicks.js";
 import fantasyRouter from "./routes/fantasy.js";
 import favoritesRouter from "./routes/favorites.js";
+import picksRouter from "./routes/picks.js";
 import { timezoneMiddleware } from "./services/timeService.js";
 
 const app = express();
@@ -52,6 +53,7 @@ app.use("/api/billing", billingRouter);
 app.use("/api/hot-picks", hotPicksRouter);
 app.use("/api/fantasy", fantasyRouter);
 app.use("/api/favorites", favoritesRouter);
+app.use("/api/picks", picksRouter);
 
 const port = process.env.PORT || 8080;
 app.listen(port, () => {

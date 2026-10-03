@@ -110,6 +110,13 @@ export async function getLineHistory(gameId, primaryBook) {
         firstSeen: open.captured_at,
         lastSeen: current.captured_at,
         dataPoints: pts.length,
+        // Up to 40 evenly spaced points (always keeping the latest) so the
+        // game page can draw a small movement chart.
+        series: (pts.length <= 40 ? pts : pts.filter((_, i) => i % Math.ceil(pts.length / 40) === 0 || i === pts.length - 1)).map((p) => ({
+          t: p.captured_at,
+          point: pointNum(p.point),
+          price: p.price,
+        })),
       };
     });
 

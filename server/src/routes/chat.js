@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { localDay, localLabel, userTimeLine, addLocalTimes } from "../services/timeService.js";
+import { picksForGame } from "./picks.js";
 import { withTier, requireTier } from "../middleware/tier.js";
 import { dailyLimit } from "../middleware/limits.js";
 import { SPORT_KEYS, getOddsForSportWithMeta, getScoresForSportWithMeta } from "../services/oddsService.js";
@@ -16,7 +17,7 @@ import { requireAuth } from "../middleware/auth.js";
 
 // Bump when the system prompt changes meaningfully; stored with every logged
 // chat so answers can be reviewed per prompt version.
-export const PROMPT_VERSION = "picker-v3-memory";
+export const PROMPT_VERSION = "present-case-v1";
 
 // ---------------------------------------------------------------------------
 // AI chat, grounded in live data.
@@ -170,6 +171,11 @@ const DATA_TOOLS = [
     description: "Game-time weather forecast for the home venue (or dome), with retrieved_at. Returns unavailable if the venue isn't on file.",
     input_schema: { type: "object", properties: { ...GAME_TARGET } },
   },
+  {
+    name: "get_picker_picks",
+    description: "What BetEdge's three public pickers (Line Movement, Matchup Stats, Value Contrarian) picked on a game — bet, odds, confidence, reason, result — plus each picker's graded track record (W-L-P, units, ROI, sample size) and whether they disagree. Their full public record is at betedgeai.com/record.",
+    input_schema: { type: "object", properties: { ...GAME_TARGET } },
+  },
 ];
 
 function webSearchTool() {
@@ -301,6 +307,20 @@ function makeToolRunner({ sport, game, userRow, sources, refreshed, state }) {
       };
     }
     const { sport, game } = target;
+
+    if (name === "get_picker_picks") {
+      const r = await picksForGame({ sport, gameId: game.id, home: game.homeTeam, away: game.awayTeam, kickoff: game.commenceTime });
+      if (!r.available) return { status: "unavailable", note: "The picks ledger isn't available right now." };
+      return {
+        status: "ok",
+        game: `${game.awayTeam} @ ${game.homeTeam}`,
+        picks: r.picks.map((p) => ({ picker: p.picker, bet: p.bet, odds: p.odds, implied_prob: p.implied_prob, confidence: p.confidence, reason: p.reason, result: p.result, posted_at: p.created_at })),
+        pickers_disagree: r.disagree,
+        records: r.records.map((x) => ({ picker: x.picker, record: `${x.wins}-${x.losses}-${x.pushes}`, units: x.units, roi_pct: x.roi, graded_picks: x.graded, small_sample: x.smallSample, clv_points: x.clv?.avgPoints ?? null })),
+        record_page: "https://www.betedgeai.com/record",
+        note: r.picks.length ? null : "No picker has posted a pick on this game.",
+      };
+    }
 
     if (name === "get_injury_report") {
       state.injuriesByGame ||= {};
@@ -455,18 +475,22 @@ You DO have live retrieval through these tools. Never say you "can't browse the 
 
 ## Voice
 - Professional, concise, specific. Full sentences; plain English first.
-- No emojis. Never say "lock," "smash," "easy money," "can't miss," "guaranteed," or "trust me."
+- No emojis. Never say "lock," "smash," "easy money," "can't miss," "can't lose," "guaranteed," "sure thing," or "trust me."
 - Never guarantee outcomes or profit. Gambling involves risk; say so briefly when giving a lean.
+- Your job is to present the case, not sell a pick: show the data, argue both sides fairly, then let the user decide.
 - If the user asks for a lock or a sure thing, or shows signs of chasing losses (e.g. "I need to win it back", doubling up after losses), decline the guarantee, give a measured lean or Pass, and remind them to bet only what they can afford to lose (1-800-GAMBLER for help).
 - Do not narrate your tool use or thinking ("Let me search…") in the final answer.
 
 ## How to answer
-For analysis / "who covers" / "what's the lean" questions:
-**Bottom line** — one sentence: lean (or Pass) + why.
-**Market** — current spread / ML / total; open → current when available; the implied probability of the side you lean.
-**Drivers** — 2–4 bullets, each tied to a sourced, timestamped data point.
-**Risks** — what would flip the lean (include unverified player statuses here).
-**Confidence** — Low / Medium / High with one reason. Default to Low or Medium unless the data is rich and points the same way; lower it when key statuses are unverified or reports conflict.
+For analysis / "who covers" / "what's the lean" / "who should I bet" questions, lead with the data and let the user decide:
+**The data** — current spread / ML / total with the implied probability (and no-vig fair probability) of each side; key line movement (open → current); the injuries and weather that matter, each with source + time. If any of these is missing or unavailable, say so plainly — never guess or fill it in.
+**Case for <side A>** — the strongest honest argument, 2–3 bullets tied to the data.
+**Case for <side B>** — the strongest honest argument for the other side, 2–3 bullets. Make both cases fairly, even if you lean one way.
+**The pickers** — call get_picker_picks: say which way each BetEdge picker leans on this game, with its record attached (e.g. "Line Movement Picker: Broncos +3 (Medium) — 41-35-2, +3.4u over 78 graded picks, small sample"). If they disagree, say so — that's useful information. If none has picked it, say that.
+**My lean** — your lean or Pass, with Low / Medium / High confidence and the one or two reasons why. Default to Low or Medium unless the data is rich and points the same way; lower it when statuses are unverified or reports conflict.
+End every such answer with one line: "Your call — compare the pickers' full track records at betedgeai.com/record."
+
+For a slate question, keep each game to a short version of the same idea: key number, lean or Pass with confidence, and what the pickers did if they picked it; end with the same your-call line.
 
 For narrow factual questions ("Is X playing?", "Who is out?", "What's the total?"), answer directly in 2–6 sentences or a short list, with source + timestamp.
 

@@ -319,6 +319,53 @@ export function ensureSchema() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
 
+      -- Public picks ledger (Record page). A pick can never be edited or
+      -- deleted: only result / units / closing_odds may be set, once, while
+      -- it's still pending (enforced by the trigger below, not just the API).
+      CREATE TABLE IF NOT EXISTS picks (
+        id BIGSERIAL PRIMARY KEY,
+        picker TEXT NOT NULL,
+        sport TEXT NOT NULL,
+        game TEXT NOT NULL,
+        game_id TEXT,
+        kickoff_at TIMESTAMPTZ NOT NULL,
+        bet TEXT NOT NULL,
+        odds INTEGER NOT NULL,
+        implied_prob NUMERIC(6,4) NOT NULL,
+        confidence TEXT NOT NULL CHECK (confidence IN ('Low','Medium','High')),
+        reason TEXT NOT NULL,
+        result TEXT NOT NULL DEFAULT 'pending' CHECK (result IN ('pending','win','loss','push','void')),
+        units NUMERIC(8,2),
+        closing_odds INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        graded_at TIMESTAMPTZ,
+        CONSTRAINT picks_before_kickoff CHECK (created_at < kickoff_at)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_picks_identity ON picks (picker, game, bet, kickoff_at);
+      CREATE INDEX IF NOT EXISTS idx_picks_kickoff ON picks (kickoff_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_picks_game ON picks (sport, game_id);
+      CREATE OR REPLACE FUNCTION picks_guard() RETURNS trigger AS $picks$
+      BEGIN
+        IF TG_OP = 'DELETE' THEN
+          RAISE EXCEPTION 'picks cannot be deleted (void them instead)';
+        END IF;
+        IF OLD.result <> 'pending' THEN
+          RAISE EXCEPTION 'pick % is already graded and cannot be changed', OLD.id;
+        END IF;
+        IF NEW.picker IS DISTINCT FROM OLD.picker OR NEW.sport IS DISTINCT FROM OLD.sport
+           OR NEW.game IS DISTINCT FROM OLD.game OR NEW.game_id IS DISTINCT FROM OLD.game_id
+           OR NEW.kickoff_at IS DISTINCT FROM OLD.kickoff_at OR NEW.bet IS DISTINCT FROM OLD.bet
+           OR NEW.odds IS DISTINCT FROM OLD.odds OR NEW.implied_prob IS DISTINCT FROM OLD.implied_prob
+           OR NEW.confidence IS DISTINCT FROM OLD.confidence OR NEW.reason IS DISTINCT FROM OLD.reason
+           OR NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.id IS DISTINCT FROM OLD.id THEN
+          RAISE EXCEPTION 'pick % is immutable; only result, units and closing_odds can be set', OLD.id;
+        END IF;
+        RETURN NEW;
+      END;
+      $picks$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS picks_guard_trg ON picks;
+      CREATE TRIGGER picks_guard_trg BEFORE UPDATE OR DELETE ON picks FOR EACH ROW EXECUTE FUNCTION picks_guard();
+
       -- Games a user starred for the Favorites tab. Team names and kickoff
       -- are stored with the star so the tab can still list a game after the
       -- sportsbooks drop it from the odds feed.

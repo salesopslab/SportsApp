@@ -132,6 +132,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .sport-tabs{ display:flex; gap:8px; padding:14px 20px 4px; overflow-x:auto; }
 .sport-tab{ font-size:13px; color:var(--sub); background:var(--surface); border:1px solid var(--line); padding:7px 14px; border-radius:20px; white-space:nowrap; cursor:pointer; font-family:inherit; }
 .sport-tab:hover{ border-color:var(--amber); color:var(--text); }
+.sport-tab:focus-visible, .status-filter:focus-visible, .rec-seg button:focus-visible, .nav-btn:focus-visible{ outline:2px solid var(--amber); outline-offset:2px; }
 .sport-tab.active{ color:var(--bg); background:var(--amber); border-color:var(--amber); font-weight:600; }
 .sport-tab.active:hover{ filter:brightness(0.94); }
 
@@ -838,6 +839,103 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
   .nav-btn{ font-size:9.5px; line-height:1.15; gap:3px; padding:0 1px; }
 }
 
+/* ---------- Game page: "The data" panel ---------- */
+.data-panel{ border-top:1px solid var(--line); }
+.data-head{ padding:16px 20px 4px; }
+.data-head h2{ font-family:'Oswald',sans-serif; font-size:19px; font-weight:500; }
+.data-sub{ font-size:12.5px; color:var(--sub); margin-top:2px; }
+.data-foot{ font-size:11.5px; color:var(--sub); padding:12px 20px 16px; text-align:center; border-bottom:1px solid var(--line); }
+.ob-note{ font-size:12px; color:var(--sub); margin:-4px 0 10px; line-height:1.45; }
+.ob-market{ margin-bottom:14px; }
+.ob-title{ font-size:13px; font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.ob-hold{ font-size:11px; font-weight:500; color:var(--sub); }
+.ob-table{ width:100%; border-collapse:collapse; font-size:12.5px; table-layout:fixed; }
+.ob-table th{ font-size:10.5px; font-weight:600; color:var(--sub); text-transform:uppercase; letter-spacing:.3px; text-align:left; padding:4px 4px; border-bottom:1px solid var(--line); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ob-table td{ padding:6px 4px; border-bottom:1px dashed var(--line); vertical-align:top; }
+.ob-table .num{ text-align:right; font-variant-numeric:tabular-nums; }
+.ob-table th:first-child, .ob-table td.ob-book{ width:30%; }
+.ob-book{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ob-imp{ font-size:10.5px; color:var(--sub); }
+.ob-fair{ font-size:11.5px; color:var(--sub); }
+.ob-consensus td{ font-weight:600; background:var(--surface2); }
+.ob-toggle{ background:none; border:none; color:var(--amber); font:600 12.5px 'Inter',sans-serif; padding:6px 0 0; cursor:pointer; }
+.lm-chart{ width:100%; height:46px; display:block; margin:4px 0 8px; }
+.lm-axis{ font-size:9px; fill:var(--sub); font-family:'Inter',sans-serif; }
+.pk-row{ padding:10px 0; border-bottom:1px dashed var(--line); }
+.pk-row:last-child{ border-bottom:none; }
+.pk-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.pk-name{ font-size:13px; font-weight:700; }
+.pk-bet{ font-size:14px; margin-top:4px; }
+.pk-sub{ font-size:12px; color:var(--sub); }
+.pk-reason{ font-size:13px; line-height:1.45; margin:4px 0; }
+.pk-link{ color:var(--amber); font-weight:600; text-decoration:none; }
+.pk-disagree{ font-size:12.5px; background:color-mix(in srgb, var(--teal) 12%, transparent); border:1px solid color-mix(in srgb, var(--teal) 45%, transparent); border-radius:10px; padding:8px 10px; margin-bottom:6px; }
+
+/* ---------- Record (public track record) ---------- */
+.rec-wrap{ padding:0 0 24px; }
+.rec-head{ padding:18px 20px 6px; }
+.rec-title{ font-family:'Oswald',sans-serif; font-size:24px; }
+.rec-sub{ font-size:13px; color:var(--sub); line-height:1.5; margin-top:4px; }
+.rec-controls{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px 20px 4px; }
+.rec-seg{ display:flex; background:var(--surface2); border-radius:12px; padding:3px; gap:2px; }
+.rec-seg button{ border:none; background:none; color:var(--sub); font:600 12.5px 'Inter',sans-serif; padding:7px 11px; border-radius:9px; cursor:pointer; white-space:nowrap; }
+.rec-seg button.active{ background:var(--surface); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+.rec-select{ font:500 13px 'Inter',sans-serif; color:var(--text); background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:8px 10px; max-width:100%; }
+.rec-cards{ display:grid; grid-template-columns:1fr; gap:12px; padding:12px 20px 4px; }
+@media (min-width:720px){ .rec-cards{ grid-template-columns:repeat(3, 1fr); } }
+.rec-card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+.rec-card.leader{ border-color:var(--amber); }
+.rec-card-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+.rec-name{ font-weight:700; font-size:15px; line-height:1.3; }
+.rec-rank{ font-size:11px; font-weight:700; color:var(--sub); letter-spacing:.4px; }
+.rec-badge{ font-size:10.5px; font-weight:700; color:var(--amber); border:1px solid var(--amber); border-radius:8px; padding:2px 7px; white-space:nowrap; }
+.rec-big{ display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; }
+.rec-units{ font-family:'Oswald',sans-serif; font-size:28px; line-height:1; }
+.rec-units.pos{ color:var(--green); } .rec-units.neg{ color:var(--red); }
+.rec-rec{ font-size:14px; font-weight:600; }
+.rec-sample{ font-size:12.5px; color:var(--text); font-weight:600; }
+.rec-stats{ display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
+.rec-stat{ background:var(--surface2); border-radius:9px; padding:6px 8px; min-width:0; }
+.rec-stat .l{ font-size:10px; color:var(--sub); text-transform:uppercase; letter-spacing:.4px; }
+.rec-stat .v{ font-size:13px; font-weight:700; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rec-spark{ width:100%; height:44px; display:block; }
+.rec-conf{ font-size:11.5px; color:var(--sub); line-height:1.5; }
+.rec-card-link{ background:none; border:none; color:var(--amber); font:600 12.5px 'Inter',sans-serif; padding:0; cursor:pointer; text-align:left; }
+.rec-section{ padding:18px 20px 0; }
+.rec-section h3{ font-family:'Oswald',sans-serif; font-size:17px; font-weight:500; }
+.rec-section-head{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.rec-csv{ font-size:13px; font-weight:600; color:var(--amber); text-decoration:none; white-space:nowrap; }
+.rec-filters{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }
+.rec-table{ width:100%; border-collapse:collapse; font-size:13px; }
+.rec-table th{ text-align:left; font-size:11px; color:var(--sub); font-weight:600; text-transform:uppercase; letter-spacing:.3px; padding:8px 6px; border-bottom:1px solid var(--line); cursor:pointer; white-space:nowrap; user-select:none; }
+.rec-table th.sorted::after{ content:' ▾'; } .rec-table th.sorted.asc::after{ content:' ▴'; }
+.rec-table td{ padding:9px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+.rec-table td.num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.rec-res{ font-size:11px; font-weight:700; border-radius:8px; padding:2px 7px; white-space:nowrap; text-transform:uppercase; }
+.rec-res.win{ color:var(--green); border:1px solid var(--green); } .rec-res.loss{ color:var(--red); border:1px solid var(--red); }
+.rec-res.push, .rec-res.void{ color:var(--sub); border:1px solid var(--line); } .rec-res.pending{ color:var(--amber); border:1px solid var(--amber); }
+.rec-reason{ font-size:12px; color:var(--sub); margin-top:3px; line-height:1.4; }
+.rec-more{ display:block; margin:12px auto 0; background:none; border:1px solid var(--line); color:var(--text); border-radius:10px; padding:8px 16px; font:600 13px 'Inter',sans-serif; cursor:pointer; }
+.rec-empty{ padding:20px 0; color:var(--sub); font-size:13.5px; line-height:1.5; }
+.rec-how ul{ margin:8px 0 0; padding-left:18px; font-size:13px; line-height:1.55; color:var(--text); }
+.rec-how li{ margin-bottom:6px; }
+.rec-foot{ font-size:11.5px; color:var(--sub); text-align:center; padding:18px 20px 0; line-height:1.5; }
+.rec-mob-meta, .rec-mob-units{ display:none; }
+@media (max-width:719px){
+  .rec-table thead{ display:none; }
+  .rec-table, .rec-table tbody{ display:block; width:100%; }
+  .rec-table tr{ display:grid; grid-template-columns:1fr auto; gap:3px 12px; border-bottom:1px solid var(--line); padding:12px 0; }
+  .rec-table td{ display:block; border:none; padding:0; min-width:0; }
+  .rec-table td.c-date{ grid-column:1 / -1; font-size:11.5px; color:var(--sub); }
+  .rec-table td.c-picker{ grid-column:1 / -1; font-size:12px; color:var(--amber); font-weight:600; }
+  .rec-table td.c-game{ grid-column:1 / -1; font-weight:600; }
+  .rec-table td.c-bet{ grid-column:1; }
+  .rec-table td.c-res{ grid-column:2; text-align:right; }
+  .rec-table td.c-odds, .rec-table td.c-imp, .rec-table td.c-conf, .rec-table td.c-units{ display:none; }
+  .rec-mob-meta{ display:block; font-size:12px; color:var(--sub); margin-top:3px; }
+  .rec-mob-units{ display:block; font-weight:700; margin-top:4px; font-variant-numeric:tabular-nums; }
+}
+
 /* ---------- Pricing: Free | Edge | Edge+ | Edge Pro ---------- */
 .pricing-modal-card{ max-width:1120px !important; }
 .pricing-modal-card h2{ text-align:center; }
@@ -1286,6 +1384,65 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
     <div id="favoritesList"></div>
   </div>
 
+  <!-- RECORD: public, graded track record of the three pickers -->
+  <div class="screen" id="record">
+    <div class="rec-wrap">
+      <div class="rec-head">
+        <div class="rec-title">Record</div>
+        <div class="rec-sub">Every pick from our three AI pickers, posted before kickoff and graded in public. Losses stay up. Compare them, check the math, and make your own call.</div>
+      </div>
+      <div class="rec-controls">
+        <div class="rec-seg" id="recRange" role="radiogroup" aria-label="Time range">
+          <button type="button" data-range="7d">7 days</button>
+          <button type="button" data-range="30d">30 days</button>
+          <button type="button" data-range="season">Season</button>
+          <button type="button" data-range="all" class="active">All time</button>
+        </div>
+        <select class="rec-select" id="recSport" aria-label="Sport">
+          <option value="all">All sports</option>
+          <option value="nfl">NFL</option>
+          <option value="ncaaf">CFB</option>
+          <option value="nba">NBA</option>
+          <option value="ncaab">CBB</option>
+          <option value="mlb">MLB</option>
+        </select>
+      </div>
+      <div id="recCards" class="rec-cards"></div>
+
+      <div class="rec-section">
+        <div class="rec-section-head">
+          <h3>Pick history</h3>
+          <a class="rec-csv" id="recCsv" href="#" download>⬇ Download CSV</a>
+        </div>
+        <div class="rec-filters">
+          <select class="rec-select" id="recPicker" aria-label="Picker"><option value="">All pickers</option></select>
+          <select class="rec-select" id="recStatus" aria-label="Result">
+            <option value="">All results</option><option value="pending">Pending</option><option value="win">Wins</option><option value="loss">Losses</option><option value="push">Pushes</option><option value="void">Void</option>
+          </select>
+          <select class="rec-select" id="recSort" aria-label="Sort">
+            <option value="date:desc">Newest first</option><option value="date:asc">Oldest first</option>
+            <option value="units:desc">Units: high to low</option><option value="units:asc">Units: low to high</option>
+            <option value="odds:desc">Odds: high to low</option><option value="implied:desc">Implied %: high to low</option>
+            <option value="picker:asc">Picker A–Z</option><option value="confidence:desc">Confidence</option>
+          </select>
+        </div>
+        <div id="recTable"></div>
+      </div>
+
+      <div class="rec-section rec-how">
+        <h3>How we grade</h3>
+        <ul>
+          <li><b>Timestamped before kickoff.</b> Each pick is saved with the time it was made, the bet and the odds at that moment. The server refuses any pick made at or after kickoff.</li>
+          <li><b>Can't be edited or deleted.</b> Once posted, a pick is locked. Only its result is added after the game. A cancelled game is marked void, never removed.</li>
+          <li><b>Flat 1-unit stakes.</b> A win at +150 is +1.50 units, a win at −110 is +0.91, a loss is −1, and a push or void is 0. ROI is units ÷ graded picks.</li>
+          <li><b>Losses stay up.</b> Every result counts. Download the CSV and check our math.</li>
+          <li><b>Small samples are noisy.</b> Under 100 picks, a record says more about luck than skill. CLV (closing-line value) shows whether a picker beat the final market price, which is a faster signal than wins.</li>
+        </ul>
+      </div>
+      <div class="rec-foot">Picks are information, not advice. No outcome is guaranteed. Bet responsibly — 21+. Gambling problem? Call 1-800-GAMBLER.</div>
+    </div>
+  </div>
+
   <!-- GAME BREAKDOWN -->
   <div class="screen" id="gameBreakdown">
     <button class="back-btn" id="gameBreakdownBackBtn">‹ Back</button>
@@ -1379,9 +1536,9 @@ button.fe-pchip.pick:hover{ border-color:var(--amber); }
       <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg></span>
       Ledger AI
     </button>
-    <button class="nav-btn" data-nav="live" data-screen="board">
-      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M5 5a10 10 0 0 0 0 14"/><path d="M19 5a10 10 0 0 1 0 14"/></svg></span>
-      Live
+    <button class="nav-btn" data-nav="record" data-screen="record">
+      <span class="ic"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg></span>
+      Record
     </button>
   </div>
 </div>
@@ -3967,15 +4124,17 @@ async function toggleMemoryPanel(){
   }
 }
 document.getElementById('memoryBtn').addEventListener('click', toggleMemoryPanel);
-// Bottom nav: Games | Favorites | BetEdge AI | Fantasy Edge | Ledger AI | Live.
+// Bottom nav: Games | Favorites | BetEdge AI | Fantasy Edge | Ledger AI | Record.
+// /live still works: it opens Games with the Live filter on.
 // "Live" is the Games board filtered to games in progress; Breakdown and Big
 // Moves live under Games (a game tap / the Big Moves button).
 let liveNavMode = false;
 function navForScreen(id){
-  if(id === 'board') return liveNavMode ? 'live' : 'games';
+  if(id === 'board') return 'games';
   // A Breakdown opened from Favorites keeps the Favorites tab lit.
   if(id === 'gameBreakdown' && screenHistory[0] === 'favorites') return 'favorites';
-  return { chat:'ai', fantasy:'fantasy', picks:'ledger', gameBreakdown:'games', bigLines:'games', favorites:'favorites' }[id] || null;
+  if(id === 'gameBreakdown' && screenHistory[0] === 'record') return 'record';
+  return { chat:'ai', fantasy:'fantasy', picks:'ledger', gameBreakdown:'games', bigLines:'games', favorites:'favorites', record:'record' }[id] || null;
 }
 function setActiveNav(key){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.nav===key));
@@ -3987,7 +4146,7 @@ function setBoardFilter(filter){
 // Shareable URLs for each product: betedgeai.com/fantasy-edge etc.
 // (The host rewrites unknown paths to index.html; real files like
 // /terms.html are still served as-is.)
-const NAV_PATHS = { games:'/games', favorites:'/favorites', ai:'/betedge-ai', fantasy:'/fantasy-edge', ledger:'/ledger-ai', live:'/live', bigMoves:'/big-moves' };
+const NAV_PATHS = { games:'/games', favorites:'/favorites', record:'/record', ai:'/betedge-ai', fantasy:'/fantasy-edge', ledger:'/ledger-ai', live:'/live', bigMoves:'/big-moves' };
 const PATH_ALIASES = {
   '/games':'games', '/board':'games',
   '/favorites':'favorites', '/favourites':'favorites',
@@ -3995,12 +4154,14 @@ const PATH_ALIASES = {
   '/fantasy-edge':'fantasy', '/fantasy':'fantasy',
   '/ledger-ai':'ledger', '/ledger':'ledger', '/my-picks':'ledger', '/picks':'ledger',
   '/live':'live',
+  '/record':'record', '/track-record':'record',
   '/big-moves':'bigMoves',
 };
-const NAV_TITLES = { games:'Games', favorites:'Favorites', ai:'BetEdge AI Chat', fantasy:'Fantasy Edge', ledger:'Ledger AI', live:'Live Games', bigMoves:'Big Moves' };
-const NAV_SCREENS = { games:'board', favorites:'favorites', ai:'chat', fantasy:'fantasy', ledger:'picks', live:'board', bigMoves:'bigLines' };
+const NAV_TITLES = { games:'Games', favorites:'Favorites', record:'Record', ai:'BetEdge AI Chat', fantasy:'Fantasy Edge', ledger:'Ledger AI', live:'Live Games', bigMoves:'Big Moves' };
+const NAV_SCREENS = { games:'board', favorites:'favorites', record:'record', ai:'chat', fantasy:'fantasy', ledger:'picks', live:'board', bigMoves:'bigLines' };
 function syncUrlForScreen(id){
   let key = navForScreen(id);
+  if(id === 'board' && liveNavMode) key = 'live';
   if(id === 'bigLines') key = 'bigMoves';
   if(id === 'gameBreakdown' || !key) return; // Breakdown keeps the tab's URL
   const path = NAV_PATHS[key];
@@ -4018,6 +4179,7 @@ function goToNav(nav, opts={}){
   if(screen === 'bigLines') renderBigLines();
   if(nav === 'fantasy' && window.__feOnShow) window.__feOnShow();
   if(nav === 'favorites') loadFavoritesScreen();
+  if(nav === 'record' && window.__recordOnShow) window.__recordOnShow();
   if(opts.noUrl) document.title = nav === 'games' && location.pathname === '/' ? 'BetEdge AI' : `${NAV_TITLES[nav]} · BetEdge AI`;
 }
 function navFromPath(pathname){
@@ -4512,6 +4674,13 @@ async function openGameBreakdown(sport, game){
     currentGameBreakdown = gameBreakdown;
     body.innerHTML = renderGameBreakdown(gameBreakdown);
     wireFavStars(body, [game]);
+    body.querySelectorAll('.ob-toggle').forEach(btn => btn.addEventListener('click', () => {
+      const rows = btn.parentElement.querySelectorAll('tr.ob-more');
+      const show = rows[0] && rows[0].hidden;
+      rows.forEach(r => r.hidden = !show);
+      btn.textContent = show ? 'Show fewer books' : `Show all ${btn.parentElement.querySelectorAll('tbody tr:not(.ob-consensus)').length} books`;
+    }));
+    loadGamePickers(sport, Object.assign({}, gameBreakdown.game, { id: game.id }));
     startBreakdownScoreRefresh(sport, game.id);
     wireInjurySection(body);
     wireTrackButtons();
@@ -4636,51 +4805,167 @@ function renderGameBreakdown(d){
       <div id="bdScoreBox">${breakdownScoreHtml(currentGame, g)}</div>
       <div class="game-breakdown-sub">Home team: ${g.homeTeam}${venueLabel(g.homeTeam) ? ' · ' + venueLabel(g.homeTeam) : ''}</div>
     </div>
+    <div class="data-panel" id="bdDataPanel">
+      <div class="data-head">
+        <h2>The data</h2>
+        <div class="data-sub">The raw inputs, before any opinion. Look for yourself, then decide.</div>
+      </div>
+      ${oddsByBookSection(g)}
+      ${lineMovementSection(lm)}
+      ${renderInjurySection(d)}
+      <div class="section">
+        <h3>Weather at kickoff</h3>
+        ${w ? (w.conditions === 'Dome — no weather impact'
+            ? `<div class="fact-row"><span>Venue</span><span class="v">Dome — no weather impact</span></div>`
+            : `<div class="fact-row"><span>Temp</span><span class="v">${w.tempF ?? '—'}°F</span></div>
+               <div class="fact-row"><span>Wind</span><span class="v">${w.windMph ?? '—'} mph</span></div>
+               <div class="fact-row"><span>Precip chance</span><span class="v">${w.precipChance ?? '—'}%</span></div>
+               <div class="fact-row"><span>Conditions</span><span class="v">${w.conditions ?? '—'}</span></div>`)
+          : '<div class="empty-note">No weather data for this venue — we don\'t have its location on file yet.</div>'}
+      </div>
+      <div class="section">
+        <h3>Head-to-head results</h3>
+        ${h2hResults.length ? h2hResults.slice(0,5).map(m=>`<div class="fact-row"><span>${m.awayTeam} ${m.awayScore} @ ${m.homeTeam} ${m.homeScore}</span><span class="v">${m.winner} won · ${m.date ? new Date(m.date).toLocaleDateString() : ''}</span></div>`).join('')
+          : '<div class="empty-note">No completed past meetings found in the last 4 seasons.</div>'}
+      </div>
+      ${h2h.length ? `<div class="section">
+        <h3>Scheduled meetings (no scores)</h3>
+        ${h2h.slice(0,5).map(m=>`<div class="fact-row"><span>${m.AwayTeam || m.AwayTeamName || ''} @ ${m.HomeTeam || m.HomeTeamName || ''}</span><span class="v">${m.Season || ''} ${m.DateTime ? new Date(m.DateTime).toLocaleDateString() : ''}</span></div>`).join('')}
+      </div>` : ''}
+      <div class="section" id="bdPickers">
+        <h3>What the pickers say</h3>
+        <div class="empty-note">Loading the pickers' calls…</div>
+      </div>
+      <div class="data-foot">Data for information only. No outcome is guaranteed. Bet responsibly.</div>
+    </div>
     <button class="scan-shortcut-btn" id="scanFromCardBtn" type="button">📸 Scan or upload a bet slip screenshot</button>
     ${renderTrackSection(trackGame, lm)}
-    ${lm.locked ? `
-    <div class="section">
-      <h3>Original lines &amp; line movement</h3>
-      ${upgradePromptHtml(lm.requiredTier || 'standard', 'See the opening line and every move since, for every game.')}
-    </div>
-    ` : `
-    <div class="section">
-      <h3>Original lines${lm.book ? ' · ' + lm.book : ''}</h3>
-      ${lm.available && lm.hasHistory && lm.summary && lm.summary.length
-        ? lm.summary.map(originalLineRow).join('')
-        : `<div class="empty-note">${lm.reason || lm.note || 'Opening lines will show here once we\'ve recorded the first odds snapshot for this game.'}</div>`}
-    </div>
-    <div class="section">
-      <h3>Line movement${lm.book ? ' · ' + lm.book : ''}</h3>
-      ${lm.available && lm.hasHistory && lm.summary && lm.summary.length
-        ? lm.summary.map(lineMovementRow).join('')
-        : `<div class="empty-note">${lm.reason || lm.note || 'Tracking line movement now — check back after the odds refresh a few times to see how the line has moved.'}</div>`}
-    </div>
-    `}
-    <div class="section">
-      <h3>Head-to-head results</h3>
-      ${h2hResults.length ? h2hResults.slice(0,5).map(m=>`<div class="fact-row"><span>${m.awayTeam} ${m.awayScore} @ ${m.homeTeam} ${m.homeScore}</span><span class="v">${m.winner} won · ${m.date ? new Date(m.date).toLocaleDateString() : ''}</span></div>`).join('')
-        : '<div class="empty-note">No completed past meetings found in the last 4 seasons.</div>'}
-    </div>
-    <div class="section">
-      <h3>Scheduled meetings (no scores)</h3>
-      ${h2h.length ? h2h.slice(0,5).map(m=>`<div class="fact-row"><span>${m.AwayTeam || m.AwayTeamName || ''} @ ${m.HomeTeam || m.HomeTeamName || ''}</span><span class="v">${m.Season || ''} ${m.DateTime ? new Date(m.DateTime).toLocaleDateString() : ''}</span></div>`).join('')
-        : '<div class="empty-note">No recent meetings found in this season\'s schedule data.</div>'}
-    </div>
-    <div class="section">
-      <h3>Weather at kickoff</h3>
-      ${w ? (w.conditions === 'Dome — no weather impact'
-          ? `<div class="fact-row"><span>Venue</span><span class="v">Dome — no weather impact</span></div>`
-          : `<div class="fact-row"><span>Temp</span><span class="v">${w.tempF ?? '—'}°F</span></div>
-             <div class="fact-row"><span>Wind</span><span class="v">${w.windMph ?? '—'} mph</span></div>
-             <div class="fact-row"><span>Precip chance</span><span class="v">${w.precipChance ?? '—'}%</span></div>
-             <div class="fact-row"><span>Conditions</span><span class="v">${w.conditions ?? '—'}</span></div>`)
-        : '<div class="empty-note">No venue coordinates on file for this matchup yet.</div>'}
-    </div>
-    ${renderInjurySection(d)}
     <button class="ask-ai-btn" id="askAiBtn">Ask the AI about this game →</button>
   `;
   return html;
+}
+
+
+// ---- "The data" panel helpers -------------------------------------------
+function impliedFromOdds(o){
+  const n = Number(o);
+  if(!Number.isFinite(n) || n === 0) return null;
+  return n > 0 ? 100 / (n + 100) : -n / (-n + 100);
+}
+function pctLabel(p){ return p == null ? '—' : `${(p * 100).toFixed(1)}%`; }
+// Strip the bookmaker's margin from a 2-way market so the sides sum to 100%.
+function noVigPair(a, b){
+  const x = impliedFromOdds(a), y = impliedFromOdds(b);
+  if(x == null || y == null) return null;
+  return { a: x / (x + y), b: y / (x + y), hold: x + y - 1 };
+}
+function priceCell(o, withPoint){
+  if(!o || o.price == null) return '<td class="num">—</td>';
+  const pt = withPoint && o.point != null ? `<b>${o.point > 0 ? '+' : ''}${o.point}</b> ` : '';
+  return `<td class="num">${pt}${formatPrice(o.price)}<div class="ob-imp">${pctLabel(impliedFromOdds(o.price))}</div></td>`;
+}
+function oddsByBookSection(g){
+  const books = (g.allBooks || []).filter(b => (b.moneyline||[]).length || (b.spread||[]).length || (b.total||[]).length);
+  if(!books.length && !(g.moneyline||[]).length && !(g.spread||[]).length && !(g.total||[]).length){
+    return `<div class="section"><h3>Odds by book</h3><div class="empty-note">No sportsbook odds posted for this game right now${currentGame && currentGame.status === 'final' ? ' — it has finished' : ''}.</div></div>`;
+  }
+  const markets = [
+    { key:'spread', label:'Spread', sides:[g.awayTeam, g.homeTeam], point:true },
+    { key:'moneyline', label:'Moneyline', sides:[g.awayTeam, g.homeTeam], point:false },
+    { key:'total', label:'Total', sides:['Over', 'Under'], point:true },
+  ];
+  const short = (t) => t === 'Over' || t === 'Under' ? t : String(t).split(' ').slice(-1)[0];
+  const blocks = markets.map(m => {
+    const rows = books.map(b => {
+      const outs = b[m.key] || [];
+      const a = outs.find(o => o.name === m.sides[0]), h = outs.find(o => o.name === m.sides[1]);
+      if(!a && !h) return null;
+      const fair = a && h ? noVigPair(a.price, h.price) : null;
+      return `<tr><td class="ob-book">${escapeHtml(b.book)}</td>${priceCell(a, m.point)}${priceCell(h, m.point)}<td class="num ob-fair">${fair ? `${pctLabel(fair.a)} / ${pctLabel(fair.b)}` : '—'}</td></tr>`;
+    }).filter(Boolean);
+    const ca = findPrice(g[m.key], m.sides[0]), ch = findPrice(g[m.key], m.sides[1]);
+    if(!rows.length && !ca && !ch) return '';
+    const cf = ca && ch ? noVigPair(ca.price, ch.price) : null;
+    const consensus = (ca || ch) ? `<tr class="ob-consensus"><td class="ob-book">Consensus</td>${priceCell(ca, m.point)}${priceCell(ch, m.point)}<td class="num ob-fair">${cf ? `${pctLabel(cf.a)} / ${pctLabel(cf.b)}` : '—'}</td></tr>` : '';
+    const extra = rows.length > 5;
+    return `<div class="ob-market">
+      <div class="ob-title">${m.label}${cf ? `<span class="ob-hold">book margin ${(cf.hold * 100).toFixed(1)}%</span>` : ''}</div>
+      <table class="ob-table"><thead><tr><th>Book</th><th class="num">${escapeHtml(short(m.sides[0]))}</th><th class="num">${escapeHtml(short(m.sides[1]))}</th><th class="num">No-vig fair</th></tr></thead>
+      <tbody>${consensus}${rows.slice(0, 5).join('')}${extra ? rows.slice(5).map(r => r.replace('<tr>', '<tr class="ob-more" hidden>')).join('') : ''}</tbody></table>
+      ${extra ? `<button type="button" class="ob-toggle">Show all ${rows.length} books</button>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="section ob-section"><h3>Odds by book</h3>
+    <div class="ob-note">Each price shows its implied probability. “No-vig fair” removes the book's margin so the two sides add to 100%.</div>
+    ${blocks}</div>`;
+}
+function moveChart(m){
+  const pts = (m.series || []).map(p => ({ t: Date.parse(p.t), v: m.market === 'moneyline' ? Number(p.price) : Number(p.point) })).filter(p => Number.isFinite(p.t) && Number.isFinite(p.v));
+  if(pts.length < 2) return '';
+  const W = 280, H = 46, pad = 4;
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1;
+  const vs = pts.map(p => p.v), min = Math.min(...vs), max = Math.max(...vs), span = (max - min) || 1;
+  const x = (t) => pad + ((t - t0) / ((t1 - t0) || 1)) * (W - pad * 2);
+  const y = (v) => H - pad - ((v - min) / span) * (H - pad * 2);
+  // Step line: a line holds until the next change.
+  let d = `M${x(pts[0].t).toFixed(1)},${y(pts[0].v).toFixed(1)}`;
+  for(let i = 1; i < pts.length; i++) d += ` H${x(pts[i].t).toFixed(1)} V${y(pts[i].v).toFixed(1)}`;
+  return `<svg class="lm-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(m.side)} line from ${pts[0].v} to ${pts[pts.length-1].v}">
+    <path d="${d}" fill="none" stroke="var(--amber)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    <text x="${pad}" y="${H - 2}" class="lm-axis">${min === max ? '' : (m.market === 'moneyline' ? formatPrice(min) : min)}</text>
+    <text x="${pad}" y="10" class="lm-axis">${min === max ? '' : (m.market === 'moneyline' ? formatPrice(max) : max)}</text>
+  </svg>`;
+}
+function lineMovementSection(lm){
+  if(lm.locked){
+    return `<div class="section"><h3>Line movement</h3>
+      <div class="empty-note">Not shown: ${escapeHtml(lm.reason || 'line movement needs a paid plan.')}</div>
+      ${upgradePromptHtml(lm.requiredTier || 'standard', 'See the opening line and every move since, for every game.')}</div>`;
+  }
+  if(!lm.available || !lm.hasHistory || !(lm.summary || []).length){
+    return `<div class="section"><h3>Line movement</h3><div class="empty-note">${escapeHtml(lm.reason || lm.note || 'No line history yet — we start recording when odds post, so check back after a few refreshes.')}</div></div>`;
+  }
+  const order = { spread:0, total:1, moneyline:2 };
+  const rows = lm.summary.slice().sort((a, b) => (order[a.market] ?? 9) - (order[b.market] ?? 9));
+  // One chart per market (home side for spread/ML, Over for totals).
+  const charted = new Set();
+  const homeName = currentGame ? currentGame.homeTeam : null;
+  const html = rows.map(m => {
+    const wantChart = !charted.has(m.market) && (m.market === 'total' ? m.side === 'Over' : (!homeName || m.side === homeName));
+    if(wantChart) charted.add(m.market);
+    return `${lineMovementRow(m)}${wantChart ? moveChart(m) : ''}`;
+  }).join('');
+  const since = rows[0] && rows[0].firstSeen ? ` · since ${new Date(rows[0].firstSeen).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })}` : '';
+  return `<div class="section"><h3>Line movement${lm.book ? ' · ' + escapeHtml(lm.book) : ''}</h3>
+    <div class="ob-note">Open → current${since}.</div>${html}</div>`;
+}
+const PICKER_ICON = { 'Line Movement Picker':'📈', 'Matchup Stats Picker':'📊', 'Value Contrarian Picker':'🔄' };
+async function loadGamePickers(sport, game){
+  const box = document.getElementById('bdPickers');
+  if(!box) return;
+  const head = '<h3>What the pickers say</h3>';
+  try{
+    const q = new URLSearchParams({ sport, game_id: game.id, home: game.homeTeam, away: game.awayTeam, kickoff: game.commenceTime || '' });
+    const res = await apiFetch(`/api/picks/game?${q}`);
+    const d = await res.json();
+    if(document.getElementById('bdPickers') !== box) return;
+    const rec = (name) => (d.records || []).find(r => r.picker === name);
+    const recLine = (r) => r && r.graded ? `${r.wins}-${r.losses}${r.pushes ? '-' + r.pushes : ''} · ${r.units > 0 ? '+' : ''}${r.units.toFixed(2)}u · ${r.graded} graded${r.smallSample ? ' (small sample)' : ''}` : 'No graded picks yet';
+    if(!d.picks || !d.picks.length){
+      box.innerHTML = `${head}<div class="empty-note">None of our three pickers has posted a pick on this game. Their full records are on the <a href="/record" class="pk-link">Record page</a>.</div>`;
+    }else{
+      box.innerHTML = head + (d.disagree ? '<div class="pk-disagree">The pickers disagree on this game. That\'s useful: the case isn\'t one-sided.</div>' : '') +
+        d.picks.map(p => `<div class="pk-row">
+          <div class="pk-top"><span class="pk-name">${PICKER_ICON[p.picker] || '🤖'} ${escapeHtml(p.picker)}</span><span class="rec-res ${escapeHtml(p.result)}">${escapeHtml(p.result)}</span></div>
+          <div class="pk-bet"><b>${escapeHtml(p.bet)}</b> at ${formatPrice(p.odds)} <span class="pk-sub">(${pctLabel(p.implied_prob)} implied) · ${escapeHtml(p.confidence)} confidence</span></div>
+          <div class="pk-reason">${escapeHtml(p.reason)}</div>
+          <div class="pk-sub">Posted ${new Date(p.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short' })} · Record: <a href="/record" class="pk-link">${escapeHtml(recLine(rec(p.picker)))}</a></div>
+        </div>`).join('');
+    }
+  }catch(e){
+    box.innerHTML = `${head}<div class="empty-note">Couldn't load the pickers' calls right now.</div>`;
+  }
+  box.querySelectorAll('.pk-link').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); goToNav('record'); }));
 }
 
 // ---- Freshness helpers (shared by the Breakdown, chat and Live pill) ----
@@ -5740,5 +6025,6 @@ if(authToken) favSyncFromServer();
 </script>
 
 <script src="/fantasy-edge.js" defer></script>
+<script src="/record.js" defer></script>
 </body>
 </html>
