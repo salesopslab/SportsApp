@@ -279,6 +279,60 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_hot_pick_purchases_day ON hot_pick_purchases (hot_pick_day_id);
 
+      -- AI Pick Packs: one-time packs of pick credits (3 / 5 / 10) for people
+      -- not ready for a monthly plan, plus one free pick per new account.
+      -- 1 credit unlocks 1 locked pick from the picks ledger below, for good.
+      -- pick_credits is the live balance (the CHECK makes overspending
+      -- impossible even under a race); pick_credit_transactions is the
+      -- append-only history every change to it is written alongside.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pick_credits INTEGER NOT NULL DEFAULT 0;
+      DO $pc$ BEGIN
+        ALTER TABLE users ADD CONSTRAINT users_pick_credits_nonneg CHECK (pick_credits >= 0);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $pc$;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS free_pick_claimed_at TIMESTAMPTZ;
+      -- Normalized email (no +tags, no Gmail dots) of whoever claimed a free
+      -- pick; unique so one inbox can't claim it again from a second account.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS free_pick_key TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_users_free_pick_key ON users (free_pick_key) WHERE free_pick_key IS NOT NULL;
+
+      -- One row per paid pick-pack Checkout. UNIQUE on the Checkout session
+      -- id is what makes fulfillment idempotent: the webhook, a retried
+      -- webhook and the success-page confirm call can all race on the same
+      -- session and only the first insert adds credits.
+      CREATE TABLE IF NOT EXISTS pick_pack_purchases (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        pack_id TEXT NOT NULL,
+        credits INTEGER NOT NULL CHECK (credits > 0),
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'usd',
+        stripe_checkout_session_id TEXT NOT NULL UNIQUE,
+        stripe_payment_intent_id TEXT,
+        purchased_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_pick_pack_purchases_user ON pick_pack_purchases (user_id, purchased_at DESC);
+
+      CREATE TABLE IF NOT EXISTS pick_credit_transactions (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        delta INTEGER NOT NULL,
+        reason TEXT NOT NULL,           -- 'purchase' | 'free_pick' | 'unlock' | 'admin'
+        pick_pack_purchase_id BIGINT REFERENCES pick_pack_purchases(id) ON DELETE SET NULL,
+        pick_id BIGINT,
+        balance_after INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_pick_credit_tx_user ON pick_credit_transactions (user_id, created_at DESC);
+
+      -- Picks a user unlocked with a credit. The primary key means a pick is
+      -- only ever paid for once; viewing it again is free.
+      CREATE TABLE IF NOT EXISTS pick_unlocks (
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        pick_id BIGINT NOT NULL,
+        unlocked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, pick_id)
+      );
+
       CREATE TABLE IF NOT EXISTS odds_api_usage (
         id BIGSERIAL PRIMARY KEY,
         requests_used INTEGER,

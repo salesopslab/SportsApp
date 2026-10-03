@@ -1,5 +1,5 @@
 import { verifyToken } from "../services/authService.js";
-import { pool } from "../db.js";
+import { pool, ensureSchema } from "../db.js";
 import { effectiveTier, meetsTier, tierById } from "../services/tierService.js";
 
 // Reads the bearer token if one is present and, if it resolves to a real
@@ -25,8 +25,9 @@ export async function withTier(req, _res, next) {
 
   try {
     if (pool) {
+      await ensureSchema(); // memoized; makes sure columns like pick_credits exist on an older DB
       const { rows } = await pool.query(
-        "SELECT id, email, tier, trial_ends_at, subscription_status, bonus_access_until, archived_at FROM users WHERE id = $1",
+        "SELECT id, email, tier, trial_ends_at, subscription_status, bonus_access_until, archived_at, pick_credits FROM users WHERE id = $1",
         [req.user.id]
       );
       // An archived account falls through exactly like an anonymous visitor

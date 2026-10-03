@@ -5,6 +5,7 @@ import { buildLeaderboard, rangeFilter, toPublic, toCsv, pickersDisagree, viewFo
 import { withTier } from "../middleware/tier.js";
 import { savePick, gradePick, hasPickAccess } from "../services/ledgerService.js";
 import { runPickers, runDailyIfDue } from "../services/pickerService.js";
+import { unlockedPickIds } from "../services/pickPackService.js";
 
 // Public picks ledger. Writes (ingest, grade) need PICKS_INGEST_TOKEN;
 // everything else is public on purpose — it's the trust page.
@@ -90,7 +91,8 @@ function whereFor(q) {
 
 // GET /api/picks?picker=&sport=&status=&from=&to=&range=&page=&limit=
 // Picks whose games haven't started are locked (picker, sport, posted time
-// only) unless the viewer bought the current Hot Picks bundle.
+// only) unless the viewer bought the current Hot Picks bundle or unlocked
+// that pick with an AI pick credit.
 router.get("/", withTier, async (req, res) => {
   if (!pool) return res.json({ available: false, picks: [], total: 0 });
   try {
@@ -100,14 +102,20 @@ router.get("/", withTier, async (req, res) => {
     const { where, params } = whereFor(req.query);
     let { rows } = await pool.query(`SELECT * FROM picks ${where} ORDER BY kickoff_at DESC, id DESC`, params);
     if (req.query.range === "season") rows = rows.filter(rangeFilter("season"));
-    const entitled = req.user ? await hasPickAccess(req.user.id) : false;
+    const userId = req.userRow?.id || null;
+    const entitled = userId ? await hasPickAccess(userId) : false;
+    const unlocked = userId ? await unlockedPickIds(userId) : new Set();
     const now = Date.now();
     const total = rows.length;
-    const lockedCount = rows.filter((r) => !isRevealed(r, now)).length;
+    const lockedCount = rows.filter((r) => !isRevealed(r, now) && !unlocked.has(Number(r.id))).length;
     res.json({
       available: true, total, page, limit, pages: Math.max(Math.ceil(total / limit), 1),
-      access: { entitled, loggedIn: !!req.user, lockedCount },
-      picks: rows.slice((page - 1) * limit, page * limit).map((r) => viewFor(r, { entitled, now })),
+      access: { entitled, loggedIn: !!userId, lockedCount, credits: req.userRow?.pick_credits ?? null },
+      picks: rows.slice((page - 1) * limit, page * limit).map((r) => {
+        const own = unlocked.has(Number(r.id));
+        const v = viewFor(r, { entitled: entitled || own, now });
+        return own && v.early ? { ...v, unlocked: true } : v;
+      }),
     });
   } catch (err) {
     console.error("picks list:", err);
@@ -155,7 +163,9 @@ router.get("/export.csv", async (req, res) => {
 // each picker's all-time record, for the game page and the AI chat.
 // Not entitled + game not started: no picks at all (not even whether there
 // are any — that would give away which games the pickers chose).
-export async function picksForGame({ sport, gameId, home, away, kickoff, entitled = false }) {
+// unlockedIds: picks this viewer unlocked with a credit — shown early, like
+// Hot Picks, but only those exact picks.
+export async function picksForGame({ sport, gameId, home, away, kickoff, entitled = false, unlockedIds = new Set() }) {
   if (!pool) return { available: false, picks: [], records: [], disagree: false };
   await ensureSchema();
   const now = Date.now();
@@ -163,7 +173,7 @@ export async function picksForGame({ sport, gameId, home, away, kickoff, entitle
   const records = buildLeaderboard(all).map(({ series, byConfidence, ...r }) => r);
   const t = Date.parse(kickoff);
   const started = Number.isFinite(t) && t <= now;
-  if (!entitled && !started) return { available: true, hidden: true, picks: [], records, disagree: false };
+  if (!entitled && !started && !unlockedIds.size) return { available: true, hidden: true, picks: [], records, disagree: false };
   const params = [String(sport || "").toLowerCase()];
   const ors = [];
   if (gameId) { params.push(String(gameId)); ors.push(`game_id = $${params.length}`); }
@@ -174,13 +184,29 @@ export async function picksForGame({ sport, gameId, home, away, kickoff, entitle
   }
   if (!ors.length) return { available: true, picks: [], records, disagree: false };
   let { rows } = await pool.query(`SELECT * FROM picks WHERE sport = $1 AND (${ors.join(" OR ")}) ORDER BY created_at`, params);
-  if (!entitled) rows = rows.filter((r) => isRevealed(r, now));
-  return { available: true, picks: rows.map((r) => viewFor(r, { entitled, now })), records, disagree: pickersDisagree(rows, home, away), early: entitled && !started };
+  const own = (r) => unlockedIds.has(Number(r.id));
+  if (!entitled) rows = rows.filter((r) => isRevealed(r, now) || own(r));
+  // Nothing unlocked on this game: same as before — don't reveal whether
+  // the pickers even picked it.
+  if (!entitled && !started && !rows.length) return { available: true, hidden: true, picks: [], records, disagree: false };
+  return {
+    available: true,
+    picks: rows.map((r) => (own(r) && !isRevealed(r, now) ? { ...viewFor(r, { entitled: true, now }), unlocked: true } : viewFor(r, { entitled, now }))),
+    records,
+    disagree: pickersDisagree(rows, home, away),
+    early: entitled && !started,
+    unlockedEarly: !entitled && !started,
+  };
 }
 router.get("/game", withTier, async (req, res) => {
   try {
-    const entitled = req.user ? await hasPickAccess(req.user.id) : false;
-    res.json(await picksForGame({ sport: req.query.sport, gameId: req.query.game_id, home: req.query.home, away: req.query.away, kickoff: req.query.kickoff, entitled }));
+    const userId = req.userRow?.id || null;
+    const entitled = userId ? await hasPickAccess(userId) : false;
+    const unlockedIds = userId && !entitled ? await unlockedPickIds(userId) : new Set();
+    res.json({
+      ...(await picksForGame({ sport: req.query.sport, gameId: req.query.game_id, home: req.query.home, away: req.query.away, kickoff: req.query.kickoff, entitled, unlockedIds })),
+      credits: req.userRow?.pick_credits ?? null,
+    });
   } catch (err) {
     console.error("picks for game:", err);
     res.status(500).json({ error: "Couldn't load picks for this game." });

@@ -61,7 +61,7 @@ export async function lookupReferrerByCode(code) {
 // ignores them (a.b.c@gmail.com and abc@gmail.com are the same mailbox).
 // Not foolproof (a determined person can still use two real inboxes), but it
 // closes the free, no-effort version of the abuse without costing anything.
-function normalizeEmailForAbuseCheck(email) {
+export function normalizeEmailForAbuseCheck(email) {
   const [local, domain] = String(email || "").trim().toLowerCase().split("@");
   if (!domain) return email;
   const noTag = local.split("+")[0];

@@ -183,6 +183,40 @@ export async function createOneTimeCheckoutSession({
   return session;
 }
 
+// One-time Checkout — an AI Pick Pack (credits). Priced inline like Hot
+// Picks, so no Dashboard setup is needed. metadata.kind routes it in the
+// webhook; credits are written here, server-side, and granted from there.
+// successUrl should contain {CHECKOUT_SESSION_ID} so the app can confirm
+// the payment right away instead of waiting on the webhook.
+export async function createPickPackCheckoutSession({ customerId, userId, pack, successUrl, cancelUrl }) {
+  if (!stripe) throw new Error("Billing isn't configured yet.");
+  const meta = { betedgeUserId: String(userId), kind: "pick_pack", packId: pack.id, credits: String(pack.credits) };
+  return stripe.checkout.sessions.create({
+    mode: "payment",
+    customer: customerId,
+    client_reference_id: String(userId),
+    line_items: [
+      {
+        price_data: {
+          currency: "usd",
+          unit_amount: pack.priceCents,
+          product_data: { name: `BetEdge AI — ${pack.name}`, metadata: { betedge_pick_pack: pack.id } },
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    metadata: meta,
+    payment_intent_data: { metadata: meta },
+  });
+}
+
+export async function retrieveCheckoutSession(sessionId) {
+  if (!stripe) throw new Error("Billing isn't configured yet.");
+  return stripe.checkout.sessions.retrieve(sessionId);
+}
+
 export async function createPortalSession({ customerId, returnUrl }) {
   if (!stripe) throw new Error("Billing isn't configured yet.");
   const session = await stripe.billingPortal.sessions.create({

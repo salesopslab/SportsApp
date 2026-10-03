@@ -118,12 +118,12 @@
     const shown = rows.slice(0, state.shown);
     const a = state.access || {};
     const lockbar = a.entitled && a.lockedCount ? `<div class="rec-lockbar open">🔓 You're seeing today's picks early with Hot Picks. Everyone else sees them at kickoff.</div>`
-      : a.lockedCount ? `<div class="rec-lockbar"><span>🔒 ${a.lockedCount} pick${a.lockedCount === 1 ? '' : 's'} locked until kickoff. Results are always public.</span><button type="button" class="rec-unlock">Unlock with Hot Picks</button></div>` : '';
+      : a.lockedCount ? `<div class="rec-lockbar"><span>🔒 ${a.lockedCount} pick${a.lockedCount === 1 ? '' : 's'} locked until kickoff. Unlock one for 1 AI pick credit, or all of today's with Hot Picks. Results are always public.</span><button type="button" class="rec-unlock">Hot Picks</button></div>` : '';
     const lockedRow = (p) => `<tr class="locked">
         <td class="c-date">Posted ${esc(new Date(p.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short' }))}</td>
         <td class="c-picker">${ICON[p.picker] || ''} ${esc(p.picker)}</td>
         <td class="c-game"><span class="sport-badge">${esc(sportName(p.sport))}</span> 🔒 Locked until kickoff</td>
-        <td class="c-bet"><button type="button" class="rec-unlock">Unlock with Hot Picks</button></td>
+        <td class="c-bet"><button type="button" class="rec-unlock-credit" data-pick="${Number(p.id)}" aria-label="Unlock this ${esc(p.picker)} pick for 1 credit">🔓 Unlock This Pick</button></td>
         <td class="c-odds num">—</td><td class="c-imp num">—</td><td class="c-conf">—</td>
         <td class="c-res"><span class="rec-res pending">pending</span><div class="rec-mob-units"></div></td>
         <td class="c-units num">—</td>
@@ -134,7 +134,7 @@
         <td class="c-date">${esc(dateLabel(p.kickoff_at))}</td>
         <td class="c-picker">${ICON[p.picker] || ''} ${esc(p.picker)}</td>
         <td class="c-game"><span class="sport-badge">${esc(sportName(p.sport))}</span> ${esc(p.game)}</td>
-        <td class="c-bet"><b>${esc(p.bet)}</b>${p.early ? ' <span class="rec-res pending" title="Hot Picks early access — public at kickoff">early</span>' : ''}<div class="rec-reason">${esc(p.reason)}</div><div class="rec-mob-meta">${fmtOdds(p.odds)} · ${fmtPct(p.implied_prob * 100)} implied · ${esc(p.confidence)} confidence</div></td>
+        <td class="c-bet"><b>${esc(p.bet)}</b>${p.unlocked ? ' <span class="rec-res unlocked" title="Unlocked with your AI pick credit — public at kickoff">unlocked</span>' : p.early ? ' <span class="rec-res pending" title="Hot Picks early access — public at kickoff">early</span>' : ''}<div class="rec-reason">${esc(p.reason)}</div><div class="rec-mob-meta">${fmtOdds(p.odds)} · ${fmtPct(p.implied_prob * 100)} implied · ${esc(p.confidence)} confidence</div></td>
         <td class="c-odds num">${fmtOdds(p.odds)}${p.closing_odds != null ? `<div class="rec-reason">close ${fmtOdds(p.closing_odds)}</div>` : ''}</td>
         <td class="c-imp num">${fmtPct(p.implied_prob * 100)}</td>
         <td class="c-conf">${esc(p.confidence)}</td>
@@ -150,6 +150,16 @@
     });
     const more = $('recMore'); if(more) more.onclick = () => { state.shown += 100; renderTable(); };
     box.querySelectorAll('.rec-unlock').forEach(b => b.onclick = () => { if(typeof openHotPicksModal === 'function') openHotPicksModal(); });
+    // One credit unlocks one pick (Pick Packs); with no credits this opens the Pick Packs screen.
+    box.querySelectorAll('.rec-unlock-credit').forEach(b => b.onclick = () => {
+      if(!window.BetEdgePickPacks) return;
+      window.BetEdgePickPacks.requestUnlock(Number(b.dataset.pick), (pick) => {
+        const i = state.picks.findIndex(x => x.id === pick.id);
+        if(i >= 0) state.picks[i] = pick;
+        if(state.access && state.access.lockedCount) state.access.lockedCount--;
+        renderTable();
+      });
+    });
   }
 
   async function load(){
@@ -189,6 +199,7 @@
   $('recSort').onchange = (e) => { state.sort = e.target.value; renderTable(); };
 
   let loadedOnce = false;
+  window.__recordReload = () => { loadedOnce = true; window.__recordLoadedAt = Date.now(); load(); };
   window.__recordOnShow = () => { if(!loadedOnce || Date.now() - (window.__recordLoadedAt || 0) > 120000){ loadedOnce = true; window.__recordLoadedAt = Date.now(); load(); } };
   if(document.getElementById('record').classList.contains('active')) window.__recordOnShow();
 })();
