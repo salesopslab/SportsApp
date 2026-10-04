@@ -593,6 +593,134 @@ function buildHoopsLiveEntry(g) {
   return { line, detail: null };
 }
 
+// ---------------------------------------------------------------------------
+// ESPN scoreboard: primary source for live clock / quarter / inning.
+// Free and keyless, covers every sport we show (including all college games,
+// which SportsData.io's plan doesn't reliably cover), and doesn't use up the
+// SportsData.io daily call quota — when that quota ran out, every NFL / CFB /
+// NBA live row lost its clock. SportsData.io (and MLB's own API) stay as
+// backups for any game ESPN doesn't return.
+// ---------------------------------------------------------------------------
+const ESPN_LIVE_PATHS = {
+  nfl: "football/nfl",
+  ncaaf: "football/college-football",
+  nba: "basketball/nba",
+  ncaab: "basketball/mens-college-basketball",
+  mlb: "baseball/mlb",
+};
+// groups: 80 = all FBS games, 50 = all Division I men's basketball (the
+// default scoreboard only lists ranked/featured college games).
+const ESPN_LIVE_GROUPS = { ncaaf: "80", ncaab: "50" };
+let fetchEspnLive = (url) => fetch(url, {
+  headers: {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    Referer: "https://www.espn.com/",
+    Origin: "https://www.espn.com",
+  },
+});
+export function __setEspnLiveFetch(fn) { fetchEspnLive = fn; }
+
+// Accent/punctuation-insensitive name key ("San José State" = "San Jose State",
+// "Hawai'i" = "Hawaii").
+export function liveNameKey(name) {
+  return String(name || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9 ]/g, "")
+    .replace(/\s+/g, " ").trim();
+}
+
+function periodLabel(sportSlug, period) {
+  const p = Number(period);
+  if (!p) return null;
+  if (sportSlug === "ncaab") return p <= 2 ? `H${p}` : (p === 3 ? "OT" : `${p - 2}OT`);
+  return p <= 4 ? `Q${p}` : (p === 5 ? "OT" : `${p - 4}OT`);
+}
+
+// One ESPN event -> { line, detail } in the same shape the Board already shows
+// ("Q4 13:38" / "3rd & 7 at OSU 25"; "Top 5th" / "1 out • 2-1 count").
+export function buildEspnLiveEntry(sportSlug, ev) {
+  const comp = ev?.competitions?.[0];
+  const st = comp?.status || ev?.status;
+  const type = st?.type || {};
+  if (type.state !== "in") return null;
+  const sit = comp?.situation || {};
+  if (sportSlug === "mlb") {
+    const line = type.shortDetail || type.detail || null; // "Top 5th", "Mid 8th"
+    if (!line) return null;
+    const parts = [];
+    const half = /^(top|bot)/i.test(line);
+    if (half && Number.isFinite(sit.outs)) parts.push(`${sit.outs} out${sit.outs === 1 ? "" : "s"}`);
+    if (half && Number.isFinite(sit.balls) && Number.isFinite(sit.strikes)) parts.push(`${sit.balls}-${sit.strikes} count`);
+    return { line, detail: parts.length ? parts.join(" • ") : null, source: "ESPN" };
+  }
+  const name = String(type.name || "");
+  let line;
+  if (/HALFTIME/.test(name)) line = "Halftime";
+  else if (/END_PERIOD/.test(name) || (/^end/i.test(type.shortDetail || "") && (!st.displayClock || st.displayClock === "0:00"))) {
+    line = type.shortDetail || type.detail || `End ${periodLabel(sportSlug, st.period)}`; // "End of 3rd"
+  }
+  else {
+    const pl = periodLabel(sportSlug, st.period);
+    const clock = st.displayClock && st.displayClock !== "0:00" ? st.displayClock : null;
+    line = [pl, clock].filter(Boolean).join(" ") || type.shortDetail || null;
+  }
+  if (!line) return null;
+  const detail = (sportSlug === "nfl" || sportSlug === "ncaaf")
+    ? (sit.downDistanceText || sit.shortDownDistanceText || null)
+    : null;
+  return { line, detail, source: "ESPN" };
+}
+
+// ESPN events -> live map, keyed the same way lookupLiveState reads it, plus
+// accent-insensitive "espn:" keys for college names.
+export function parseEspnScoreboard(sportSlug, json) {
+  const map = {};
+  for (const ev of json?.events || []) {
+    const entry = buildEspnLiveEntry(sportSlug, ev);
+    if (!entry) continue;
+    const cs = ev.competitions?.[0]?.competitors || [];
+    const home = cs.find((c) => c.homeAway === "home")?.team || {};
+    const away = cs.find((c) => c.homeAway === "away")?.team || {};
+    if (sportSlug === "nfl" || sportSlug === "nba" || sportSlug === "mlb") {
+      const h = toTeamCode(sportSlug, home.displayName), a = toTeamCode(sportSlug, away.displayName);
+      if (h && a) map[`code:${a}@${h}`] = entry;
+    } else {
+      map[`espn:${liveNameKey(away.displayName)}@${liveNameKey(home.displayName)}`] = entry;
+      (map.__college ||= []).push({
+        home: { full: liveNameKey(home.displayName), loc: liveNameKey(home.location), mascot: liveNameKey(home.name) },
+        away: { full: liveNameKey(away.displayName), loc: liveNameKey(away.location), mascot: liveNameKey(away.name) },
+        entry,
+      });
+    }
+  }
+  return map;
+}
+
+async function getEspnLive(sportSlug) {
+  const path = ESPN_LIVE_PATHS[sportSlug];
+  if (!path) return {};
+  const map = {};
+  let ok = false;
+  for (const day of easternGameDays()) {
+    const q = new URLSearchParams({ dates: day.replace(/-/g, ""), limit: "500" });
+    if (ESPN_LIVE_GROUPS[sportSlug]) q.set("groups", ESPN_LIVE_GROUPS[sportSlug]);
+    try {
+      const res = await fetchEspnLive(`https://site.api.espn.com/apis/site/v2/sports/${path}/scoreboard?${q}`);
+      if (!res.ok) throw new Error(`ESPN scoreboard ${res.status}`);
+      const part = parseEspnScoreboard(sportSlug, await res.json());
+      ok = true;
+      const college = [...(map.__college || []), ...(part.__college || [])];
+      Object.assign(map, part, map);
+      if (college.length) map.__college = college;
+    } catch (err) {
+      console.error(`ESPN live (${sportSlug} ${day}) failed:`, err.message);
+    }
+  }
+  return ok ? map : null; // null = ESPN unreachable, lean on the backups
+}
+
 // Keyed by team code ("code:AWAY@HOME") for NFL/MLB/NBA, or normalized school
 // name ("name:away@home") for CFB/CBB — SportsData's college team names don't
 // reliably line up with the odds feed's naming, same reasoning as the poll
@@ -604,8 +732,16 @@ export async function getLiveGameState(sportSlug) {
     `livestate:${sportSlug}:${easternGameDays()[0]}`,
     async () => {
       try {
+        const espn = await getEspnLive(sportSlug).catch((err) => { console.error(`ESPN live (${sportSlug}) failed:`, err.message); return null; });
+        const espnCount = espn ? Object.keys(espn).filter((k) => k !== "__college").length : 0;
+        // SportsData.io is only asked when ESPN couldn't be reached, which
+        // keeps its limited daily quota for the things only it provides.
+        if (espn && sportSlug !== "mlb") {
+          console.log(`getLiveGameState(${sportSlug}): ESPN ${espnCount} live`);
+          return espn;
+        }
         const days = easternGameDays();
-        const perDay = await Promise.all(days.map((d) => fetchLiveByDate(sportSlug, d).catch((err) => {
+        const perDay = espn ? days.map(() => []) : await Promise.all(days.map((d) => fetchLiveByDate(sportSlug, d).catch((err) => {
           console.error(`getLiveGameState(${sportSlug}) ${d} failed:`, err.message);
           return [];
         })));
@@ -636,8 +772,9 @@ export async function getLiveGameState(sportSlug) {
         // narrows it down next time it runs: 0 games fetched points to a
         // request/auth issue for this specific call; games fetched but 0
         // in-progress/0 entries points to a data-shape or key-matching issue.
+        if (espn) for (const [k, v] of Object.entries(espn)) map[k] = v; // ESPN wins where both have the game
         if (sportSlug === "mlb") {
-          // Fill any in-progress game SportsData.io didn't cover.
+          // Fill any in-progress game neither source covered.
           const backup = await getMlbLiveFallback();
           for (const [k, v] of Object.entries(backup)) if (!map[k]) map[k] = v;
         }
@@ -668,7 +805,23 @@ export function lookupLiveState(sportSlug, liveMap, homeTeamFullName, awayTeamFu
     if (sportSlug === "ncaaf" || sportSlug === "ncaab") {
       const home = normalizeSchoolName(homeTeamFullName);
       const away = normalizeSchoolName(awayTeamFullName);
-      return liveMap[`name:${away}@${home}`] || null;
+      const hk = liveNameKey(homeTeamFullName), ak = liveNameKey(awayTeamFullName);
+      const exact = liveMap[`espn:${ak}@${hk}`] || liveMap[`name:${away}@${home}`];
+      if (exact) return exact;
+      // Names that differ slightly between the odds feed and ESPN (e.g.
+      // "UConn Huskies" vs "Connecticut Huskies"): same mascot on both sides
+      // and the school name overlapping.
+      const fits = (oddsKey, t) => t.full && (oddsKey === t.full ||
+        (t.mascot && oddsKey.endsWith(" " + t.mascot) &&
+          (oddsKey.startsWith(t.loc + " ") || t.loc.startsWith(oddsKey.slice(0, -(t.mascot.length + 1))))));
+      const list = liveMap.__college || [];
+      let hit = list.find((c) => fits(hk, c.home) && fits(ak, c.away));
+      // One school written completely differently ("Connecticut" vs "UConn",
+      // "Louisiana-Monroe" vs "UL Monroe"): accept it when the opponent
+      // matches exactly and the mascot still agrees.
+      const sameMascot = (oddsKey, t) => t.mascot && oddsKey.endsWith(" " + t.mascot);
+      if (!hit) hit = list.find((c) => (ak === c.away.full && sameMascot(hk, c.home)) || (hk === c.home.full && sameMascot(ak, c.away)));
+      return hit ? hit.entry : null;
     }
   } catch (err) {
     console.error("lookupLiveState failed:", err.message);
