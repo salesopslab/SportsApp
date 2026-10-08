@@ -43,6 +43,7 @@ const { default: authRouter } = await import("../src/routes/auth.js");
 const billing = await import("../src/routes/billing.js");
 const { default: picksRouter } = await import("../src/routes/picks.js");
 const { default: pickPacksRouter } = await import("../src/routes/pickPacks.js");
+const { default: hotPicksRouter } = await import("../src/routes/hotpicks.js");
 
 await pool.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
 await ensureSchema();
@@ -54,6 +55,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/billing", billing.default);
 app.use("/api/picks", picksRouter);
 app.use("/api/pick-packs", pickPacksRouter);
+app.use("/api/hot-picks", hotPicksRouter);
 const server = app.listen(0);
 const base = `http://127.0.0.1:${server.address().port}`;
 function call(method, path, body, headers = {}) {
@@ -127,6 +129,16 @@ await test("packs are no longer for sale: empty list, checkout refused", async (
   assert.equal(c.status, 410);
   assert.equal(c.json.upgradeTier, "edge_pro");
   assert.equal(S.sessions.size, 0, "no Stripe session created");
+});
+
+await test("Hot Picks is retired: nothing on sale, purchase refused", async () => {
+  const t = await call("GET", "/api/hot-picks/today");
+  assert.equal(t.status, 200);
+  assert.equal(t.json.available, false); assert.equal(t.json.retired, true);
+  const u = await newUser(null, { plan: "edge" });
+  const r = await call("POST", "/api/hot-picks/purchase", {}, as(u.token));
+  assert.equal(r.status, 410);
+  assert.equal(S.sessions.size, 0);
 });
 
 await test("trial: every picker's pick is free and early; no free pick to claim or credit to spend", async () => {

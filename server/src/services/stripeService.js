@@ -148,43 +148,8 @@ export async function resumeSubscription(subscriptionId) {
   return stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
 }
 
-// One-time Checkout — today's Hot Picks bundle. Priced inline with
-// price_data rather than a Dashboard Price, since the amount can change
-// day-to-day (see hotPicksService.js's price/cap sync).
-export async function createOneTimeCheckoutSession({
-  customerEmail,
-  customerId,
-  priceCents,
-  productName,
-  userId,
-  hotPickDayId,
-  successUrl,
-  cancelUrl,
-}) {
-  if (!stripe) throw new Error("Billing isn't configured yet.");
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    customer: customerId || undefined,
-    customer_email: customerId ? undefined : customerEmail,
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          unit_amount: priceCents,
-          product_data: { name: productName },
-        },
-        quantity: 1,
-      },
-    ],
-    success_url: successUrl,
-    cancel_url: cancelUrl,
-    metadata: { betedgeUserId: String(userId), hotPickDayId: String(hotPickDayId) },
-  });
-  return session;
-}
-
-// One-time Checkout — an AI Pick Pack (credits). Priced inline like Hot
-// Picks, so no Dashboard setup is needed. metadata.kind routes it in the
+// One-time Checkout — an AI Pick Pack (credits; packs are retired, kept for
+// in-flight payments). Priced inline, so no Dashboard setup is needed. metadata.kind routes it in the
 // webhook; credits are written here, server-side, and granted from there.
 // successUrl should contain {CHECKOUT_SESSION_ID} so the app can confirm
 // the payment right away instead of waiting on the webhook.

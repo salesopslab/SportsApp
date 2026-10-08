@@ -76,7 +76,8 @@ export async function gradePick({ id, result, closing_odds }) {
 // Who can see every picker's picks before kickoff, for free:
 //   - Edge Pro subscribers (and referral-bonus Edge Pro access)
 //   - accounts still in their free trial (trial mirrors Edge Pro)
-//   - anyone who bought the current Hot Picks bundle (24h from generation)
+//   - anyone who bought a Hot Picks bundle in the last 24h (Hot Picks is
+//     retired; this only honours purchases made just before it was)
 // Edge / Edge+ / free accounts instead get one free pick (pickPackService).
 export async function pickAccessFor(userId, userRow = null) {
   if (!pool || !userId) return { entitled: false, via: null };

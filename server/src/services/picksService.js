@@ -164,7 +164,7 @@ export function pickersDisagree(picks, homeTeam, awayTeam) {
 }
 
 // Paid-picks privacy: a pick is revealed to everyone once its game starts
-// (or it's graded). Before that only Hot Picks buyers and the admin see it;
+// (or it's graded). Before that only Edge Pro / trial accounts, free-pick unlockers and the admin see it;
 // everyone else gets lockedView() — picker, sport and when it was posted.
 export function isRevealed(p, now = Date.now()) {
   return p.result !== "pending" || new Date(p.kickoff_at).getTime() <= now;

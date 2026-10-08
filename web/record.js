@@ -117,7 +117,7 @@
     const th = (k, label) => `<th data-sort="${k}" class="${key === k ? 'sorted' + (dir === 'asc' ? ' asc' : '') : ''}" scope="col">${label}</th>`;
     const shown = rows.slice(0, state.shown);
     const a = state.access || {};
-    const earlyWhy = a.via === 'trial' ? 'free during your trial' : a.via === 'edge_pro' ? 'with Edge Pro' : 'with Hot Picks';
+    const earlyWhy = a.via === 'trial' ? 'free during your trial' : 'with Edge Pro';
     const lockbar = a.entitled && a.lockedCount ? `<div class="rec-lockbar open">🔓 You're seeing every pick early ${earlyWhy}. Everyone else sees them at kickoff.</div>`
       : a.lockedCount ? `<div class="rec-lockbar"><span>🔒 ${a.lockedCount} pick${a.lockedCount === 1 ? '' : 's'} locked until kickoff. Edge Pro includes every pick; Edge and Edge+ get one free pick. Results are always public.</span><button type="button" class="rec-unlock">Get every pick</button></div>` : '';
     const lockedRow = (p) => `<tr class="locked">

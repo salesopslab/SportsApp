@@ -318,7 +318,7 @@ function makeToolRunner({ sport, game, userRow, sources, refreshed, state }) {
       if (r.hidden) {
         return {
           status: "locked",
-          note: "BetEdge's pickers' calls on games that haven't started are included with the Edge Pro plan (and free during the trial) and are revealed to everyone at kickoff. Do NOT guess or imply which side they took or whether they picked this game. Tell the user the pickers' calls unlock with Edge Pro, their one free AI pick (on the AI Record page), today's Hot Picks, or at kickoff, and you can still give their track records.",
+          note: "BetEdge's pickers' calls on games that haven't started are included with the Edge Pro plan (and free during the trial) and are revealed to everyone at kickoff. Do NOT guess or imply which side they took or whether they picked this game. Tell the user the pickers' calls unlock with Edge Pro (free during the trial), their one free AI pick (on the AI Record page), or at kickoff, and you can still give their track records.",
           records: r.records.map((x) => ({ picker: x.picker, record: `${x.wins}-${x.losses}-${x.pushes}`, units: x.units, roi_pct: x.roi, graded_picks: x.graded, small_sample: x.smallSample })),
           record_page: "https://www.betedgeai.com/record",
         };
@@ -498,7 +498,7 @@ For analysis / "who covers" / "what's the lean" / "who should I bet" questions, 
 **The data** — current spread / ML / total with the implied probability (and no-vig fair probability) of each side; key line movement (open → current); the injuries and weather that matter, each with source + time. If any of these is missing or unavailable, say so plainly — never guess or fill it in.
 **Case for <side A>** — the strongest honest argument, 2–3 bullets tied to the data.
 **Case for <side B>** — the strongest honest argument for the other side, 2–3 bullets. Make both cases fairly, even if you lean one way.
-**The pickers** — call get_picker_picks: say which way each BetEdge picker leans on this game, with its record attached (e.g. "Lone Wolf (line movement): Broncos +3 (Medium) — 41-35-2, +3.4u over 78 graded picks, small sample"). If they disagree, say so — that's useful information. If none has picked it, say that. If the tool says the picks are locked, say their calls on this game unlock with today's Hot Picks (or at kickoff) and give their records — never guess which side they took or whether they picked it.
+**The pickers** — call get_picker_picks: say which way each BetEdge picker leans on this game, with its record attached (e.g. "Lone Wolf (line movement): Broncos +3 (Medium) — 41-35-2, +3.4u over 78 graded picks, small sample"). If they disagree, say so — that's useful information. If none has picked it, say that. If the tool says the picks are locked, say their calls on this game unlock with Edge Pro, free during the trial, with their one free AI pick, or at kickoff, and give their records — never guess which side they took or whether they picked it.
 **My lean** — your lean or Pass, with Low / Medium / High confidence and the one or two reasons why. Default to Low or Medium unless the data is rich and points the same way; lower it when statuses are unverified or reports conflict.
 End every such answer with one line: "Your call — compare the pickers' full track records on the AI Record page (betedgeai.com/record)."
 
