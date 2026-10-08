@@ -117,8 +117,9 @@
     const th = (k, label) => `<th data-sort="${k}" class="${key === k ? 'sorted' + (dir === 'asc' ? ' asc' : '') : ''}" scope="col">${label}</th>`;
     const shown = rows.slice(0, state.shown);
     const a = state.access || {};
-    const lockbar = a.entitled && a.lockedCount ? `<div class="rec-lockbar open">🔓 You're seeing today's picks early with Hot Picks. Everyone else sees them at kickoff.</div>`
-      : a.lockedCount ? `<div class="rec-lockbar"><span>🔒 ${a.lockedCount} pick${a.lockedCount === 1 ? '' : 's'} locked until kickoff. Unlock one for 1 AI pick credit, or all of today's with Hot Picks. Results are always public.</span><button type="button" class="rec-unlock">Hot Picks</button></div>` : '';
+    const earlyWhy = a.via === 'trial' ? 'free during your trial' : a.via === 'edge_pro' ? 'with Edge Pro' : 'with Hot Picks';
+    const lockbar = a.entitled && a.lockedCount ? `<div class="rec-lockbar open">🔓 You're seeing every pick early ${earlyWhy}. Everyone else sees them at kickoff.</div>`
+      : a.lockedCount ? `<div class="rec-lockbar"><span>🔒 ${a.lockedCount} pick${a.lockedCount === 1 ? '' : 's'} locked until kickoff. Edge Pro includes every pick; Edge and Edge+ get one free pick. Results are always public.</span><button type="button" class="rec-unlock">Get every pick</button></div>` : '';
     const lockedRow = (p) => `<tr class="locked">
         <td class="c-date">Posted ${esc(new Date(p.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short' }))}</td>
         <td class="c-picker">${ICON[p.picker] || ''} ${esc(p.picker)}</td>
@@ -134,7 +135,7 @@
         <td class="c-date">${esc(dateLabel(p.kickoff_at))}</td>
         <td class="c-picker">${ICON[p.picker] || ''} ${esc(p.picker)}</td>
         <td class="c-game"><span class="sport-badge">${esc(sportName(p.sport))}</span> ${esc(p.game)}</td>
-        <td class="c-bet"><b>${esc(p.bet)}</b>${p.unlocked ? ' <span class="rec-res unlocked" title="Unlocked with your AI pick credit — public at kickoff">unlocked</span>' : p.early ? ' <span class="rec-res pending" title="Hot Picks early access — public at kickoff">early</span>' : ''}<div class="rec-reason">${esc(p.reason)}</div><div class="rec-mob-meta">${fmtOdds(p.odds)} · ${fmtPct(p.implied_prob * 100)} implied · ${esc(p.confidence)} confidence</div></td>
+        <td class="c-bet"><b>${esc(p.bet)}</b>${p.unlocked ? ' <span class="rec-res unlocked" title="Unlocked with your free AI pick — public at kickoff">unlocked</span>' : p.early ? ' <span class="rec-res pending" title="Early access — public at kickoff">early</span>' : ''}<div class="rec-reason">${esc(p.reason)}</div><div class="rec-mob-meta">${fmtOdds(p.odds)} · ${fmtPct(p.implied_prob * 100)} implied · ${esc(p.confidence)} confidence</div></td>
         <td class="c-odds num">${fmtOdds(p.odds)}${p.closing_odds != null ? `<div class="rec-reason">close ${fmtOdds(p.closing_odds)}</div>` : ''}</td>
         <td class="c-imp num">${fmtPct(p.implied_prob * 100)}</td>
         <td class="c-conf">${esc(p.confidence)}</td>
@@ -149,8 +150,8 @@
       renderTable();
     });
     const more = $('recMore'); if(more) more.onclick = () => { state.shown += 100; renderTable(); };
-    box.querySelectorAll('.rec-unlock').forEach(b => b.onclick = () => { if(typeof openHotPicksModal === 'function') openHotPicksModal(); });
-    // One credit unlocks one pick (Pick Packs); with no credits this opens the Pick Packs screen.
+    box.querySelectorAll('.rec-unlock').forEach(b => b.onclick = () => { if(window.BetEdgePickPacks) window.BetEdgePickPacks.open(); });
+    // One credit (the free pick) unlocks one pick; with none left this offers Edge Pro.
     box.querySelectorAll('.rec-unlock-credit').forEach(b => b.onclick = () => {
       if(!window.BetEdgePickPacks) return;
       window.BetEdgePickPacks.requestUnlock(Number(b.dataset.pick), (pick) => {

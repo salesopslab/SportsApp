@@ -1,12 +1,19 @@
-// AI Pick Packs: pick credits sold in one-time packs, plus one free pick per
-// new account. One credit unlocks one locked pick from the public picks
-// ledger (the same picks Hot Picks buyers see early), permanently for that
-// user. Sits alongside the subscription plans; it doesn't change them.
+// AI pick credits. Packs are NO LONGER SOLD (Oct 2026): every picker's pick
+// is included with Edge Pro and during the free trial (ledgerService.
+// pickAccessFor). Everyone else (Free, Edge, Edge+) gets one free pick per
+// account; one credit unlocks one locked pick, permanently for that user.
+// Credits bought before packs were retired still work, and the Stripe
+// fulfilment below stays so any checkout already in flight is honoured.
 //
-// Funnel: Free Pick -> Pick Pack -> monthly Edge membership.
+// Funnel: Free Pick -> Edge Pro (all picks).
 import { pool, ensureSchema } from "../db.js";
 import { isRevealed, viewFor } from "./picksService.js";
 import { normalizeEmailForAbuseCheck } from "./referralService.js";
+import { pickAccessFor } from "./ledgerService.js";
+
+// Pick Packs can no longer be bought. Kept for fulfilling/describing
+// historic purchases only.
+export const PACKS_FOR_SALE = false;
 
 // Server-side source of truth for what each pack costs and grants. The
 // client only ever sends a pack id.
@@ -23,6 +30,7 @@ export function packById(id) {
 
 // Public shape for the pricing cards (per-pick price computed, not typed in).
 export function publicPacks() {
+  if (!PACKS_FOR_SALE) return [];
   return PICK_PACKS.map((p) => ({
     ...p,
     // Rounded up to the cent, so it never understates the price ($19.99 / 3 = $6.67).
@@ -30,8 +38,8 @@ export function publicPacks() {
   }));
 }
 
-// When to show the soft "Unlock the Full Edge" membership nudge: someone
-// without a live subscription who has bought a pack or used 2+ credits.
+// When to show the soft "Get every pick with Edge Pro" nudge: someone without
+// all-picks access who has bought a pack or used 2+ credits.
 // The client decides how often (it's dismissible and throttled there).
 export const UPGRADE_NUDGE = { minPacks: 1, minUnlocks: 2 };
 
@@ -58,33 +66,41 @@ async function withTx(fn) {
 export async function creditSummary(userId) {
   await ensureSchema();
   const { rows } = await pool.query(
-    "SELECT id, pick_credits, free_pick_claimed_at, stripe_subscription_id, subscription_status FROM users WHERE id = $1",
+    "SELECT id, tier, trial_ends_at, bonus_access_until, archived_at, pick_credits, free_pick_claimed_at, stripe_subscription_id, subscription_status FROM users WHERE id = $1",
     [userId]
   );
   if (!rows.length) return null;
   const u = rows[0];
-  const [{ rows: purchases }, { rows: unlockRows }] = await Promise.all([
+  const [{ rows: purchases }, { rows: unlockRows }, access] = await Promise.all([
     pool.query(
       "SELECT id, pack_id, credits, amount_cents, currency, purchased_at FROM pick_pack_purchases WHERE user_id = $1 ORDER BY purchased_at DESC LIMIT 50",
       [userId]
     ),
     pool.query("SELECT COUNT(*)::int AS n FROM pick_unlocks WHERE user_id = $1", [userId]),
+    pickAccessFor(userId, u),
   ]);
   const unlocks = unlockRows[0].n;
   const claimed = !!u.free_pick_claimed_at;
   const subscribed = hasLiveSubscription(u);
+  // Edge Pro / trial: every pick is already included, so there's nothing to
+  // claim or spend (a Hot Picks buyer is only covered for 24h, so they
+  // still keep their free pick).
+  const allPicks = access.entitled && access.via !== "hot_picks";
   return {
     credits: u.pick_credits,
     unlockedCount: unlocks,
+    allPicksIncluded: allPicks,
+    allPicksVia: allPicks ? access.via : null,
+    packsForSale: PACKS_FOR_SALE,
     freePick: {
       claimed,
       claimedAt: u.free_pick_claimed_at,
-      eligible: !claimed,
+      eligible: !claimed && !allPicks,
       // "Used" = they've claimed it and unlocked at least one pick since.
       used: claimed && unlocks > 0,
     },
     subscribed,
-    showUpgrade: !subscribed && (purchases.length >= UPGRADE_NUDGE.minPacks || unlocks >= UPGRADE_NUDGE.minUnlocks),
+    showUpgrade: !allPicks && (purchases.length >= UPGRADE_NUDGE.minPacks || unlocks >= UPGRADE_NUDGE.minUnlocks),
     purchases: purchases.map((p) => ({
       id: Number(p.id),
       packId: p.pack_id,
@@ -108,6 +124,12 @@ export async function claimFreePick(userId) {
       const { rows } = await c.query("SELECT email, free_pick_claimed_at FROM users WHERE id = $1 FOR UPDATE", [userId]);
       if (!rows.length) return { ok: false, code: 404, error: "User not found." };
       if (rows[0].free_pick_claimed_at) return { ok: false, code: 409, error: "You've already claimed your free AI pick." };
+      // Edge Pro / trial already see every pick; keep the free pick for if
+      // they later move to Edge or Edge+.
+      const access = await pickAccessFor(userId);
+      if (access.entitled && access.via !== "hot_picks") {
+        return { ok: false, code: 409, error: access.via === "trial" ? "Every AI pick is free during your trial — no need to claim one." : "Every AI pick is already included with Edge Pro." };
+      }
       const key = normalizeEmailForAbuseCheck(rows[0].email);
       const upd = await c.query(
         `UPDATE users SET free_pick_claimed_at = now(), free_pick_key = $2, pick_credits = pick_credits + $3

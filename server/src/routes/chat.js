@@ -311,14 +311,14 @@ function makeToolRunner({ sport, game, userRow, sources, refreshed, state }) {
     const { sport, game } = target;
 
     if (name === "get_picker_picks") {
-      if (state.pickAccess === undefined) state.pickAccess = userRow?.id ? await hasPickAccess(userRow.id) : false;
+      if (state.pickAccess === undefined) state.pickAccess = userRow?.id ? await hasPickAccess(userRow.id, userRow) : false;
       if (state.unlockedPicks === undefined) state.unlockedPicks = userRow?.id && !state.pickAccess ? await unlockedPickIds(userRow.id) : new Set();
       const r = await picksForGame({ sport, gameId: game.id, home: game.homeTeam, away: game.awayTeam, kickoff: game.commenceTime, entitled: state.pickAccess, unlockedIds: state.unlockedPicks });
       if (!r.available) return { status: "unavailable", note: "The picks ledger isn't available right now." };
       if (r.hidden) {
         return {
           status: "locked",
-          note: "BetEdge's pickers' calls on games that haven't started are part of the paid Hot Picks bundle and are revealed to everyone at kickoff. Do NOT guess or imply which side they took or whether they picked this game. Tell the user the pickers' calls unlock with today's Hot Picks, an AI pick credit from a Pick Pack (on the AI Record page), or at kickoff, and you can still give their track records.",
+          note: "BetEdge's pickers' calls on games that haven't started are included with the Edge Pro plan (and free during the trial) and are revealed to everyone at kickoff. Do NOT guess or imply which side they took or whether they picked this game. Tell the user the pickers' calls unlock with Edge Pro, their one free AI pick (on the AI Record page), today's Hot Picks, or at kickoff, and you can still give their track records.",
           records: r.records.map((x) => ({ picker: x.picker, record: `${x.wins}-${x.losses}-${x.pushes}`, units: x.units, roi_pct: x.roi, graded_picks: x.graded, small_sample: x.smallSample })),
           record_page: "https://www.betedgeai.com/record",
         };

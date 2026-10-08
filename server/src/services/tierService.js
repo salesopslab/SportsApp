@@ -34,6 +34,7 @@ export const TIERS = [
       "Enhanced Ledger AI bet tracking",
       "Screenshot bet importing",
       "Expanded Fantasy Edge tools",
+      "1 free AI pick",
     ],
   },
   {
@@ -62,6 +63,7 @@ export const TIERS = [
     tagline: "Everything in Edge+, plus:",
     blurb: "Highest AI limits, premium analysis and alerts, and first access to new features.",
     features: [
+      "Every AI pick from all three AI pickers, before kickoff",
       "Highest AI usage limits",
       "Premium AI analysis",
       "Advanced trend and matchup intelligence",

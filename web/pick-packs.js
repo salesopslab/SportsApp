@@ -1,7 +1,7 @@
-// AI Pick Packs: one-time packs of pick credits, the free first pick, the
-// credit balance, and "Unlock This Pick — 1 Credit". An extra purchase option
-// alongside the Edge memberships, not a replacement for them.
-// Funnel: Free Pick -> Pick Pack -> monthly membership.
+// AI picks access: the free first pick (Free / Edge / Edge+), the credit
+// balance, and "Unlock This Pick — 1 Credit". Pick Packs are no longer sold:
+// every picker's pick is included with Edge Pro and during the free trial.
+// Funnel: Free Pick -> Edge Pro.
 // Uses globals from index.html: API, apiFetch, escapeHtml, currentUser,
 // refreshAccount, openAuthModal, openPricingModal, goToNav.
 (function(){
@@ -15,6 +15,9 @@
   const state = { data: null, loading: null, pending: null, record: null, view: {} };
   const acct = () => state.data && state.data.account;
   const credits = () => (acct() ? acct().credits : (currentUser && currentUser.pickCredits) || 0);
+  const allPicks = () => !!(acct() && acct().allPicksIncluded);
+  const allPicksLabel = () => (acct() && acct().allPicksVia === 'trial') ? 'free during your trial' : 'included with Edge Pro';
+  const OUT_NOTE = "You've used your free AI pick. Upgrade to Edge Pro to see every pick from all three AI pickers.";
   const store = { get(k){ try{ return localStorage.getItem(k); }catch{ return null; } }, set(k, v){ try{ localStorage.setItem(k, v); }catch{} } };
 
   // ---- data ----------------------------------------------------------------
@@ -47,12 +50,14 @@
   function updateCreditUi(){
     const chip = $('creditChip');
     if(chip){
-      chip.classList.toggle('hidden', !currentUser);
       const n = credits();
-      chip.innerHTML = `🎯 <span class="cc-n">${n}</span><span class="cc-l"> credit${n === 1 ? '' : 's'}</span>`;
-      chip.setAttribute('aria-label', `AI Pick Credits: ${n}. Get AI Pick Packs`);
+      // Edge Pro / trial: nothing to count. Others: only while they hold a credit.
+      chip.classList.toggle('hidden', !currentUser || allPicks() || n < 1);
+      chip.innerHTML = `🎯 <span class="cc-n">${n}</span><span class="cc-l"> free pick${n === 1 ? '' : 's'}</span>`;
+      chip.setAttribute('aria-label', `AI pick credits: ${n}. About AI picks`);
     }
-    if($('accountCredits')) $('accountCredits').textContent = String(credits());
+    if($('accountCredits')) $('accountCredits').textContent = allPicks() ? `All picks (${allPicksLabel()})` : String(credits());
+    if($('accountCreditsBtn')) $('accountCreditsBtn').style.display = allPicks() ? 'none' : '';
     renderFreeCta();
     renderRecordCredits();
   }
@@ -62,7 +67,7 @@
     if(!box) return;
     const a = acct();
     if(!a || !a.purchases || !a.purchases.length){ box.innerHTML = ''; return; }
-    box.innerHTML = `<details class="pp-history"><summary>Pick Pack purchases (${a.purchases.length})</summary>${a.purchases.map(p => `
+    box.innerHTML = `<details class="pp-history"><summary>Past Pick Pack purchases (${a.purchases.length})</summary>${a.purchases.map(p => `
       <div class="pp-history-row"><span>${esc(p.name)}</span><span>${money(p.amountCents)} · ${esc(new Date(p.purchasedAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }))}</span></div>`).join('')}</details>`;
   }
 
@@ -74,6 +79,7 @@
     if(!box) return;
     const a = acct();
     const fp = a && a.freePick;
+    if(allPicks()){ box.innerHTML = ''; return; }
     if(store.get(FREE_DISMISS_KEY) === '1' && !(fp && fp.claimed && !fp.used && a.credits > 0)){ box.innerHTML = ''; return; }
     if(!currentUser || (fp && fp.eligible)){
       box.innerHTML = `<div class="pp-free-cta" role="region" aria-label="Free AI pick">
@@ -84,7 +90,7 @@
         </div>
         <div>
           <button type="button" class="pp-free-btn" data-pp="claim-free">${currentUser ? 'Claim my free pick' : 'Get my free pick'}</button>
-          <div class="pp-free-fine">1 Free AI Pick — $0 · One per new account</div>
+          <div class="pp-free-fine">1 Free AI Pick — $0 · One per account · Every pick with Edge Pro</div>
         </div>
       </div>`;
     }else if(fp && fp.claimed && !fp.used && a.credits > 0){
@@ -112,24 +118,12 @@
     }
   }
 
-  // ---- checkout ------------------------------------------------------------
-  async function checkout(packId, btn){
-    if(!currentUser){ state.pending = { type:'checkout', packId }; openAuthModal('signup'); return; }
-    const label = btn ? btn.textContent : '';
-    if(btn){ btn.disabled = true; btn.textContent = 'Redirecting…'; }
-    try{
-      const here = window.location.origin + window.location.pathname;
-      const res = await apiFetch('/api/pick-packs/checkout', {
-        method:'POST', headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ packId, successUrl: here, cancelUrl: here }),
-      });
-      const d = await res.json();
-      if(!res.ok) throw new Error(d.error || 'Failed to start checkout.');
-      window.location.href = d.url;
-    }catch(e){
-      if(btn){ btn.disabled = false; btn.textContent = label; }
-      open({ note: e.message });
-    }
+  // ---- upgrade (Pick Packs are no longer sold) ------------------------------
+  function upgrade(){
+    store.set(NUDGE_KEY, String(Date.now()));
+    close();
+    if(!currentUser){ openAuthModal('signup'); return; }
+    openPricingModal();
   }
 
   // Back from Stripe: confirm server-side right away so the balance is
@@ -164,7 +158,8 @@
   async function requestUnlock(pickId, onUnlocked){
     if(!currentUser){ state.pending = { type:'unlock', pickId, onUnlocked }; open(); return; }
     if(!acct()) await load();
-    if(credits() < 1){ open({ note: "You're out of AI pick credits. Pick a pack to unlock this pick." }); return; }
+    if(allPicks()){ reloadRecordIfShowing(); return; } // already included — just refresh the view
+    if(credits() < 1){ open({ note: OUT_NOTE }); return; }
     confirmUnlock(pickId, onUnlocked);
   }
 
@@ -188,7 +183,7 @@
       try{
         const res = await apiFetch('/api/pick-packs/unlock', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ pickId }) });
         const d = await res.json();
-        if(res.status === 402 || d.needCredits){ setBalance(0); closeConfirm(); open({ note: "You're out of AI pick credits. Pick a pack to unlock this pick." }); return; }
+        if(res.status === 402 || d.needCredits){ setBalance(0); closeConfirm(); open({ note: OUT_NOTE }); return; }
         if(!res.ok) throw new Error(d.error || "Couldn't unlock that pick.");
         setBalance(d.credits);
         closeConfirm();
@@ -212,9 +207,9 @@
   function nudgeHtml(){
     return `<div class="pp-nudge" role="note">
       <button type="button" class="pp-free-close" data-pp="dismiss-nudge" aria-label="Dismiss">×</button>
-      <div class="pp-nudge-title">Unlock the Full Edge</div>
-      <div class="pp-nudge-text">Get ongoing access to BetEdge AI picks and premium features with an Edge membership.</div>
-      <button type="button" class="pp-nudge-btn" data-pp="membership">VIEW MEMBERSHIP OPTIONS</button>
+      <div class="pp-nudge-title">Get Every AI Pick</div>
+      <div class="pp-nudge-text">Edge Pro includes every pick from Lone Wolf, The Professor and The Fader before kickoff — no credits needed.</div>
+      <button type="button" class="pp-nudge-btn" data-pp="membership">UPGRADE TO EDGE PRO</button>
     </div>`;
   }
 
@@ -224,12 +219,15 @@
     if(!box) return;
     if(!currentUser){
       box.innerHTML = `<div class="rec-credit-line"><span>🎯 Your first AI pick is free — no card required.</span><button type="button" data-pp="claim-free">Get it free</button></div>`;
+    }else if(allPicks()){
+      box.innerHTML = `<div class="rec-credit-line"><span>✓ Every AI pick is <b>${allPicksLabel()}</b> — shown before kickoff.</span></div>`;
     }else{
       const a = acct();
       const n = credits();
       const fp = a && a.freePick;
-      const action = fp && fp.eligible ? `<button type="button" data-pp="claim-free">Claim free pick</button>` : `<button type="button" data-pp="open">${n ? 'Get more' : 'Get AI Pick Packs'}</button>`;
-      box.innerHTML = `<div class="rec-credit-line"><span>AI Pick Credits: <b>${n}</b>${n ? ' · tap 🔒 Unlock on any pick below' : ''}</span>${action}</div>${nudgeDue() ? nudgeHtml() : ''}`;
+      const action = fp && fp.eligible ? `<button type="button" data-pp="claim-free">Claim free pick</button>` : `<button type="button" data-pp="membership">Get every pick</button>`;
+      const label = n ? `Free AI picks: <b>${n}</b> · tap 🔒 Unlock on any pick below` : (fp && fp.eligible ? 'Your first AI pick is free' : 'Every AI pick is included with Edge Pro');
+      box.innerHTML = `<div class="rec-credit-line"><span>${label}</span>${action}</div>${nudgeDue() ? nudgeHtml() : ''}`;
     }
     wire(box);
   }
@@ -272,17 +270,6 @@
     $('ppConfirmModal').addEventListener('click', (e) => { if(e.target.id === 'ppConfirmModal') closeConfirm(); });
   }
 
-  function packCard(p){
-    const cls = p.id === 'pack_5' ? ' popular' : p.id === 'pack_10' ? ' value' : '';
-    return `<div class="pp-card${cls}">
-      ${p.badge ? `<span class="pp-badge">${esc(p.badge)}</span>` : ''}
-      <div class="pp-name">${esc(p.name)}</div>
-      <div class="pp-price">${money(p.priceCents)}</div>
-      <div class="pp-per">${money(p.perPickCents)} per pick</div>
-      <button type="button" class="pp-buy" data-pp="buy" data-pack="${esc(p.id)}">${esc(p.cta)}</button>
-    </div>`;
-  }
-
   function render(){
     const body = $('pickPacksBody');
     if(!body) return;
@@ -291,43 +278,41 @@
     if(!d){ body.innerHTML = '<div class="board-msg"><div class="spin"></div><div>Loading…</div></div>'; return; }
     const a = d.account;
     const fp = a && a.freePick;
-    const showFreeHero = !currentUser || (fp && fp.eligible);
-    const freeUsed = fp && fp.claimed && (fp.used || !a.credits);
+    const showFreeHero = !allPicks() && (!currentUser || (fp && fp.eligible));
 
     let hero = '';
-    if(showFreeHero){
-      hero = `<div class="pp-free-cta pp-hero">
+    if(allPicks()){
+      hero = `<h2 id="ppTitle">Every AI pick is ${esc(allPicksLabel())}</h2>
+      <div class="pp-sub">You see every pick from 🐺 Lone Wolf, 🎓 The Professor and 🔄 The Fader as soon as it's posted — before kickoff, no credits needed.</div>`;
+    }else{
+      hero = (showFreeHero ? `<div class="pp-free-cta pp-hero">
         <div>
           <div class="pp-free-title" id="ppTitle">GET YOUR FIRST AI PICK FREE</div>
-          <div class="pp-free-text">Create a free account and unlock your first BetEdge AI pick. No credit card required.</div>
+          <div class="pp-free-text">Every account gets one free BetEdge AI pick — the full pick and analysis, before kickoff. No credit card required.</div>
         </div>
         <div>
           <button type="button" class="pp-free-btn" data-pp="claim-free">${currentUser ? 'Claim my free pick' : 'Create free account'}</button>
           <div class="pp-free-fine">1 Free AI Pick — $0</div>
         </div>
-      </div>
-      <h2 style="font-size:17px">Or grab a pack</h2>`;
-    }else if(freeUsed){
-      hero = `<h2 id="ppTitle">Like the Edge? Unlock More AI Picks</h2>`;
-    }else{
-      hero = `<h2 id="ppTitle">AI Pick Packs</h2>`;
+      </div>` : `<h2 id="ppTitle">AI Picks</h2>`) + `
+      <div class="pp-nudge" style="margin-top:14px">
+        <div class="pp-nudge-title">Get every AI pick with Edge Pro</div>
+        <div class="pp-nudge-text">Edge Pro includes every pick from 🐺 Lone Wolf, 🎓 The Professor and 🔄 The Fader before kickoff. Edge and Edge+ members get one free pick. New accounts get every pick free during the trial.</div>
+        <button type="button" class="pp-nudge-btn" data-pp="membership">${currentUser ? 'UPGRADE TO EDGE PRO' : 'START FREE TRIAL'}</button>
+      </div>`;
     }
 
     body.innerHTML = `
       ${v.success ? `<div class="pp-success">${esc(v.success)}${v.successAction === 'record' ? `<div style="margin-top:8px"><button type="button" class="pp-trust-btn" data-pp="go-record">Choose a pick on AI Record</button></div>` : ''}</div>` : ''}
       ${v.note ? `<div class="pp-note">${esc(v.note)}</div>` : ''}
       ${hero}
-      <div class="pp-sub">No subscription. One credit unlocks one premium AI pick — the full pick and analysis, before kickoff. Use your credits whenever you like.</div>
-      ${a ? `<div class="pp-balance"><span>AI Pick Credits</span><b>${a.credits}</b></div>` : ''}
-      ${d.available === false ? `<div class="pp-note">Purchases aren't available right now. Please try again later.</div>` : ''}
-      <div class="pp-cards">${(d.packs || []).map(packCard).join('')}</div>
+      ${a && !allPicks() && a.credits > 0 ? `<div class="pp-balance"><span>Free AI picks left</span><b>${a.credits}</b></div>` : ''}
       <div class="pp-trust">
         <button type="button" class="pp-trust-btn" data-pp="go-record">SEE THE AI RECORD</button>
-        <div class="pp-trust-text">See how our AI models have performed before you buy.</div>
+        <div class="pp-trust-text">Every pick is graded in public — wins and losses.</div>
         <div id="ppRecordStat">${recordStatHtml(state.record)}</div>
       </div>
-      ${a && a.showUpgrade && !a.subscribed ? nudgeHtml() : `<button type="button" class="pp-member-link" data-pp="membership">Want ongoing access? Compare Edge memberships</button>`}
-      <div class="pp-foot">One-time payment, securely processed by Stripe. Credits are added to your account as soon as payment is confirmed. Picks are information, not advice — no outcome is guaranteed. 21+. Gambling problem? Call 1-800-GAMBLER.</div>`;
+      <div class="pp-foot">Picks are information, not advice — no outcome is guaranteed. 21+. Gambling problem? Call 1-800-GAMBLER.</div>`;
     wire(body);
     loadRecordStat().then(t => { const el = $('ppRecordStat'); if(el) el.innerHTML = recordStatHtml(t); });
   }
@@ -354,10 +339,9 @@
       el.addEventListener('click', (e) => {
         const act = el.dataset.pp;
         if(act === 'claim-free') claimFree();
-        else if(act === 'buy') checkout(el.dataset.pack, el);
         else if(act === 'open') open();
         else if(act === 'go-record'){ close(); goToNav('record'); }
-        else if(act === 'membership'){ store.set(NUDGE_KEY, String(Date.now())); close(); openPricingModal(); }
+        else if(act === 'membership') upgrade();
         else if(act === 'dismiss-free'){ store.set(FREE_DISMISS_KEY, '1'); renderFreeCta(); }
         else if(act === 'dismiss-nudge'){ store.set(NUDGE_KEY, String(Date.now())); e.target.closest('.pp-nudge')?.remove(); }
       });
@@ -377,8 +361,8 @@
     if(!p) return;
     const fp = acct() && acct().freePick;
     if(p.type === 'claim') return fp && fp.eligible ? claimFree() : open();
-    if(p.type === 'checkout') return checkout(p.packId);
     if(p.type === 'unlock'){
+      if(allPicks()) return; // trial / Edge Pro: the record reload above already shows it
       // A brand-new account gets its free pick first, then the unlock.
       if(fp && fp.eligible){ await claimFree(); close(); }
       return requestUnlock(p.pickId, p.onUnlocked);
@@ -386,7 +370,7 @@
   };
   window.__afterLogout = () => { state.data = null; state.pending = null; load(); reloadRecordIfShowing(); };
   window.__updateCreditUi = updateCreditUi;
-  window.__renderAccountCredits = () => { renderAccountCredits(); load().then(renderAccountCredits); };
+  window.__renderAccountCredits = () => { renderAccountCredits(); load().then(() => { renderAccountCredits(); updateCreditUi(); }); };
 
   window.BetEdgePickPacks = { open, close, requestUnlock, credits, load };
 

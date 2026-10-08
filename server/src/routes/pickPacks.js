@@ -4,10 +4,12 @@ import { requireAuth } from "../middleware/auth.js";
 import { withTier } from "../middleware/tier.js";
 import { hasPickAccess } from "../services/ledgerService.js";
 import { stripeAvailable, getOrCreateCustomer, createPickPackCheckoutSession, retrieveCheckoutSession } from "../services/stripeService.js";
-import { publicPacks, packById, FREE_PICK, creditSummary, claimFreePick, fulfillPickPackSession, unlockPick } from "../services/pickPackService.js";
+import { publicPacks, PACKS_FOR_SALE, packById, FREE_PICK, creditSummary, claimFreePick, fulfillPickPackSession, unlockPick } from "../services/pickPackService.js";
 
-// AI Pick Packs — one-time credit packs, the free first pick, and spending
-// a credit to unlock a pick. Payment fulfillment itself lives in
+// AI picks access — the free first pick and spending a credit to unlock a
+// pick. Pick Packs are no longer sold (all picks are included with Edge Pro
+// and the free trial); /checkout now refuses, /confirm stays for in-flight
+// payments. Payment fulfillment itself lives in
 // pickPackService.fulfillPickPackSession, shared with the Stripe webhook.
 const router = Router();
 
@@ -28,7 +30,7 @@ function successUrlFor(base) {
 // balance, free-pick state, purchase history and whether to show the
 // membership nudge.
 router.get("/", withTier, async (req, res) => {
-  const base = { packs: publicPacks(), freePick: FREE_PICK, available: stripeAvailable() && !!pool, loggedIn: !!req.userRow };
+  const base = { packs: publicPacks(), packsForSale: PACKS_FOR_SALE, freePick: FREE_PICK, available: !!pool, loggedIn: !!req.userRow };
   if (!req.userRow || !pool) return res.json(base);
   try {
     res.json({ ...base, account: await creditSummary(req.userRow.id) });
@@ -56,6 +58,9 @@ router.post("/claim-free", requireAuth, async (req, res) => {
 // Checkout (one-time payment) for a pack. Credits are only added once Stripe
 // confirms the payment (webhook or /confirm below), never here.
 router.post("/checkout", requireAuth, async (req, res) => {
+  if (!PACKS_FOR_SALE) {
+    return res.status(410).json({ error: "Pick Packs are no longer sold. Every AI pick is included with Edge Pro, and Edge and Edge+ members get one free pick.", upgradeTier: "edge_pro" });
+  }
   if (needDb(res)) return;
   try {
     if (!stripeAvailable()) return res.status(503).json({ error: "Billing isn't configured yet." });
@@ -116,7 +121,7 @@ router.post("/unlock", requireAuth, async (req, res) => {
     const entitled = await hasPickAccess(req.user.id);
     const r = await unlockPick(req.user.id, req.body?.pickId, { entitled });
     if (r.status === "not_found") return res.status(404).json({ error: "That pick wasn't found.", credits: r.credits ?? null });
-    if (r.status === "no_credits") return res.status(402).json({ error: "You're out of AI pick credits.", needCredits: true, credits: 0 });
+    if (r.status === "no_credits") return res.status(402).json({ error: "You've used your free AI pick. Upgrade to Edge Pro to see every pick.", needCredits: true, upgradeTier: "edge_pro", credits: 0 });
     res.json({ status: r.status, charged: r.status === "unlocked", pick: r.pick, credits: r.credits });
   } catch (err) {
     console.error("pick unlock:", err);

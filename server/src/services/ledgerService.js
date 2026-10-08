@@ -1,6 +1,7 @@
 // Writes to the public picks ledger, shared by the token-protected API and
 // the built-in pickers so both follow exactly the same rules.
 import { pool, ensureSchema } from "../db.js";
+import { effectiveTier, meetsTier } from "./tierService.js";
 import { PICKERS, PICKER_ALIASES, CONFIDENCES, SPORTS, impliedProb, validOdds, unitsFor, toPublic } from "./picksService.js";
 
 // Validate one incoming pick. Returns { value } or { error }.
@@ -72,17 +73,35 @@ export async function gradePick({ id, result, closing_odds }) {
   }
 }
 
-// Who can see picks before kickoff: anyone who bought the current Hot
-// Picks bundle (bundles last 24 hours from when they were generated).
-export async function hasPickAccess(userId) {
-  if (!pool || !userId) return false;
+// Who can see every picker's picks before kickoff, for free:
+//   - Edge Pro subscribers (and referral-bonus Edge Pro access)
+//   - accounts still in their free trial (trial mirrors Edge Pro)
+//   - anyone who bought the current Hot Picks bundle (24h from generation)
+// Edge / Edge+ / free accounts instead get one free pick (pickPackService).
+export async function pickAccessFor(userId, userRow = null) {
+  if (!pool || !userId) return { entitled: false, via: null };
   await ensureSchema();
+  let row = userRow;
+  if (!row || row.tier === undefined) {
+    const { rows } = await pool.query(
+      "SELECT id, tier, trial_ends_at, subscription_status, bonus_access_until, archived_at FROM users WHERE id = $1",
+      [userId]
+    );
+    row = rows[0] && !rows[0].archived_at ? rows[0] : null;
+  }
+  if (row && meetsTier(row, "edge_pro")) {
+    return { entitled: true, via: effectiveTier(row) === "trial" ? "trial" : "edge_pro" };
+  }
   const { rows } = await pool.query(
     `SELECT 1 FROM hot_pick_purchases hp JOIN hot_pick_days d ON d.id = hp.hot_pick_day_id
      WHERE hp.user_id = $1 AND d.generated_at > now() - interval '24 hours' LIMIT 1`,
     [userId]
   );
-  return rows.length > 0;
+  return rows.length ? { entitled: true, via: "hot_picks" } : { entitled: false, via: null };
+}
+
+export async function hasPickAccess(userId, userRow = null) {
+  return (await pickAccessFor(userId, userRow)).entitled;
 }
 
 export { CONFIDENCES };

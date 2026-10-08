@@ -1,4 +1,6 @@
-// AI Pick Packs integration test: real routes + real Postgres, Stripe faked.
+// AI picks access integration test: real routes + real Postgres, Stripe faked.
+// Pick Packs are no longer sold: Edge Pro and trial accounts see every pick,
+// everyone else gets one free pick. Historic pack payments still fulfil.
 // Needs a scratch database: TEST_DATABASE_URL=postgres://... node test/pickpacks.test.mjs
 // (skipped when TEST_DATABASE_URL isn't set, so `npm test` still runs anywhere).
 import assert from "node:assert/strict";
@@ -71,10 +73,19 @@ const as = (token) => ({ authorization: `Bearer ${token}` });
 const webhook = (event) => call("POST", "/api/billing/webhook", event, { "stripe-signature": "t=1,v1=fake" });
 const credits = async (uid) => (await pool.query("SELECT pick_credits FROM users WHERE id = $1", [uid])).rows[0].pick_credits;
 let n = 0;
-async function newUser(email) {
+// New signups start on the trial (every pick free). Most tests want an
+// account past its trial; pass { plan } to put it on a paid tier instead.
+async function newUser(email, { plan = "expired" } = {}) {
   const r = await call("POST", "/api/auth/signup", { email: email || `pp${++n}@test.dev`, password: "password123" });
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  return { id: r.json.user.id, token: r.json.token };
+  const u = { id: r.json.user.id, token: r.json.token };
+  await setPlan(u, plan);
+  return u;
+}
+async function setPlan(u, plan) {
+  if (plan === "trial") return;
+  if (plan === "expired") return pool.query("UPDATE users SET tier='trial', trial_ends_at=now() - interval '1 day' WHERE id=$1", [u.id]);
+  return pool.query("UPDATE users SET tier=$2, stripe_subscription_id='sub_' || id, subscription_status='active' WHERE id=$1", [u.id, plan]);
 }
 async function addPick({ picker = "Lone Wolf", game, kickoffHours = 6, result = "pending" }) {
   const kickoff = new Date(Date.now() + kickoffHours * 3600e3);
@@ -87,11 +98,14 @@ async function addPick({ picker = "Lone Wolf", game, kickoffHours = 6, result = 
   if (result !== "pending") await pool.query("UPDATE picks SET result=$2, units=0.91, graded_at=now() WHERE id=$1", [rows[0].id, result]);
   return Number(rows[0].id);
 }
+// Packs can't be bought any more; this stands in for a checkout that was
+// started before they were retired, so fulfilment is still covered.
+const { packById } = await import("../src/services/pickPackService.js");
 async function paidSession(u, packId) {
-  const r = await call("POST", "/api/pick-packs/checkout", { packId, successUrl: "https://betedgeai.com/record", cancelUrl: "https://betedgeai.com/record" }, as(u.token));
-  assert.equal(r.status, 200, JSON.stringify(r.json));
-  const s = [...S.sessions.values()].pop();
-  return s;
+  return stripeSvc.createPickPackCheckoutSession({
+    customerId: "cus_legacy", userId: u.id, pack: packById(packId),
+    successUrl: "https://betedgeai.com/record?pickpack=success&session_id={CHECKOUT_SESSION_ID}", cancelUrl: "https://betedgeai.com/record",
+  });
 }
 const markPaid = (s) => Object.assign(s, { payment_status: "paid", status: "complete", payment_intent: sid("pi") });
 
@@ -101,16 +115,74 @@ async function test(name, fn) {
   catch (err) { failures++; console.log(`FAIL  ${name}\n      ${err.stack || err.message}`); }
 }
 
-await test("packs: 3 / 5 / 10 at $19.99 / $29.99 / $49.99, per-pick math, badges", async () => {
+await test("packs are no longer for sale: empty list, checkout refused", async () => {
   const r = await call("GET", "/api/pick-packs");
   assert.equal(r.status, 200);
-  assert.deepEqual(r.json.packs.map((p) => [p.id, p.credits, p.priceCents, p.perPickCents, p.badge]), [
-    ["pack_3", 3, 1999, 667, null],
-    ["pack_5", 5, 2999, 600, "MOST POPULAR"],
-    ["pack_10", 10, 4999, 500, "BEST VALUE"],
-  ]);
+  assert.deepEqual(r.json.packs, []);
+  assert.equal(r.json.packsForSale, false);
   assert.equal(r.json.freePick.priceCents, 0);
   assert.equal(r.json.account, undefined, "no account data when logged out");
+  const u = await newUser();
+  const c = await call("POST", "/api/pick-packs/checkout", { packId: "pack_5" }, as(u.token));
+  assert.equal(c.status, 410);
+  assert.equal(c.json.upgradeTier, "edge_pro");
+  assert.equal(S.sessions.size, 0, "no Stripe session created");
+});
+
+await test("trial: every picker's pick is free and early; no free pick to claim or credit to spend", async () => {
+  const u = await newUser(null, { plan: "trial" });
+  const p1 = await addPick({ game: "Trial A @ Trial B" });
+  const p2 = await addPick({ picker: "The Fader", game: "Trial C @ Trial D" });
+  const list = await call("GET", "/api/picks", null, as(u.token));
+  assert.equal(list.json.access.entitled, true);
+  assert.equal(list.json.access.via, "trial");
+  for (const id of [p1, p2]) {
+    const v = list.json.picks.find((p) => p.id === id);
+    assert.equal(v.locked, false); assert.equal(v.early, true); assert.equal(v.bet, "Denver Broncos +3");
+  }
+  const sum = await call("GET", "/api/pick-packs", null, as(u.token));
+  assert.equal(sum.json.account.allPicksIncluded, true);
+  assert.equal(sum.json.account.allPicksVia, "trial");
+  assert.equal(sum.json.account.freePick.eligible, false);
+  assert.equal((await call("POST", "/api/pick-packs/claim-free", {}, as(u.token))).status, 409);
+  const un = await call("POST", "/api/pick-packs/unlock", { pickId: p1 }, as(u.token));
+  assert.equal(un.json.status, "entitled"); assert.equal(un.json.charged, false);
+  const kick = new Date(Date.now() + 6 * 3600e3).toISOString();
+  const g = await call("GET", `/api/picks/game?sport=nfl&game_id=trial-a-trial-b&kickoff=${kick}`, null, as(u.token));
+  assert.equal(g.json.early, true); assert.equal(g.json.accessVia, "trial");
+  // Trial ends -> back to locked, and the free pick is now claimable.
+  await setPlan(u, "expired");
+  const after = await call("GET", "/api/picks", null, as(u.token));
+  assert.equal(after.json.access.entitled, false);
+  assert.ok(after.json.picks.find((p) => p.id === p1).locked);
+  assert.equal((await call("POST", "/api/pick-packs/claim-free", {}, as(u.token))).status, 200);
+});
+
+await test("Edge Pro: every pick free; Edge and Edge+ get exactly one free pick", async () => {
+  const pro = await newUser(null, { plan: "edge_pro" });
+  const p = await addPick({ game: "Pro A @ Pro B" });
+  const list = await call("GET", "/api/picks", null, as(pro.token));
+  assert.equal(list.json.access.entitled, true); assert.equal(list.json.access.via, "edge_pro");
+  assert.equal(list.json.picks.find((x) => x.id === p).bet, "Denver Broncos +3");
+  assert.equal((await call("POST", "/api/pick-packs/claim-free", {}, as(pro.token))).status, 409);
+  // A lapsed Edge Pro subscription loses it.
+  await pool.query("UPDATE users SET subscription_status='canceled' WHERE id=$1", [pro.id]);
+  assert.equal((await call("GET", "/api/picks", null, as(pro.token))).json.access.entitled, false);
+
+  for (const plan of ["standard", "edge"]) {
+    const u = await newUser(null, { plan });
+    const q1 = await addPick({ game: `${plan} A @ ${plan} B` });
+    const q2 = await addPick({ picker: "The Professor", game: `${plan} C @ ${plan} D` });
+    const l = await call("GET", "/api/picks", null, as(u.token));
+    assert.equal(l.json.access.entitled, false, plan);
+    const sum = await call("GET", "/api/pick-packs", null, as(u.token));
+    assert.equal(sum.json.account.allPicksIncluded, false);
+    assert.equal(sum.json.account.freePick.eligible, true);
+    assert.equal((await call("POST", "/api/pick-packs/claim-free", {}, as(u.token))).status, 200);
+    assert.equal((await call("POST", "/api/pick-packs/unlock", { pickId: q1 }, as(u.token))).json.charged, true);
+    const out = await call("POST", "/api/pick-packs/unlock", { pickId: q2 }, as(u.token));
+    assert.equal(out.status, 402); assert.equal(out.json.upgradeTier, "edge_pro");
+  }
 });
 
 await test("free pick: needs an account, one per account, one per inbox, no card", async () => {
@@ -142,6 +214,7 @@ await test("unlock: 1 credit opens the full pick, re-viewing is free, others sta
   assert.equal(list.json.access.credits, 1);
   assert.ok(list.json.picks.find((p) => p.id === p1).locked);
   assert.equal(list.json.picks.find((p) => p.id === p1).bet, undefined, "locked pick hides the bet");
+  const lockedBefore = list.json.access.lockedCount;
 
   const r = await call("POST", "/api/pick-packs/unlock", { pickId: p1 }, as(u.token));
   assert.equal(r.status, 200, JSON.stringify(r.json));
@@ -159,7 +232,7 @@ await test("unlock: 1 credit opens the full pick, re-viewing is free, others sta
   const v1 = list.json.picks.find((p) => p.id === p1), v2 = list.json.picks.find((p) => p.id === p2);
   assert.equal(v1.locked, false); assert.equal(v1.unlocked, true); assert.equal(v1.bet, "Denver Broncos +3");
   assert.equal(v2.locked, true);
-  assert.equal(list.json.access.lockedCount, 1);
+  assert.equal(list.json.access.lockedCount, lockedBefore - 1);
 
   const kick = new Date(Date.now() + 6 * 3600e3).toISOString();
   const g = await call("GET", `/api/picks/game?sport=nfl&game_id=denver-broncos-kansas-city-chiefs&kickoff=${kick}`, null, as(u.token));
@@ -195,19 +268,6 @@ await test("double-tap / concurrent unlocks can't overspend", async () => {
   assert.equal(await credits(u.id), 0);
   const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM pick_unlocks WHERE user_id=$1", [u.id]);
   assert.equal(rows[0].n, 1);
-});
-
-await test("checkout: one-time payment, server-set metadata, success URL carries the session id", async () => {
-  assert.equal((await call("POST", "/api/pick-packs/checkout", { packId: "pack_5" })).status, 401);
-  const u = await newUser();
-  assert.equal((await call("POST", "/api/pick-packs/checkout", { packId: "pack_999" }, as(u.token))).status, 400);
-  const s = await paidSession(u, "pack_5");
-  assert.equal(s.mode, "payment");
-  assert.equal(s.line_items[0].price_data.unit_amount, 2999);
-  assert.deepEqual(s.metadata, { betedgeUserId: String(u.id), kind: "pick_pack", packId: "pack_5", credits: "5" });
-  assert.match(s.success_url, /pickpack=success&session_id=\{CHECKOUT_SESSION_ID\}$/);
-  assert.ok(s.customer, "reuses/creates the account's Stripe customer");
-  assert.equal(await credits(u.id), 0, "nothing granted before payment");
 });
 
 await test("webhook: unpaid ignored, paid grants once, replays and races grant nothing more", async () => {
@@ -250,7 +310,7 @@ await test("confirm: balance updates on return even if the webhook hasn't arrive
   assert.equal(await credits(other.id), 0);
 });
 
-await test("membership nudge: after a pack purchase, not for live subscribers", async () => {
+await test("Edge Pro nudge: after a (legacy) pack purchase, gone once on Edge Pro", async () => {
   const u = await newUser();
   let sum = await call("GET", "/api/pick-packs", null, as(u.token));
   assert.equal(sum.json.account.showUpgrade, false);
@@ -258,7 +318,10 @@ await test("membership nudge: after a pack purchase, not for live subscribers", 
   await webhook({ type: "checkout.session.completed", data: { object: s } });
   sum = await call("GET", "/api/pick-packs", null, as(u.token));
   assert.equal(sum.json.account.showUpgrade, true);
-  await pool.query("UPDATE users SET tier='edge', stripe_subscription_id='sub_x', subscription_status='active' WHERE id=$1", [u.id]);
+  await setPlan(u, "edge");
+  sum = await call("GET", "/api/pick-packs", null, as(u.token));
+  assert.equal(sum.json.account.showUpgrade, true, "Edge+ still doesn't include every pick");
+  await setPlan(u, "edge_pro");
   sum = await call("GET", "/api/pick-packs", null, as(u.token));
   assert.equal(sum.json.account.showUpgrade, false);
   assert.equal(sum.json.account.credits, 3, "credits stay after subscribing");
