@@ -37,7 +37,10 @@ app.post("/api/billing/webhook", express.raw({ type: "application/json" }), hand
 // body; everything else on the app sends far smaller payloads.
 app.use(express.json({ limit: "15mb" }));
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+// Health checks. /api/health is the one to point monitors and curl at.
+const health = (_req, res) => res.json({ ok: true, service: "betedge-ai-backend", time: new Date().toISOString() });
+app.get("/health", health);
+app.get("/api/health", health);
 
 // Each user's own time zone (from their device), for AI answers and anything
 // else the server words for them.
@@ -57,6 +60,22 @@ app.use("/api/fantasy", fantasyRouter);
 app.use("/api/favorites", favoritesRouter);
 app.use("/api/picks", picksRouter);
 app.use("/api/pick-packs", pickPacksRouter);
+
+// Anything under /api that no router handled is a JSON 404 — never HTML,
+// never an empty 200 — so a wrong URL is obvious to the app and to curl.
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "Not found.", method: req.method, path: req.originalUrl });
+});
+
+// Last-resort error handler: errors thrown in /api handlers (or a bad JSON
+// body from express.json()) come back as JSON instead of Express's HTML page.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error(`[error] ${req.method} ${req.originalUrl}:`, err);
+  if (res.headersSent) return;
+  res.status(status).json({ error: status >= 500 ? "Server error." : err.message || "Bad request." });
+});
 
 // Built-in pickers run once a day, at about 8 AM Pacific (PICKERS_DAILY_HOUR):
 // they pick games starting in the next 24 hours and grade finished ones.
