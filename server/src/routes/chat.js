@@ -175,7 +175,7 @@ const DATA_TOOLS = [
   },
   {
     name: "get_picker_picks",
-    description: "What BetEdge's three public pickers — Lone Wolf (line movement), The Professor (matchup stats), The Fader (value contrarian) — picked on a game — bet, odds, confidence, reason, result — plus each picker's graded track record (W-L-P, units, ROI, sample size) and whether they disagree. Their full public record is at betedgeai.com/record.",
+    description: "What BetEdge's four public pickers — Lone Wolf (line movement), The Professor (matchup stats), The Fader (value contrarian: value underdogs, not a 'bet against me' picker), Prop Hunter (DraftKings player props) — picked on a game — bet, odds, confidence, reason, result — plus each picker's graded track record (W-L-P, units, ROI, sample size) and whether they disagree. Their full public record is at betedgeai.com/record.",
     input_schema: { type: "object", properties: { ...GAME_TARGET } },
   },
 ];

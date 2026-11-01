@@ -276,6 +276,9 @@ export function freshForSeconds(commenceTime, now = Date.now()) {
   return 3600;
 }
 
+/** The last props pull for a game (any age), or null. */
+export async function getPropsSnapshot(eventId) { return loadSnapshot(eventId); }
+
 async function loadSnapshot(eventId) {
   if (mem.has(eventId)) return mem.get(eventId);
   if (!pool) return null;

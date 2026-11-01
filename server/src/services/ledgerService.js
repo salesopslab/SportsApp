@@ -25,7 +25,15 @@ export function cleanPick(p, now = Date.now()) {
   if (!reason || reason.length > 2000) return { error: "reason is required." };
   if (now >= kickoff.getTime()) return { error: "Pick rejected: it must be posted before kickoff." };
   const gameId = p.game_id ? String(p.game_id).slice(0, 100) : null;
-  return { value: { picker, sport, game, gameId, kickoff: kickoff.toISOString(), bet, odds: Number(p.odds), implied: impliedProb(p.odds), confidence, reason } };
+  let prop = null;
+  if (p.prop != null) {
+    const q = p.prop;
+    if (typeof q !== "object" || !q.player || !q.market || !["Over", "Under"].includes(q.side) || !Number.isFinite(Number(q.line))) {
+      return { error: "prop must have player, market, side (Over/Under) and line." };
+    }
+    prop = { player: String(q.player).slice(0, 80), market: String(q.market).slice(0, 60), marketLabel: String(q.marketLabel || q.market).slice(0, 40), side: q.side, line: Number(q.line), book: String(q.book || "DraftKings").slice(0, 30) };
+  }
+  return { value: { picker, sport, game, gameId, kickoff: kickoff.toISOString(), bet, odds: Number(p.odds), implied: impliedProb(p.odds), confidence, reason, prop } };
 }
 
 // Save one pick. Idempotent on (picker, game, bet, kickoff_at).
@@ -36,10 +44,10 @@ export async function savePick(raw) {
   await ensureSchema();
   try {
     const ins = await pool.query(
-      `INSERT INTO picks (picker, sport, game, game_id, kickoff_at, bet, odds, implied_prob, confidence, reason)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `INSERT INTO picks (picker, sport, game, game_id, kickoff_at, bet, odds, implied_prob, confidence, reason, prop)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT (picker, game, bet, kickoff_at) DO NOTHING RETURNING *`,
-      [v.picker, v.sport, v.game, v.gameId, v.kickoff, v.bet, v.odds, v.implied.toFixed(4), v.confidence, v.reason]
+      [v.picker, v.sport, v.game, v.gameId, v.kickoff, v.bet, v.odds, v.implied.toFixed(4), v.confidence, v.reason, v.prop ? JSON.stringify(v.prop) : null]
     );
     if (ins.rows.length) return { status: "created", pick: toPublic(ins.rows[0]) };
     const { rows } = await pool.query("SELECT * FROM picks WHERE picker=$1 AND game=$2 AND bet=$3 AND kickoff_at=$4", [v.picker, v.game, v.bet, v.kickoff]);

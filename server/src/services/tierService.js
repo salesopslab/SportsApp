@@ -63,7 +63,7 @@ export const TIERS = [
     tagline: "Everything in Edge+, plus:",
     blurb: "Highest AI limits, premium analysis and alerts, and first access to new features.",
     features: [
-      "Every AI pick from all three AI pickers, before kickoff",
+      "Every AI pick from all four AI pickers (including Prop Hunter's player props), before kickoff",
       "Highest AI usage limits",
       "Premium AI analysis",
       "Advanced trend and matchup intelligence",

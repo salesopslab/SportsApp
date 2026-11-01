@@ -58,7 +58,7 @@ router.post("/grade", requireIngestToken, async (req, res) => {
   }
 });
 
-// POST /api/picks/run — run the three built-in pickers: pick games starting
+// POST /api/picks/run — run the four built-in pickers: pick games starting
 // in the next 24h and grade finished ones.
 // Body: { daily: true } = the scheduled once-a-day run (no-op if today's
 // already done or it's before the run hour); otherwise runs now.

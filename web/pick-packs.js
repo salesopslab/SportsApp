@@ -17,7 +17,7 @@
   const credits = () => (acct() ? acct().credits : (currentUser && currentUser.pickCredits) || 0);
   const allPicks = () => !!(acct() && acct().allPicksIncluded);
   const allPicksLabel = () => (acct() && acct().allPicksVia === 'trial') ? 'free during your trial' : 'included with Edge Pro';
-  const OUT_NOTE = "You've used your free AI pick. Upgrade to Edge Pro to see every pick from all three AI pickers.";
+  const OUT_NOTE = "You've used your free AI pick. Upgrade to Edge Pro to see every pick from all four AI pickers.";
   const store = { get(k){ try{ return localStorage.getItem(k); }catch{ return null; } }, set(k, v){ try{ localStorage.setItem(k, v); }catch{} } };
 
   // ---- data ----------------------------------------------------------------
@@ -208,7 +208,7 @@
     return `<div class="pp-nudge" role="note">
       <button type="button" class="pp-free-close" data-pp="dismiss-nudge" aria-label="Dismiss">×</button>
       <div class="pp-nudge-title">Get Every AI Pick</div>
-      <div class="pp-nudge-text">Edge Pro includes every pick from Lone Wolf, The Professor and The Fader before kickoff — no credits needed.</div>
+      <div class="pp-nudge-text">Edge Pro includes every pick from Lone Wolf, The Professor, The Fader and Prop Hunter before kickoff — no credits needed.</div>
       <button type="button" class="pp-nudge-btn" data-pp="membership">UPGRADE TO EDGE PRO</button>
     </div>`;
   }
@@ -247,7 +247,7 @@
     if(!t) return '';
     if(!t.graded) return `<div class="pp-trust-stat">No graded picks yet — every pick will be graded here in public, wins and losses.</div>`;
     const u = Math.round(t.units * 100) / 100;
-    return `<div class="pp-trust-stat">All three pickers combined: <b>${t.wins}-${t.losses}${t.pushes ? '-' + t.pushes : ''}</b> · <b>${u > 0 ? '+' : ''}${u.toFixed(2)}u</b> over ${t.graded} graded pick${t.graded === 1 ? '' : 's'}${t.graded < 100 ? ' (small sample)' : ''}.</div>`;
+    return `<div class="pp-trust-stat">All four pickers combined: <b>${t.wins}-${t.losses}${t.pushes ? '-' + t.pushes : ''}</b> · <b>${u > 0 ? '+' : ''}${u.toFixed(2)}u</b> over ${t.graded} graded pick${t.graded === 1 ? '' : 's'}${t.graded < 100 ? ' (small sample)' : ''}.</div>`;
   }
 
   // ---- Pick Packs screen ----------------------------------------------------
@@ -283,7 +283,7 @@
     let hero = '';
     if(allPicks()){
       hero = `<h2 id="ppTitle">Every AI pick is ${esc(allPicksLabel())}</h2>
-      <div class="pp-sub">You see every pick from 🐺 Lone Wolf, 🎓 The Professor and 🔄 The Fader as soon as it's posted — before kickoff, no credits needed.</div>`;
+      <div class="pp-sub">You see every pick from 🐺 Lone Wolf, 🎓 The Professor, 🔄 The Fader and 🎯 Prop Hunter as soon as it's posted — before kickoff, no credits needed.</div>`;
     }else{
       hero = (showFreeHero ? `<div class="pp-free-cta pp-hero">
         <div>
@@ -297,7 +297,7 @@
       </div>` : `<h2 id="ppTitle">AI Picks</h2>`) + `
       <div class="pp-nudge" style="margin-top:14px">
         <div class="pp-nudge-title">Get every AI pick with Edge Pro</div>
-        <div class="pp-nudge-text">Edge Pro includes every pick from 🐺 Lone Wolf, 🎓 The Professor and 🔄 The Fader before kickoff. Edge and Edge+ members get one free pick. New accounts get every pick free during the trial.</div>
+        <div class="pp-nudge-text">Edge Pro includes every pick from 🐺 Lone Wolf, 🎓 The Professor, 🔄 The Fader and 🎯 Prop Hunter before kickoff. Edge and Edge+ members get one free pick. New accounts get every pick free during the trial.</div>
         <button type="button" class="pp-nudge-btn" data-pp="membership">${currentUser ? 'UPGRADE TO EDGE PRO' : 'START FREE TRIAL'}</button>
       </div>`;
     }

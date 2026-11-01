@@ -1,12 +1,13 @@
 // Public picks ledger: the math (implied probability, units, no-vig, CLV)
 // and the leaderboard. Pure functions so the tests and the routes agree.
 
-// The three public pickers (display names) and what each one does.
-export const PICKERS = ["Lone Wolf", "The Professor", "The Fader"];
+// The four public pickers (display names) and what each one does.
+export const PICKERS = ["Lone Wolf", "The Professor", "The Fader", "Prop Hunter"];
 export const PICKER_STYLE = {
   "Lone Wolf": "Line movement: follows sharp moves in the line",
   "The Professor": "Matchup stats: power ratings vs the spread",
   "The Fader": "Value contrarian: underdogs and unders priced better than fair",
+  "Prop Hunter": "Player props: DraftKings props priced better than the other books' fair odds",
 };
 // Original working names, still accepted by the ingest API.
 export const PICKER_ALIASES = { "Line Movement Picker": "Lone Wolf", "Matchup Stats Picker": "The Professor", "Value Contrarian Picker": "The Fader" };
@@ -196,6 +197,7 @@ export function toPublic(r) {
     result: r.result,
     units: r.units == null ? null : Number(r.units),
     closing_odds: r.closing_odds == null ? null : Number(r.closing_odds),
+    prop: r.prop || null,
     created_at: new Date(r.created_at).toISOString(),
     graded_at: r.graded_at ? new Date(r.graded_at).toISOString() : null,
   };

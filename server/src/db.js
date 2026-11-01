@@ -423,6 +423,9 @@ export function ensureSchema() {
       CREATE UNIQUE INDEX IF NOT EXISTS uq_picks_identity ON picks (picker, game, bet, kickoff_at);
       CREATE INDEX IF NOT EXISTS idx_picks_kickoff ON picks (kickoff_at DESC);
       CREATE INDEX IF NOT EXISTS idx_picks_game ON picks (sport, game_id);
+      -- Prop Hunter picks carry the prop they bet (player, market, side, line)
+      -- so they can be graded from the box score. NULL for game picks.
+      ALTER TABLE picks ADD COLUMN IF NOT EXISTS prop JSONB;
       CREATE OR REPLACE FUNCTION picks_guard() RETURNS trigger AS $picks$
       BEGIN
         IF TG_OP = 'DELETE' THEN
@@ -436,7 +439,8 @@ export function ensureSchema() {
            OR NEW.kickoff_at IS DISTINCT FROM OLD.kickoff_at OR NEW.bet IS DISTINCT FROM OLD.bet
            OR NEW.odds IS DISTINCT FROM OLD.odds OR NEW.implied_prob IS DISTINCT FROM OLD.implied_prob
            OR NEW.confidence IS DISTINCT FROM OLD.confidence OR NEW.reason IS DISTINCT FROM OLD.reason
-           OR NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.id IS DISTINCT FROM OLD.id THEN
+           OR NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.id IS DISTINCT FROM OLD.id
+           OR NEW.prop IS DISTINCT FROM OLD.prop THEN
           RAISE EXCEPTION 'pick % is immutable; only result, units and closing_odds can be set', OLD.id;
         END IF;
         RETURN NEW;

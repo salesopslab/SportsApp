@@ -797,6 +797,7 @@ button.pe-price:hover{ border-color:var(--amber); }
 .rec-table tr.locked td{ color:var(--sub); }
 .pk-style{ display:block; font-size:11.5px; font-weight:500; color:var(--sub); }
 .rec-style{ font-size:12px; color:var(--sub); margin-top:-4px; }
+.rec-note{ font-size:11.5px; color:var(--sub); line-height:1.45; margin-top:6px; padding:7px 9px; border-left:2px solid var(--amber); background:var(--surface2); border-radius:0 8px 8px 0; }
 .pk-bet{ font-size:14px; margin-top:4px; }
 .pk-sub{ font-size:12px; color:var(--sub); }
 .pk-reason{ font-size:13px; line-height:1.45; margin:4px 0; }
@@ -1407,12 +1408,12 @@ html{ overflow-x:hidden; }
     <div id="favoritesList"></div>
   </div>
 
-  <!-- RECORD: public, graded track record of the three pickers -->
+  <!-- RECORD: public, graded track record of the four pickers -->
   <div class="screen" id="record">
     <div class="rec-wrap">
       <div class="rec-head">
         <div class="rec-title">AI Record</div>
-        <div class="rec-sub">Every pick from our three AI pickers, posted before kickoff and graded in public. Losses stay up. Compare them, check the math, and make your own call.</div>
+        <div class="rec-sub">Every pick from our four AI pickers, posted before kickoff and graded in public. Losses stay up. Compare them, check the math, and make your own call.</div>
       </div>
       <div class="rec-credits" id="recCredits"></div>
       <div class="rec-controls">
@@ -4862,11 +4863,15 @@ function lineMovementSection(lm){
   return `<div class="section"><h3>Line movement${lm.book ? ' · ' + escapeHtml(lm.book) : ''}</h3>
     <div class="ob-note">Open → current${since}.</div>${html}</div>`;
 }
-// The three public pickers: icon + what each one does (shared with record.js).
+// The four public pickers: icon + what each one does (shared with record.js).
+// `note` is an optional plain-language line shown on the record card.
 const PICKER_INFO = {
   'Lone Wolf':     { icon:'🐺', style:'Line movement — follows sharp moves in the line' },
   'The Professor': { icon:'🎓', style:'Matchup stats — power ratings vs the spread' },
-  'The Fader':     { icon:'🔄', style:'Value contrarian — underdogs & unders priced better than fair' },
+  'The Fader':     { icon:'🔄', style:'Value contrarian — underdogs & unders priced better than fair',
+                     note:'He fades the favorite, not you. Underdogs win less than half the time, so expect long losing runs. The test is whether his odds beat the closing line (CLV), which predicts long-run results better than a short record. Betting against him means laying big favorite prices.' },
+  'Prop Hunter':   { icon:'🎯', style:'Player props — DraftKings NFL & NBA props priced better than the other books\u2019 fair odds',
+                     note:'Graded automatically from the official box score. A player who doesn\u2019t play is a void, the way sportsbooks settle props.' },
 };
 const PICKER_ICON = Object.fromEntries(Object.entries(PICKER_INFO).map(([k, v]) => [k, v.icon]));
 async function loadGamePickers(sport, game){
@@ -4883,7 +4888,7 @@ async function loadGamePickers(sport, game){
     if(d.hidden){
       box.innerHTML = `${head}<div class="pk-locked">🔒 The pickers' calls on upcoming games are revealed at kickoff. <button type="button" class="pk-unlock">Edge Pro</button> includes every pick early${(d.credits || 0) > 0 ? `, or use your free pick on the <a href="/record" class="pk-link">AI Record page</a>` : ` — see their full track records on the <a href="/record" class="pk-link">AI Record page</a>`}.</div>`;
     }else if(!d.picks || !d.picks.length){
-      box.innerHTML = `${head}<div class="empty-note">None of our three pickers has posted a pick on this game. Their full records are on the <a href="/record" class="pk-link">AI Record page</a>.</div>`;
+      box.innerHTML = `${head}<div class="empty-note">None of our pickers has posted a pick on this game. Their full records are on the <a href="/record" class="pk-link">AI Record page</a>.</div>`;
     }else{
       box.innerHTML = head + (d.early ? `<div class="pk-early">🔓 Early access ${d.accessVia === 'trial' ? 'free during your trial' : d.accessVia === 'edge_pro' ? 'with Edge Pro' : 'with your plan'} — the public sees these at kickoff.</div>` : '') + (d.unlockedEarly ? '<div class="pk-early">🔓 Unlocked with your free AI pick — the public sees this at kickoff.</div>' : '') + (d.disagree ? '<div class="pk-disagree">The pickers disagree on this game. That\'s useful: the case isn\'t one-sided.</div>' : '') +
         d.picks.map(p => `<div class="pk-row">

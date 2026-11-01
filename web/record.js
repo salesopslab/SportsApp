@@ -1,4 +1,4 @@
-// Record page: the public, graded track record of the three pickers.
+// Record page: the public, graded track record of the four pickers.
 // Uses globals from index.html: apiFetch, API, escapeHtml, sportTabLabel.
 (function(){
   const $ = (id) => document.getElementById(id);
@@ -49,6 +49,7 @@
         </div>
         <div class="rec-name">${ICON[p.picker] || '🤖'} ${esc(p.picker)}</div>
         ${INFO[p.picker] ? `<div class="rec-style">${esc(INFO[p.picker].style)}</div>` : ''}
+        ${INFO[p.picker] && INFO[p.picker].note ? `<div class="rec-note">${esc(INFO[p.picker].note)}</div>` : ''}
         <div class="rec-big">
           <span class="rec-units ${p.units > 0 ? 'pos' : p.units < 0 ? 'neg' : ''}">${fmtUnits(p.units)}</span>
           <span class="rec-rec">${p.wins}-${p.losses}${p.pushes ? '-' + p.pushes : ''}</span>

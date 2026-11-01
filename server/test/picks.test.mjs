@@ -40,7 +40,7 @@ t("leaderboard: record, units, ROI, streak, CLV, small sample, all pickers prese
     { id: 6, picker: "The Professor", sport: "nfl", kickoff_at: k(2), odds: -110, implied_prob: 0.5238, confidence: "Medium", result: "void", units: 0 },
   ];
   const lb = buildLeaderboard(rows);
-  assert.equal(lb.length, 3);
+  assert.equal(lb.length, 4); // every public picker shows, even with no picks yet
   const lm = lb[0];
   assert.equal(lm.picker, "Lone Wolf");
   assert.deepEqual([lm.wins, lm.losses, lm.pushes, lm.pending, lm.graded, lm.picks], [2, 0, 1, 1, 3, 4]);

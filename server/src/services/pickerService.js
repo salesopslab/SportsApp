@@ -6,6 +6,8 @@
 //     differential vs the market spread (MLB: run differential vs the moneyline).
 //   - The Fader (value contrarian): shops every book for an underdog / under
 //     priced better than the market's own no-vig fair odds.
+//   - Prop Hunter (player props, NFL/NBA): DraftKings props priced better
+//     than the other books' no-vig fair odds (propPickerService.js).
 // runPickers() posts picks on games starting soon (one per picker per game,
 // with daily caps) and grades finished picks from final scores.
 import { pool, ensureSchema } from "../db.js";
@@ -14,6 +16,9 @@ import { getLineHistory } from "./snapshotService.js";
 import { impliedProb, noVig } from "./picksService.js";
 import { savePick, gradePick } from "./ledgerService.js";
 import { cached } from "./cache.js";
+import { getGameProps, getPropsSnapshot, PROPS_SPORTS } from "./propsService.js";
+import { getMatchupInjuries } from "./injuryService.js";
+import { PROPS, propPick, gradePropPick, propClosingOdds } from "./propPickerService.js";
 
 export const LINE = "Lone Wolf";      // line movement
 export const STATS = "The Professor"; // matchup stats
@@ -32,7 +37,9 @@ export function inSeason(sport, d = new Date()) {
 
 // Runs once a day (about 8 AM Pacific): each run covers every game starting
 // in the next 24 hours and grades everything that has finished.
-const WINDOW = { [LINE]: [0.5, 24], [STATS]: [0.5, 24], [VALUE]: [0.5, 24] };
+const WINDOW = { [LINE]: [0.5, 24], [STATS]: [0.5, 24], [VALUE]: [0.5, 24], [PROPS]: [0.5, 24] };
+// Prop Hunter can be switched off without touching the other pickers.
+const PROPS_PICKER_ON = process.env.PROP_PICKER !== "off";
 export const DAILY_HOUR = Number(process.env.PICKERS_DAILY_HOUR || 8); // Pacific
 // At most 3 picks per picker per Pacific day (by posting time). Candidates
 // are ranked by signal strength first, so each picker keeps its best 3.
@@ -393,6 +400,21 @@ async function postPicks({ now, dryRun, log }) {
       }
       if (inWindow(STATS)) tries.push(statsPick(sport, g, ratings));
       if (inWindow(VALUE)) tries.push(valuePick(sport, g));
+      if (PROPS_PICKER_ON && PROPS_SPORTS.includes(sport) && inWindow(PROPS)) {
+        // Uses the shared Props Edge pull (and its credit budget); the same
+        // pull then serves users opening this game, at no extra cost.
+        try {
+          const pr = await getGameProps(sport, g.id, { commenceTime: g.commenceTime });
+          if (pr?.data?.props?.length) {
+            const inj = await getMatchupInjuries(sport, g.homeTeam, g.awayTeam).catch(() => null);
+            tries.push(propPick(sport, g, pr.data, inj));
+          } else if (pr?.paused) {
+            log.skipped.push(`${PROPS}: ${g.awayTeam} @ ${g.homeTeam} — ${pr.pausedReason}`);
+          }
+        } catch (err) {
+          log.errors.push(`${PROPS} ${g.awayTeam} @ ${g.homeTeam}: ${err.message}`);
+        }
+      }
       for (const c of tries) if (c) candidates.push({ ...c, sport, g });
     }
   }
@@ -407,6 +429,7 @@ async function postPicks({ now, dryRun, log }) {
     const pick = {
       picker: c.picker, sport: c.sport, game: `${c.g.awayTeam} @ ${c.g.homeTeam}`, game_id: c.g.id,
       kickoff_at: c.g.commenceTime, bet: c.bet, odds: c.odds, confidence: c.confidence, reason: c.reason,
+      ...(c.prop ? { prop: c.prop } : {}),
     };
     if (dryRun) { log.wouldPost.push(pick); already.add(key); count[c.picker] = (count[c.picker] || 0) + 1; count[`${c.picker}|${c.sport}`] = (count[`${c.picker}|${c.sport}`] || 0) + 1; continue; }
     const r = await savePick(pick);
@@ -426,9 +449,19 @@ async function gradeFinished({ now, dryRun, log }) {
   for (const p of rows) (bySport[p.sport] ||= []).push(p);
   for (const [sport, picks] of Object.entries(bySport)) {
     let scores = {};
-    try { scores = await getScoresForSport(sport, 3); } catch (err) { log.errors.push(`${sport} scores: ${err.message}`); continue; }
+    // Prop picks grade from ESPN box scores, so skip the (metered) scores
+    // call when a sport only has prop picks waiting.
+    const needScores = picks.some((p) => !p.prop);
+    if (needScores) {
+      try { scores = await getScoresForSport(sport, 3); } catch (err) {
+        log.errors.push(`${sport} scores: ${err.message}`);
+        for (const p of picks) if (p.prop) await gradeProp(p, { now, dryRun, log });
+        continue;
+      }
+    }
     const list = Object.entries(scores).map(([id, s]) => ({ id, ...s }));
     for (const p of picks) {
+      if (p.prop) { await gradeProp(p, { now, dryRun, log }); continue; }
       const k = Date.parse(p.kickoff_at);
       let s = p.game_id ? scores[p.game_id] : null;
       if (!s) {
@@ -454,6 +487,25 @@ async function gradeFinished({ now, dryRun, log }) {
       else log.errors.push(`grade ${p.id}: ${r.error}`);
     }
   }
+}
+
+// Prop Hunter picks grade from the ESPN box score, not the final score.
+// A player who didn't play is void (that's how sportsbooks settle props).
+// If ESPN can't confirm the stat after VOID_AFTER_DAYS, the pick is voided.
+async function gradeProp(p, { now, dryRun, log }) {
+  let g;
+  try { g = await gradePropPick(p); } catch (err) { log.errors.push(`${PROPS} pick ${p.id}: ${err.message}`); return; }
+  const tooOld = now - Date.parse(p.kickoff_at) > VOID_AFTER_DAYS * 86400e3;
+  let result = g.result;
+  if (!result) {
+    if (!tooOld) { if (/not found in the box score/.test(g.note)) log.errors.push(`${PROPS} pick ${p.id} (${p.bet}): ${g.note} — grade it with /api/picks/grade if needed.`); return; }
+    result = "void";
+  }
+  const closing = result === "void" ? null : propClosingOdds(p, await getPropsSnapshot(p.game_id).catch(() => null));
+  if (dryRun) { log.wouldGrade.push({ id: p.id, bet: p.bet, result, note: g.note, closing_odds: closing }); return; }
+  const r = await gradePick({ id: p.id, result, closing_odds: closing });
+  if (r.status === "graded") log.graded.push({ id: p.id, bet: p.bet, result, units: r.pick.units, note: g.note, closing_odds: closing });
+  else log.errors.push(`grade ${p.id}: ${r.error}`);
 }
 
 // Once-a-day scheduling: the first check at or after DAILY_HOUR (Pacific)
