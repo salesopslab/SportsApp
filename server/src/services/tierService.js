@@ -33,7 +33,7 @@ export const TIERS = [
       "Line movement",
       "Enhanced Ledger AI bet tracking",
       "Screenshot bet importing",
-      "Expanded Fantasy Edge tools",
+      "Props Edge: DraftKings player props + AI edge picks",
       "1 free AI pick",
     ],
   },
@@ -44,12 +44,12 @@ export const TIERS = [
     annualPriceCents: 24900,
     popular: true,
     tagline: "Everything in Edge, plus:",
-    blurb: "Deeper AI analysis, full Fantasy Edge, advanced Ledger AI analytics and alerts.",
+    blurb: "Deeper AI analysis, more Props Edge AI picks, advanced Ledger AI analytics and alerts.",
     features: [
       "More advanced AI analysis",
       "Advanced betting insights",
       "Deeper player and matchup analysis",
-      "Full Fantasy Edge functionality",
+      "Expanded Props Edge AI picks",
       "Advanced Ledger AI analytics",
       "Performance and betting-history insights",
       "Alerts and additional personalization",
@@ -86,21 +86,21 @@ export const FREE_PLAN = {
     "Basic scores and odds",
     "Limited AI analysis",
     "Basic Ledger AI bet tracking",
-    "Limited Fantasy Edge access",
+    "Props Edge board + limited AI picks",
   ],
 };
 
 export const TRIAL_DAYS = 7;
 
-// Usage limits per effective tier. aiChat / fantasy are per day (Pacific
+// Usage limits per effective tier. aiChat / props are per day (Pacific
 // time); scans are per calendar month. A trial gets Edge Pro's limits.
 export const LIMITS = {
-  none: { aiChat: 3, fantasy: 3, scans: 0 },
-  expired: { aiChat: 3, fantasy: 3, scans: 0 },
-  standard: { aiChat: 25, fantasy: 20, scans: 15 },
-  edge: { aiChat: 75, fantasy: 100, scans: 50 },
-  edge_pro: { aiChat: 200, fantasy: 250, scans: 150 },
-  trial: { aiChat: 200, fantasy: 250, scans: 150 },
+  none: { aiChat: 3, props: 3, scans: 0 },
+  expired: { aiChat: 3, props: 3, scans: 0 },
+  standard: { aiChat: 25, props: 20, scans: 15 },
+  edge: { aiChat: 75, props: 100, scans: 50 },
+  edge_pro: { aiChat: 200, props: 250, scans: 150 },
+  trial: { aiChat: 200, props: 250, scans: 150 },
 };
 
 export function limitsFor(userRow) {

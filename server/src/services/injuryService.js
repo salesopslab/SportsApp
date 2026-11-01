@@ -292,8 +292,7 @@ export function injuriesNeedRefresh(injuries) {
 }
 
 /**
- * Injury reports for any list of teams (Fantasy Edge needs single teams and
- * league-wide sweeps, not just matchups). Same rules as getMatchupInjuries:
+ * Injury reports for any list of teams (not just a matchup pair). Same rules as getMatchupInjuries:
  * each team carries its own status, and a failed lookup is "unavailable".
  * Returns { [teamFullName]: report }.
  */

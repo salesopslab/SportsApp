@@ -1,4 +1,4 @@
-// Billing integration test: real auth / billing / admin / chat / fantasy
+// Billing integration test: real auth / billing / admin / chat
 // routes and a real Postgres database, with Stripe and Anthropic faked.
 // Needs a scratch database: TEST_DATABASE_URL=postgres://... node test/billing.test.mjs
 // (skipped when TEST_DATABASE_URL isn't set, so `npm test` still runs anywhere).

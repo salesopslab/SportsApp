@@ -29,6 +29,6 @@ t("tool results get *_local labels", () => {
 });
 t("default outside a request is US Eastern", () => {
   assert.equal(currentTz(), DEFAULT_TZ);
-  assert.match(userTimeLine(kick, "America/Los_Angeles"), /7:15 PM PDT.*America\/Los_Angeles.*PDT/);
+  assert.match(userTimeLine(kick, "America/Los_Angeles"), /7:15 PM PDT.*America\/Los_Angeles.*P[DS]T/);
 });
 console.log("All time zone tests passed");

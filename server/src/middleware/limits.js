@@ -1,12 +1,12 @@
 import { pool, ensureSchema } from "../db.js";
 import { effectiveTier, limitsFor, nextTierUp, tierById } from "../services/tierService.js";
 
-// Per-plan daily usage caps (AI chat, Fantasy Edge). Must run after withTier.
+// Per-plan daily usage caps (AI chat, Props Edge AI picks). Must run after withTier.
 // A use is only counted when the request succeeds, so an error never costs
 // someone one of their questions.
 
 const TZ = "America/Los_Angeles";
-const LABELS = { aiChat: "AI questions", fantasy: "Fantasy Edge analyses" };
+const LABELS = { aiChat: "AI questions", props: "Props Edge AI pick analyses" };
 
 export async function usageToday(userId, kind) {
   if (!pool) return 0;

@@ -87,7 +87,7 @@ Write the updated profile as at most 10 short bullet lines, under ${MAX_PROFILE_
 - Sports, leagues and teams they follow or bet on
 - Bet types they use (spreads, moneylines, totals, parlays, props, teasers) and typical stake/unit size if stated
 - How they like answers (short vs. detailed, wants web news, wants Pass calls, etc.)
-- Fantasy football context if any (league scoring, key players)
+- Player props they like (players, stat types) if stated
 - Anything they explicitly asked to be remembered
 - Current focus (e.g. "Week 5 NFL slate", dated) — drop items that are clearly stale
 

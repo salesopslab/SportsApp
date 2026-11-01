@@ -203,7 +203,7 @@ export function ensureSchema() {
       -- guessing usage from anything else. A row is written only for a scan
       -- that actually reached the model, not a request rejected for a bad
       -- image or for being over the cap.
-      -- Daily per-plan usage caps (AI chat questions, Fantasy Edge analyses).
+      -- Daily per-plan usage caps (AI chat questions, Props Edge AI picks).
       CREATE TABLE IF NOT EXISTS feature_usage (
         id BIGSERIAL PRIMARY KEY,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -341,6 +341,31 @@ export function ensureSchema() {
         recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_odds_api_usage_time ON odds_api_usage (recorded_at DESC);
+
+      -- Props Edge: the latest DraftKings player-prop pull per game, kept in
+      -- the database so a server restart doesn't re-spend Odds API credits.
+      CREATE TABLE IF NOT EXISTS props_snapshots (
+        event_id TEXT PRIMARY KEY,
+        sport TEXT NOT NULL,
+        data JSONB NOT NULL,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      -- Odds API credits spent on props, for the daily props budget.
+      CREATE TABLE IF NOT EXISTS props_credit_log (
+        id BIGSERIAL PRIMARY KEY,
+        event_id TEXT,
+        credits INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_props_credit_log_time ON props_credit_log (created_at);
+      -- AI edge picks per game, shared by every user for one props pull.
+      CREATE TABLE IF NOT EXISTS props_ai_picks (
+        event_id TEXT NOT NULL,
+        props_fetched_at TIMESTAMPTZ NOT NULL,
+        data JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (event_id, props_fetched_at)
+      );
 
       -- Every AI chat answer, for weekly quality spot-checks (admin page).
       -- No personal data beyond the user id.
