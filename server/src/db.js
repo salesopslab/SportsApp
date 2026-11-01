@@ -159,7 +159,7 @@ export function ensureSchema() {
       ALTER TABLE bets ADD COLUMN IF NOT EXISTS potential_payout NUMERIC;
       ALTER TABLE bets ADD COLUMN IF NOT EXISTS profit_loss NUMERIC;
       ALTER TABLE bets ADD COLUMN IF NOT EXISTS cash_out_amount NUMERIC;
-      ALTER TABLE bets ADD COLUMN IF NOT EXISTS bet_source TEXT NOT NULL DEFAULT 'betedge_pick'; -- 'betedge_pick' | 'custom'
+      ALTER TABLE bets ADD COLUMN IF NOT EXISTS bet_source TEXT NOT NULL DEFAULT 'betedge_pick'; -- 'betedge_pick' | 'custom' | 'parlay' | 'prop'
       -- Freeform overrides used by custom (off-platform) bets, whose
       -- game/market/line don't fit our own structured odds data — left null
       -- for ordinary BetEdge picks, which keep using home_team/away_team/

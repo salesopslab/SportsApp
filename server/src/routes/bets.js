@@ -163,7 +163,7 @@ function isValidLeg(leg) {
 
 // Log a new pick. betSource "betedge_pick" is a BetEdge pick tracked off a
 // real game/line we show; "custom" is a straight bet the person placed
-// somewhere else; "parlay" covers both parlays and teasers (market decides
+// somewhere else; "prop" is a player prop tracked from Props Edge; "parlay" covers both parlays and teasers (market decides
 // which), each carrying 2+ legs in bet_legs. BetEdge AI never accepts or
 // holds the wager itself; this only ever records what the person says they
 // bet elsewhere.
@@ -280,6 +280,15 @@ router.post("/", async (req, res) => {
       finalGameId = `custom-${req.user.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       finalMarket = "custom";
       finalSide = betTypeLabel;
+    } else if (betSource === "prop") {
+      // A DraftKings player prop tracked from Props Edge. Tied to the real
+      // game (so it shows teams and kickoff), but a final score can't grade
+      // a player stat line, so it's settled by hand like a custom bet.
+      // Wager is optional (units), same as a BetEdge pick.
+      if (!sport || !gameId) return res.status(400).json({ error: "Missing the game for this prop." });
+      if (!betTypeLabel) return res.status(400).json({ error: "Missing the prop description." });
+      finalMarket = "player_prop";
+      finalSide = String(betTypeLabel).slice(0, 200);
     } else {
       if (!sport || !gameId || !market || !side) {
         return res.status(400).json({ error: "Missing required fields for this pick." });
@@ -890,7 +899,10 @@ async function autoGradePending(bets) {
   // Custom (off-platform) bets and parlays/teasers (settled leg-by-leg, see
   // POST /:id/legs/:legId/settle) both have a synthetic game id and nothing
   // to auto-grade against — left out of the score lookup entirely.
-  const pending = bets.filter((b) => b.result === "pending" && b.bet_source !== "custom" && b.bet_source !== "parlay");
+  // Player props (Props Edge) need box-score stats, not a final score, so
+  // they're settled by hand too.
+  const NO_AUTO = new Set(["custom", "parlay", "prop"]);
+  const pending = bets.filter((b) => b.result === "pending" && !NO_AUTO.has(b.bet_source));
   if (!pending.length) return bets;
 
   const sports = [...new Set(pending.map((b) => b.sport))];
@@ -907,7 +919,7 @@ async function autoGradePending(bets) {
 
   const toUpdate = [];
   const result = bets.map((bet) => {
-    if (bet.result !== "pending" || bet.bet_source === "custom") return bet;
+    if (bet.result !== "pending" || NO_AUTO.has(bet.bet_source)) return bet;
     const score = scoresBySport[bet.sport]?.[bet.game_id];
     if (!score || !score.completed || score.homeScore === null || score.awayScore === null) {
       return bet; // game hasn't finished (or we don't have a final score) yet

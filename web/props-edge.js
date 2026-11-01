@@ -17,6 +17,7 @@
   const gameData = new Map();      // eventId -> props response
   const view = new Map();          // eventId -> { market, q, sort }
   const aiState = new Map();       // eventId -> { loading, data, error }
+  const tracked = new Set();       // `${eventId}|${propId}|${side}` tracked this session
 
   function defaultSport(){
     try{
@@ -57,11 +58,15 @@
     if(p.kind === 'yes') return (p.priceGap || 0) / 2;
     return Math.max(p.best?.ev ?? -99, Math.abs(p.lineGap || 0) * 2);
   }
-  function priceCell(p){
-    if(p.kind === 'yes') return `<div class="pe-price"><span class="lbl">Yes</span> ${esc(fmtOdds(p.yes))}</div>`;
+  function priceBtn(gid, p, side, label, price){
+    if(price == null) return `<div class="pe-price muted"><span class="lbl">${esc(label)}</span> —</div>`;
+    const done = tracked.has(`${gid}|${p.id}|${side}`);
+    return `<button type="button" class="pe-price${done ? ' tracked' : ''}" data-track="${esc(p.id)}" data-side="${side}" aria-label="Track ${esc(p.player)} ${side} ${esc(p.marketLabel)} at ${esc(fmtOdds(price))}"><span class="lbl">${done ? '✓ ' : ''}${esc(label)}</span> ${esc(fmtOdds(price))}</button>`;
+  }
+  function priceCell(gid, p){
+    if(p.kind === 'yes') return priceBtn(gid, p, 'Yes', 'Yes', p.yes);
     const ln = p.line == null ? '' : p.line;
-    return `<div class="pe-price"><span class="lbl">O ${esc(ln)}</span> ${esc(fmtOdds(p.over))}</div>
-            <div class="pe-price"><span class="lbl">U ${esc(ln)}</span> ${esc(fmtOdds(p.under))}</div>`;
+    return priceBtn(gid, p, 'Over', `O ${ln}`, p.over) + priceBtn(gid, p, 'Under', `U ${ln}`, p.under);
   }
   function detailLine(p){
     if(p.kind === 'yes'){
@@ -135,11 +140,12 @@
           <button type="button" class="pe-sort" data-role="sort">${v.sort === 'edge' ? 'Best edge' : 'A–Z'}</button>
         </div>
       </div>
-      <div class="pe-list" data-role="list">${listHtml(data.props, v)}</div>
+      <div class="pe-hint">Tap a price to track it in Ledger AI.</div>
+      <div class="pe-list" data-role="list">${listHtml(g.id, data.props, v)}</div>
       ${footHtml(d)}`;
   }
 
-  function listHtml(props, v){
+  function listHtml(gid, props, v){
     const q = v.q.trim().toLowerCase();
     let rows = props.filter(p => (v.market === 'all' || p.market === v.market) && (!q || p.player.toLowerCase().includes(q)));
     rows = rows.slice().sort(v.sort === 'edge' ? (a, b) => edgeScore(b) - edgeScore(a) : (a, b) => a.player.localeCompare(b.player) || a.marketLabel.localeCompare(b.marketLabel));
@@ -152,7 +158,7 @@
           <div class="pe-edge">${edgeHtml(p)}</div>
           <div class="pe-detail">${esc(detailLine(p))}</div>
         </div>
-        <div class="pe-prices">${priceCell(p)}</div>
+        <div class="pe-prices">${priceCell(gid, p)}</div>
       </div>`).join('');
   }
 
@@ -182,6 +188,7 @@
           </div>
           <span class="pe-conf">${esc(pk.confidence)}</span>
         </div>
+        ${pickTrackBtn(id, pk)}
         <div class="pe-pick-nums">${pk.ev != null ? evBadge(pk.ev) : ''}${pk.fairPct != null ? ` <span class="pe-meta-sm">Fair ${esc(pk.fairPct)}%</span>` : ''}${pk.consensusLine != null && pk.line != null && pk.consensusLine !== pk.line ? ` <span class="pe-meta-sm">Market line ${esc(pk.consensusLine)}</span>` : ''}</div>
         <div class="pe-pick-why">${esc(pk.reason)}</div>
         ${pk.risk ? `<div class="pe-pick-risk">Risk: ${esc(pk.risk)}</div>` : ''}
@@ -195,6 +202,33 @@
       <div class="pe-src">Analysis, not a guarantee. Generated ${esc(agoLabel(d.generatedAt) || 'just now')}.</div>
     </div>`;
   }
+
+  function pickTrackBtn(id, pk){
+    const done = tracked.has(`${id}|${pk.id}|${pk.side}`);
+    return `<button type="button" class="pe-track${done ? ' tracked' : ''}" data-track="${esc(pk.id)}" data-side="${esc(pk.side)}"${done ? ' disabled' : ''}>${done ? '✓ Tracked in Ledger AI' : '+ Track this pick'}</button>`;
+  }
+
+  // Open the shared "Track this pick" modal (index.html) for one side of a prop.
+  function startTrack(id, propId, side){
+    const g = slate?.games?.find(x => x.id === id);
+    const prop = gameData.get(id)?.data?.props?.find(p => p.id === propId);
+    if(!g || !prop || typeof trackProp !== 'function') return;
+    const price = side === 'Over' ? prop.over : side === 'Under' ? prop.under : prop.yes;
+    trackProp({
+      sport, gameId: id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, commenceTime: g.commenceTime,
+      player: prop.player, side, marketLabel: prop.marketLabel,
+      line: prop.kind === 'yes' ? null : prop.line, price,
+      trackKey: `${id}|${prop.id}|${side}`,
+    });
+  }
+  document.addEventListener('betedge:tracked', (e) => {
+    const key = e.detail && e.detail.trackKey;
+    if(!key) return;
+    tracked.add(key);
+    const id = key.split('|')[0];
+    if(open.has(id)) rerenderBody(id);
+    if(typeof showHintToast === 'function') showHintToast('Tracked in Ledger AI', 'Settle it in Ledger AI after the game — player props aren’t graded automatically.');
+  });
 
   async function runAI(id){
     aiState.set(id, { loading: true, t0: Date.now() });
@@ -232,6 +266,14 @@
     if(!body) return;
     wireUpgradePrompts(body);
     body.querySelectorAll('[data-role="ai"]').forEach(b => b.addEventListener('click', () => runAI(id)));
+    if(!body.dataset.trackWired){
+      body.dataset.trackWired = '1';
+      body.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-track]');
+        if(!b || b.disabled) return;
+        startTrack(id, b.dataset.track, b.dataset.side);
+      });
+    }
     const d = gameData.get(id);
     if(!d?.data?.props?.length) return;
     const v = viewFor(id);
@@ -239,15 +281,15 @@
     body.querySelectorAll('.pe-chip').forEach(c => c.addEventListener('click', () => {
       v.market = c.dataset.market;
       body.querySelectorAll('.pe-chip').forEach(x => x.classList.toggle('active', x === c));
-      list.innerHTML = listHtml(d.data.props, v);
+      list.innerHTML = listHtml(id, d.data.props, v);
     }));
     const search = body.querySelector('[data-role="search"]');
-    search.addEventListener('input', () => { v.q = search.value; list.innerHTML = listHtml(d.data.props, v); });
+    search.addEventListener('input', () => { v.q = search.value; list.innerHTML = listHtml(id, d.data.props, v); });
     const sortBtn = body.querySelector('[data-role="sort"]');
     sortBtn.addEventListener('click', () => {
       v.sort = v.sort === 'edge' ? 'az' : 'edge';
       sortBtn.textContent = v.sort === 'edge' ? 'Best edge' : 'A–Z';
-      list.innerHTML = listHtml(d.data.props, v);
+      list.innerHTML = listHtml(id, d.data.props, v);
     });
   }
 

@@ -672,6 +672,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .site-footer{ padding:24px 16px 32px; text-align:center; font-size:11.5px; color:var(--sub); line-height:1.5; }
 
 /* ---------- Props Edge ---------- */
+.pick-book{ color:var(--sub); font-weight:500; }
 .pe-wrap{ max-width:760px; margin:0 auto; padding:12px 16px 24px; }
 .pe-head{ padding:6px 0 12px; }
 .pe-title{ font-family:'Oswald',sans-serif; font-size:24px; font-weight:600; letter-spacing:0.3px; }
@@ -718,6 +719,14 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{
 .pe-prices{ flex:none; display:flex; flex-direction:column; gap:4px; align-items:flex-end; }
 .pe-price{ font-variant-numeric:tabular-nums; font-weight:700; font-size:13px; background:var(--surface2); border:1px solid var(--line); border-radius:8px; padding:4px 8px; min-width:104px; text-align:right; white-space:nowrap; }
 .pe-price .lbl{ float:left; color:var(--sub); font-weight:600; margin-right:8px; }
+button.pe-price{ color:var(--text); font-family:'Inter',sans-serif; cursor:pointer; }
+button.pe-price:hover{ border-color:var(--amber); }
+.pe-price.tracked{ border-color:var(--green); }
+.pe-price.tracked .lbl{ color:var(--green); }
+.pe-price.muted{ opacity:0.5; }
+.pe-hint{ font-size:11.5px; color:var(--sub); margin:2px 0 2px; }
+.pe-track{ margin-top:8px; width:100%; padding:8px; border:1px solid var(--amber); border-radius:9px; background:none; color:var(--amber); font:700 13px 'Inter',sans-serif; cursor:pointer; }
+.pe-track.tracked{ border-color:var(--green); color:var(--green); cursor:default; }
 .pe-ev{ display:inline-block; font-size:11px; font-weight:800; border-radius:6px; padding:1px 6px; }
 .pe-ev.good{ background:rgba(44,138,85,0.15); color:var(--green); }
 .pe-ev.ok{ background:var(--surface2); color:var(--text); }
@@ -2263,6 +2272,34 @@ function trackPick(r, btnEl){
   });
 }
 
+// Props Edge: track a DraftKings player prop. Same wager modal; the line
+// stays editable (the person's own app may show a moved number), and the
+// prop description is rebuilt from it on save.
+function trackProp(p, btnEl){
+  if(!currentUser){ openAuthModal(); return; }
+  pendingTrackContext = {
+    kind: 'prop',
+    sport: p.sport,
+    gameId: p.gameId,
+    homeTeam: p.homeTeam,
+    awayTeam: p.awayTeam,
+    commenceTime: p.commenceTime,
+    player: p.player,
+    side: p.side,
+    marketLabel: p.marketLabel,
+    trackKey: p.trackKey || null,
+  };
+  pendingTrackBtn = btnEl || null;
+  openWagerConfirmModal({
+    gameLabel: `${p.player} ${p.side}${p.line != null ? ' ' + p.line : ''} ${p.marketLabel} — DraftKings · ${p.awayTeam} @ ${p.homeTeam}`,
+    lineLabel: p.line == null ? '' : String(p.line),
+    price: p.price,
+  });
+}
+function propDescription(ctx, point){
+  return `${ctx.player} ${ctx.side}${point != null ? ' ' + point : ''} ${ctx.marketLabel}`;
+}
+
 function openWagerConfirmModal(ctx){
   document.getElementById('wagerConfirmGame').textContent = ctx.gameLabel;
   document.getElementById('wagerConfirmLine').value = ctx.lineLabel || '';
@@ -2322,7 +2359,18 @@ document.getElementById('wagerConfirmForm').addEventListener('submit', async (e)
     const res = await apiFetch('/api/bets', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
+      body: JSON.stringify(pendingTrackContext.kind === 'prop' ? {
+        betSource: 'prop',
+        sport: pendingTrackContext.sport,
+        gameId: pendingTrackContext.gameId,
+        homeTeam: pendingTrackContext.homeTeam,
+        awayTeam: pendingTrackContext.awayTeam,
+        commenceTime: pendingTrackContext.commenceTime,
+        betTypeLabel: propDescription(pendingTrackContext, point),
+        lineLabel: 'DraftKings',
+        point, price, wagerAmount,
+        stake: 1,
+      } : {
         betSource: 'betedge_pick',
         sport: pendingTrackContext.sport,
         gameId: pendingTrackContext.gameId,
@@ -2336,6 +2384,7 @@ document.getElementById('wagerConfirmForm').addEventListener('submit', async (e)
       })
     });
     if(!res.ok) throw new Error((await res.json()).error || 'Failed to save.');
+    try{ document.dispatchEvent(new CustomEvent('betedge:tracked', { detail: Object.assign({}, pendingTrackContext) })); }catch{}
     if(pendingTrackBtn){
       pendingTrackBtn.textContent = '✓ Tracked';
       pendingTrackBtn.classList.add('tracked');
@@ -3700,7 +3749,7 @@ function computePerformanceBySport(bets){
 }
 
 function computePerformanceByType(bets){
-  const labels = { moneyline:'Moneyline', spread:'Spread', total:'Total', custom:'Custom' };
+  const labels = { moneyline:'Moneyline', spread:'Spread', total:'Total', custom:'Custom', player_prop:'Player props' };
   const byType = {};
   bets.forEach(b=>{
     if(b.wager_amount == null || b.result === 'pending') return;
@@ -3817,13 +3866,14 @@ function renderParlayCard(b){
 function renderPickCard(b){
   if(b.market === 'parlay' || b.market === 'teaser') return renderParlayCard(b);
   const isCustom = b.bet_source === 'custom';
+  const isProp = b.bet_source === 'prop';
   const eventLabel = isCustom
     ? escapeHtml(b.event_label || (b.sport||'').toUpperCase())
     : (b.away_team && b.home_team ? escapeHtml(`${b.away_team} @ ${b.home_team}`) : escapeHtml((b.sport||'').toUpperCase()));
-  const typeLabel = isCustom
-    ? escapeHtml(b.bet_type_label || '')
+  const typeLabel = (isCustom || isProp)
+    ? escapeHtml(b.bet_type_label || b.side || '')
     : (b.market === 'total' ? `${escapeHtml(b.side)} ${b.point ?? ''}` : b.market === 'spread' ? `${escapeHtml(b.side)} ${Number(b.point) > 0 ? '+'+b.point : b.point}` : `${escapeHtml(b.side)} ML`);
-  const lineLabel = isCustom && b.line_label ? ` ${escapeHtml(b.line_label)}` : '';
+  const lineLabel = isCustom && b.line_label ? ` ${escapeHtml(b.line_label)}` : isProp ? ` <span class="pick-book">· ${escapeHtml(b.line_label || 'DraftKings')}</span>` : '';
   const priceLabel = oddsPriceLabel(b.price);
   const wager = b.wager_amount != null ? Number(b.wager_amount) : null;
   const hasWager = wager != null;
